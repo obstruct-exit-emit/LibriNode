@@ -27,3 +27,4 @@ config.yaml
 .idea/
 Thumbs.db
 .DS_Store
+*.tsbuildinfo
