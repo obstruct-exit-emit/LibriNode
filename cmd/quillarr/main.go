@@ -15,6 +15,8 @@ import (
 	"github.com/quillarr/quillarr/internal/api"
 	"github.com/quillarr/quillarr/internal/config"
 	"github.com/quillarr/quillarr/internal/database"
+	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/quillarr/quillarr/internal/metadata/hardcover"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=x.y.z".
@@ -59,9 +61,17 @@ func run(dataDir string) error {
 	}
 	defer db.Close()
 
+	var provider metadata.Provider
+	if cfg.HardcoverToken != "" {
+		provider = hardcover.New(cfg.HardcoverToken)
+		logger.Info("metadata provider configured", "provider", provider.Name())
+	} else {
+		logger.Warn("no metadata provider configured — set hardcover_token in config.yaml to enable search and add")
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr(),
-		Handler:           api.NewRouter(cfg, db, version),
+		Handler:           api.NewRouter(cfg, db, provider, version),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

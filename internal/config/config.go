@@ -25,6 +25,10 @@ type Config struct {
 	APIKey   string `yaml:"api_key"`
 	LogLevel string `yaml:"log_level"` // debug, info, warn, error
 
+	// HardcoverToken is the Hardcover.app API token used for book and
+	// audiobook metadata. Empty disables the provider (search/add return 503).
+	HardcoverToken string `yaml:"hardcover_token"`
+
 	dataDir string
 }
 
@@ -106,6 +110,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("QUILLARR_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
+	}
+	if v := os.Getenv("QUILLARR_HARDCOVER_TOKEN"); v != "" {
+		cfg.HardcoverToken = v
 	}
 }
 
