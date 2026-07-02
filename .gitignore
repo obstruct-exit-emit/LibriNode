@@ -19,6 +19,9 @@
 *.db-shm
 config.yaml
 
+# Personal Claude Code settings
+.claude/settings.local.json
+
 # Editor / OS noise
 .vscode/
 .idea/

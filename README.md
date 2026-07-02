@@ -92,6 +92,15 @@ go test ./...                  # run tests
 go build ./cmd/quillarr        # produce the quillarr binary
 ```
 
+Frontend (requires Node 22+):
+
+```sh
+cd web
+npm install
+npm run dev                    # Vite dev server, proxies /api to :7845
+npm run build                  # production build into web/dist
+```
+
 On first run Quillarr creates its data directory (`%AppData%\Quillarr` on
 Windows, `~/.config/quillarr` on Linux) containing `config.yaml` — with a
 generated API key — and the SQLite database. Override the location with
@@ -103,6 +112,10 @@ API calls need the key from `config.yaml`:
 ```sh
 curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 ```
+
+Metadata search and add require a [Hardcover](https://hardcover.app) API
+token: set `hardcover_token` in `config.yaml` (or
+`QUILLARR_HARDCOVER_TOKEN`). Without it those endpoints return 503.
 
 ---
 
@@ -117,10 +130,12 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 - [ ] CI: build + test on Windows and Linux
 
 ### Phase 1 — Library core (ebooks first)
-- [ ] Media type + root folder model (multiple roots per type)
-- [ ] Author / Series / Book / Edition data model
-- [ ] Hardcover metadata provider: search, author/series/book lookup, covers
-- [ ] Add author or book → monitor wanted editions
+- [x] Media type + root folder model (multiple roots per type)
+- [x] Author / Series / Book / Edition data model
+- [x] Hardcover metadata provider: search, author/series/book lookup, covers *(mock-tested; live API verification pending a Hardcover token)*
+- [x] Add author or book → monitor wanted editions
+- [ ] React + Vite web UI: library browsing, search-and-add (scaffold in `web/` done)
+- [ ] Scheduled + manual metadata refresh
 - [ ] Library scanning: detect existing files, match to metadata
 - [ ] File naming templates + rename engine
 - [ ] Manual import with match correction
@@ -170,7 +185,7 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 
 ## Status
 
-🚧 **Pre-alpha — Phase 0.** The backend skeleton (config, database, API) runs; the acquisition pipeline and web UI are next.
+🚧 **Pre-alpha — Phase 1 in progress.** The backend library core works end-to-end: search Hardcover, add authors/books, monitor editions — all over the REST API. The web UI and library scanning are next.
 
 ## License
 
