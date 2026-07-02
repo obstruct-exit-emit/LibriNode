@@ -1,0 +1,26 @@
+# Binaries
+/quillarr
+/quillarr.exe
+/dist/
+/bin/
+
+# Go
+*.test
+*.out
+/vendor/
+
+# Frontend
+/web/node_modules/
+/web/dist/
+
+# Runtime data (never commit a live library DB or config)
+*.db
+*.db-wal
+*.db-shm
+config.yaml
+
+# Editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
