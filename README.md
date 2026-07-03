@@ -99,6 +99,13 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
    dismiss them.
 6. **Library → Organize…:** preview, then apply, moving files into the
    naming-template layout.
+7. **Settings → Download Clients:** point LibriNode at qBittorrent
+   (torrents) and/or SABnzbd (usenet). Then search releases
+   (`GET /api/v1/release?bookId=N` returns parsed, scored, ranked
+   candidates) and send one to a client with `POST /api/v1/release/grab` —
+   the **Activity** tab shows the live download queue. Format preferences
+   live under **Settings → Quality Profiles**. (Auto-import of finished
+   downloads and in-UI search buttons are the next slices.)
 
 **Indexers** can be added two ways: manually under **Settings → Indexers**
 (any Newznab/Torznab endpoint, including per-indexer feed URLs from
@@ -255,7 +262,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 2 (acquisition pipeline) started.** The Phase 1 library core is feature-complete: everything in [Getting started](#getting-started-what-works-today) works end-to-end from the embedded web UI or the REST API (one asterisk: Hardcover calls are mock-tested pending a live API token). Phase 2 has begun with the indexer framework — add Newznab/Torznab indexers under Settings and search releases across them via `GET /api/v1/release`. Release parsing/scoring, quality profiles, Prowlarr sync, and download clients are next.
+🚧 **Pre-alpha — Phase 2 (acquisition pipeline) mostly done.** The Phase 1 library core is feature-complete, and the pipeline pieces are in place: Newznab/Torznab indexers (manual or via Prowlarr application sync), release parsing + scoring against quality profiles, and qBittorrent/SABnzbd download clients with a grab endpoint and live queue view — everything in [Getting started](#getting-started-what-works-today) works from the embedded web UI or the REST API. Remaining in Phase 2: completed download handling (auto-import of finished grabs), the automatic search + RSS loop, and the interactive search UI. Asterisks: Hardcover calls and the Prowlarr/download-client integrations are tested against faithful API mocks, not yet against the live services.
 
 ## License
 
