@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Author, type Book, type Edition } from "../api";
+import { api, type Author, type Book, type BookFile, type Edition } from "../api";
 
 export default function LibraryView({
   onError,
@@ -7,49 +7,97 @@ export default function LibraryView({
   onError: (message: string) => void;
 }) {
   const [authors, setAuthors] = useState<Author[]>([]);
+  const [unmatched, setUnmatched] = useState<BookFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [openAuthor, setOpenAuthor] = useState<number | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanNotice, setScanNotice] = useState("");
 
   const reload = useCallback(() => {
-    api
-      .listAuthors()
-      .then(setAuthors)
+    Promise.all([api.listAuthors(), api.listUnmatchedFiles()])
+      .then(([au, un]) => {
+        setAuthors(au);
+        setUnmatched(un);
+      })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
   }, [onError]);
 
   useEffect(reload, [reload]);
 
+  const scan = () => {
+    setScanning(true);
+    setScanNotice("");
+    api
+      .scan()
+      .then((r) => {
+        const errors = r.errors?.length ? `, ${r.errors.length} root(s) failed` : "";
+        setScanNotice(
+          r.roots === 0
+            ? "No ebook root folders to scan — add one under Settings."
+            : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched, ${r.removed} removed${errors}`,
+        );
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setScanning(false));
+  };
+
   if (loading) return <p className="muted">Loading library…</p>;
 
-  if (authors.length === 0) {
-    return (
-      <section className="card">
-        <h2>Library</h2>
-        <p className="muted">
-          Nothing here yet — use <strong>Search</strong> to find an author or
-          book and add it to the library.
-        </p>
-      </section>
-    );
-  }
-
   return (
-    <section className="card">
-      <h2>Authors ({authors.length})</h2>
-      <ul className="rows">
-        {authors.map((a) => (
-          <AuthorRow
-            key={a.id}
-            author={a}
-            open={openAuthor === a.id}
-            onToggleOpen={() => setOpenAuthor(openAuthor === a.id ? null : a.id)}
-            onChanged={reload}
-            onError={onError}
-          />
-        ))}
-      </ul>
-    </section>
+    <>
+      <section className="card">
+        <div className="card-head">
+          <h2>Authors ({authors.length})</h2>
+          <span className="row-actions">
+            <button disabled={scanning} onClick={scan} title="Scan root folders for ebook files">
+              {scanning ? "Scanning…" : "Scan files"}
+            </button>
+          </span>
+        </div>
+        {scanNotice && <p className="muted">{scanNotice}</p>}
+        {authors.length === 0 ? (
+          <p className="muted">
+            Nothing here yet — use <strong>Search</strong> to find an author or
+            book and add it to the library.
+          </p>
+        ) : (
+          <ul className="rows">
+            {authors.map((a) => (
+              <AuthorRow
+                key={a.id}
+                author={a}
+                open={openAuthor === a.id}
+                onToggleOpen={() => setOpenAuthor(openAuthor === a.id ? null : a.id)}
+                onChanged={reload}
+                onError={onError}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {unmatched.length > 0 && (
+        <section className="card">
+          <h2>Unmatched files ({unmatched.length})</h2>
+          <p className="muted">
+            Found on disk but not matched to any library book. Add the books
+            (Search tab) and re-scan, or wait for manual import to land.
+          </p>
+          <ul className="rows">
+            {unmatched.map((f) => (
+              <li key={f.id}>
+                <div className="row">
+                  <span className="file-path">{f.path}</span>
+                  <span className="muted">{f.format}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 
@@ -170,6 +218,12 @@ function BookRow({
           <span className="muted">{year}</span>
         </button>
         <span className="row-actions">
+          <span
+            className={book.hasFile ? "owned yes" : "owned no"}
+            title={book.hasFile ? "File on disk" : "No file yet"}
+          >
+            {book.hasFile ? "owned" : "wanted"}
+          </span>
           {book.rating > 0 && <span className="muted">★ {book.rating.toFixed(1)}</span>}
           <button className={monitored ? "toggle on" : "toggle"} onClick={toggleMonitor}>
             {monitored ? "monitored" : "unmonitored"}
@@ -184,6 +238,20 @@ function BookRow({
                 .map((s) => `${s.title} #${s.position}`)
                 .join(", ")}
             </p>
+          )}
+          {detail.files && detail.files.length > 0 && (
+            <ul className="rows nested">
+              {detail.files.map((f) => (
+                <li key={f.id}>
+                  <div className="row">
+                    <span className="file-path">📄 {f.path}</span>
+                    <span className="muted">
+                      {f.format} · {(f.size / 1024).toFixed(0)} KiB
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
           {detail.editions && detail.editions.length > 0 ? (
             <ul className="rows nested">

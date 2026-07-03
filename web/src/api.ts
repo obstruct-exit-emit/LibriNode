@@ -34,8 +34,10 @@ export interface Book {
   rating: number;
   coverUrl: string;
   monitored: boolean;
+  hasFile: boolean;
   editions?: Edition[];
   series?: SeriesLink[];
+  files?: BookFile[];
 }
 
 export interface Edition {
@@ -57,6 +59,33 @@ export interface SeriesLink {
   seriesId: number;
   title: string;
   position: number;
+}
+
+export interface BookFile {
+  id: number;
+  rootFolderId: number;
+  bookId?: number;
+  path: string;
+  size: number;
+  format: string;
+  modifiedAt: string;
+  addedAt: string;
+}
+
+export interface RootFolder {
+  id: number;
+  mediaType: string;
+  path: string;
+  accessible: boolean;
+}
+
+export interface ScanResult {
+  roots: number;
+  scanned: number;
+  matched: number;
+  unmatched: number;
+  removed: number;
+  errors?: string[];
 }
 
 // Metadata provider search results (not yet in the library).
@@ -176,6 +205,16 @@ export const api = {
       ...json({ monitored }),
       method: "PUT",
     }),
+
+  scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
+  listUnmatchedFiles: () =>
+    request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
+
+  listRootFolders: () => request<RootFolder[]>("/api/v1/rootfolder"),
+  addRootFolder: (mediaType: string, path: string) =>
+    request<RootFolder>("/api/v1/rootfolder", json({ mediaType, path })),
+  deleteRootFolder: (id: number) =>
+    request<void>(`/api/v1/rootfolder/${id}`, { method: "DELETE" }),
 
   getMetadataSettings: () =>
     request<MetadataSettings>("/api/v1/settings/metadata"),

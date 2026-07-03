@@ -291,6 +291,10 @@ func (s *server) writeBookDetail(w http.ResponseWriter, status int, id int64) {
 		writeStoreError(w, err)
 		return
 	}
+	if book.Files, err = s.store.ListBookFiles(id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	writeJSON(w, status, book)
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -226,6 +227,65 @@ func TestMetadataSettingsHotSwap(t *testing.T) {
 		"providers": map[string]any{"fake": map[string]string{"token": ""}},
 	}, nil), http.StatusOK)
 	a.want(a.call("GET", "/api/v1/search?term=magic", nil, nil), http.StatusServiceUnavailable)
+}
+
+func TestScanFlow(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// Root folder with one matching and one stray ebook.
+	rootDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(rootDir, "Terry Pratchett"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{
+		filepath.Join("Terry Pratchett", "The Colour of Magic.epub"),
+		"Stray Book.epub",
+	} {
+		if err := os.WriteFile(filepath.Join(rootDir, rel), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
+
+	var result struct {
+		Scanned   int `json:"scanned"`
+		Matched   int `json:"matched"`
+		Unmatched int `json:"unmatched"`
+	}
+	a.want(a.call("POST", "/api/v1/library/scan", nil, &result), http.StatusOK)
+	if result.Scanned != 2 || result.Matched != 1 || result.Unmatched != 1 {
+		t.Fatalf("scan result = %+v", result)
+	}
+
+	// hasFile shows up in listings; the file appears in book detail.
+	var books []library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book?authorId=%d", author.ID), nil, &books), http.StatusOK)
+	var tcom library.Book
+	for _, b := range books {
+		if b.Title == "The Colour of Magic" {
+			tcom = b
+		}
+	}
+	if !tcom.HasFile {
+		t.Error("matched book should report hasFile")
+	}
+	var detail library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", tcom.ID), nil, &detail), http.StatusOK)
+	if len(detail.Files) != 1 || detail.Files[0].Format != "epub" {
+		t.Errorf("book detail files = %+v", detail.Files)
+	}
+
+	// Unmatched files are listable; bad filters rejected.
+	var unmatched []library.BookFile
+	a.want(a.call("GET", "/api/v1/bookfile?unmatched=true", nil, &unmatched), http.StatusOK)
+	if len(unmatched) != 1 || filepath.Base(unmatched[0].Path) != "Stray Book.epub" {
+		t.Errorf("unmatched = %+v", unmatched)
+	}
+	a.want(a.call("GET", "/api/v1/bookfile", nil, nil), http.StatusBadRequest)
 }
 
 func TestRefreshEndpoints(t *testing.T) {

@@ -154,12 +154,13 @@ func (s *Store) UpsertBook(b *Book) error {
 	).Scan(&b.ID)
 }
 
-const bookCols = `id, author_id, metadata_source, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored, added_at, updated_at`
+const bookCols = `id, author_id, metadata_source, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
+	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id), added_at, updated_at`
 
 func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	var b Book
 	err := row.Scan(&b.ID, &b.AuthorID, &b.Source, &b.ForeignID, &b.Title, &b.SortTitle,
-		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored, &b.AddedAt, &b.UpdatedAt)
+		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored, &b.HasFile, &b.AddedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

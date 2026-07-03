@@ -39,11 +39,13 @@ type Book struct {
 	Rating      float64 `json:"rating"`
 	CoverURL    string  `json:"coverUrl"`
 	Monitored   bool    `json:"monitored"`
+	HasFile     bool    `json:"hasFile"`
 	AddedAt     string  `json:"addedAt"`
 	UpdatedAt   string  `json:"updatedAt"`
 	// Populated on detail endpoints.
 	Editions []Edition    `json:"editions,omitempty"`
 	Series   []SeriesLink `json:"series,omitempty"`
+	Files    []BookFile   `json:"files,omitempty"`
 }
 
 type Edition struct {

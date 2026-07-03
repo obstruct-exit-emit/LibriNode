@@ -129,6 +129,7 @@ scriptable:
 | Authors | `GET/POST /author`, `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
+| Files | `POST /library/scan`, `GET /bookfile?bookId=N`, `GET /bookfile?unmatched=true` |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
@@ -161,7 +162,7 @@ metadata endpoints return 503.
 - [x] React + Vite web UI: library browsing, search-and-add, monitor toggles (embedded in the binary)
 - [x] Scheduled + manual metadata refresh
 - [x] Provider registry + metadata settings in the UI (token entry, Test button, hot-swap without restart)
-- [ ] Library scanning: detect existing files, match to metadata
+- [x] Library scanning: detect existing files, match to metadata (owned/wanted per book, unmatched-file list)
 - [ ] File naming templates + rename engine
 - [ ] Manual import with match correction
 
@@ -210,7 +211,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 1 in progress.** The library core works end-to-end: configure a metadata provider in the settings UI, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh — all from the embedded web UI or the REST API, with providers pluggable behind a registry. Library scanning (matching files you already own) is in progress; the rename engine and manual import follow.
+🚧 **Pre-alpha — Phase 1 nearly done.** The library core works end-to-end: configure a metadata provider in the settings UI, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh, and scan root folders to match files you already own (owned/wanted per book) — all from the embedded web UI or the REST API. The rename engine and manual import close out Phase 1.
 
 ## License
 

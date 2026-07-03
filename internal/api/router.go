@@ -14,6 +14,7 @@ import (
 	"github.com/quillarr/quillarr/internal/library"
 	"github.com/quillarr/quillarr/internal/metadata"
 	"github.com/quillarr/quillarr/internal/refresh"
+	"github.com/quillarr/quillarr/internal/scanner"
 	"github.com/quillarr/quillarr/web"
 )
 
@@ -23,6 +24,7 @@ type server struct {
 	store    *library.Store
 	metadata *metadata.Manager // active provider is swappable at runtime
 	refresh  *refresh.Service
+	scanner  *scanner.Service
 	webFS    fs.FS // nil when no frontend build is embedded
 	version  string
 }
@@ -35,6 +37,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		store:    store,
 		metadata: providers,
 		refresh:  refresh.New(store, providers),
+		scanner:  scanner.New(store),
 		version:  version,
 	}
 	if dist, ok := web.FS(); ok {
@@ -62,6 +65,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("POST /api/v1/book/{id}/refresh", s.auth(s.handleRefreshBook))
 	mux.HandleFunc("DELETE /api/v1/book/{id}", s.auth(s.handleDeleteBook))
 	mux.HandleFunc("PUT /api/v1/edition/{id}/monitor", s.auth(s.handleMonitorEdition))
+	mux.HandleFunc("POST /api/v1/library/scan", s.auth(s.handleScan))
+	mux.HandleFunc("GET /api/v1/bookfile", s.auth(s.handleListBookFiles))
 
 	mux.HandleFunc("GET /api/v1/settings/metadata", s.auth(s.handleGetMetadataSettings))
 	mux.HandleFunc("PUT /api/v1/settings/metadata", s.auth(s.handlePutMetadataSettings))

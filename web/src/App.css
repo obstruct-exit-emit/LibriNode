@@ -291,3 +291,36 @@ button.toggle.on {
 .notice.bad {
   color: var(--danger);
 }
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.card-head h2 {
+  margin: 0;
+}
+
+.owned {
+  font-size: 0.78rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+
+.owned.yes {
+  background: rgba(95, 158, 110, 0.15);
+  color: var(--ok);
+}
+
+.owned.no {
+  background: rgba(154, 151, 163, 0.12);
+  color: var(--muted);
+}
+
+.file-path {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
