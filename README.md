@@ -94,9 +94,9 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
    library (adding an author pulls the full bibliography; adding a book
    pulls its editions).
 5. **Library → Scan files:** match files you already own to library books —
-   every book shows an **owned**/**wanted** badge; strays land in an
-   unmatched list where you can import them against the right book or
-   dismiss them.
+   every book shows an **owned**/**wanted** badge. Strays land in an
+   unmatched list and attach automatically the moment you add their book
+   from Search; you can also match them by hand or dismiss them.
 6. **Library → Organize…:** preview, then apply, moving files into the
    naming-template layout.
 7. **Settings → Download Clients:** point LibriNode at qBittorrent
@@ -213,7 +213,7 @@ metadata endpoints return 503.
 ### Phase 1 — Library core (ebooks first)
 - [x] Media type + root folder model (multiple roots per type)
 - [x] Author / Series / Book / Edition data model
-- [x] Hardcover metadata provider: search, author/series/book lookup, covers *(mock-tested; live API verification pending a Hardcover token)*
+- [x] Hardcover metadata provider: search, author/series/book lookup, covers *(verified against the live Hardcover API)*
 - [x] Add author or book → monitor wanted editions
 - [x] React + Vite web UI: library browsing, search-and-add, monitor toggles (embedded in the binary)
 - [x] Scheduled + manual metadata refresh
@@ -267,7 +267,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phases 0–2 complete.** The full *arr loop works end-to-end for ebooks: add books from Hardcover, and LibriNode searches your Newznab/Torznab indexers (manual or Prowlarr-synced), scores releases against your quality profile, grabs the best via qBittorrent/SABnzbd, imports the finished download into your naming-template layout, and flips the book to *owned* — automatically on a schedule, or by hand at any step from the embedded web UI. Asterisk: Hardcover, Prowlarr, and download-client integrations are tested against faithful API mocks, not yet verified against the live services. Phase 3 (audiobooks) is next.
+🚧 **Pre-alpha — Phases 0–2 complete.** The full *arr loop works end-to-end for ebooks: add books from Hardcover, and LibriNode searches your Newznab/Torznab indexers (manual or Prowlarr-synced), scores releases against your quality profile, grabs the best via qBittorrent/SABnzbd, imports the finished download into your naming-template layout, and flips the book to *owned* — automatically on a schedule, or by hand at any step from the embedded web UI. Hardcover is verified against the live API; the Prowlarr and download-client integrations are tested against faithful API mocks and await a live confirmation. Phase 3 (audiobooks) is next; a full UI overhaul (settings pages as specced above, cover art, proper navigation) lands in Phase 5 before 1.0.
 
 ## License
 
