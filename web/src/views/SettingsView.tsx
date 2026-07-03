@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  type DownloadClient,
   type Indexer,
   type MetadataSettings,
   type NamingSettings,
@@ -19,9 +20,197 @@ export default function SettingsView({
       <MetadataCard onError={onError} />
       <RootFoldersCard onError={onError} />
       <IndexersCard onError={onError} />
+      <DownloadClientsCard onError={onError} />
       <QualityProfilesCard onError={onError} />
       <NamingCard onError={onError} />
     </>
+  );
+}
+
+const emptyDownloadClient: Omit<DownloadClient, "id"> = {
+  name: "",
+  type: "qbittorrent",
+  host: "",
+  username: "",
+  password: "",
+  apiKey: "",
+  category: "librinode",
+  enabled: true,
+  priority: 1,
+};
+
+function DownloadClientsCard({
+  onError,
+}: {
+  onError: (message: string) => void;
+}) {
+  const [clients, setClients] = useState<DownloadClient[]>([]);
+  const [draft, setDraft] = useState(emptyDownloadClient);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const reload = useCallback(() => {
+    api
+      .listDownloadClients()
+      .then(setClients)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  useEffect(reload, [reload]);
+
+  const set = (patch: Partial<typeof emptyDownloadClient>) =>
+    setDraft((d) => ({ ...d, ...patch }));
+
+  const act = (action: () => Promise<unknown>, done?: string) => {
+    setBusy(true);
+    setNotice("");
+    action()
+      .then(() => {
+        if (done) setNotice(done);
+        reload();
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  const draftValid =
+    draft.name.trim() !== "" &&
+    /^https?:\/\//.test(draft.host.trim()) &&
+    (draft.type !== "sabnzbd" || draft.apiKey.trim() !== "");
+
+  return (
+    <section className="card">
+      <h2>Download Clients</h2>
+      <p className="muted">
+        Where grabbed releases go: <strong>qBittorrent</strong> for torrents,{" "}
+        <strong>SABnzbd</strong> for usenet. Downloads are tagged with the
+        category so LibriNode only tracks its own.
+      </p>
+
+      {clients.length > 0 && (
+        <ul className="rows">
+          {clients.map((c) => (
+            <li key={c.id}>
+              <div className="row">
+                <span>
+                  {c.name} <span className="muted">({c.type})</span>
+                </span>
+                <span className="row-actions">
+                  <span className="muted file-path">{c.host}</span>
+                  <button
+                    className={c.enabled ? "toggle on" : "toggle"}
+                    disabled={busy}
+                    onClick={() => act(() => api.updateDownloadClient({ ...c, enabled: !c.enabled }))}
+                  >
+                    {c.enabled ? "enabled" : "disabled"}
+                  </button>
+                  <button
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => {
+                      if (confirm(`Remove download client ${c.name}?`)) {
+                        act(() => api.deleteDownloadClient(c.id));
+                      }
+                    }}
+                  >
+                    remove
+                  </button>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="settings-form" style={{ marginTop: "0.75rem" }}>
+        <label>
+          Name
+          <input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+        </label>
+        <label>
+          Type
+          <select
+            value={draft.type}
+            onChange={(e) => set({ type: e.target.value as DownloadClient["type"] })}
+          >
+            <option value="qbittorrent">qBittorrent (torrents)</option>
+            <option value="sabnzbd">SABnzbd (usenet)</option>
+          </select>
+        </label>
+        <label>
+          Host
+          <input
+            placeholder="http://localhost:8080"
+            value={draft.host}
+            onChange={(e) => set({ host: e.target.value })}
+          />
+        </label>
+        {draft.type === "qbittorrent" ? (
+          <>
+            <label>
+              Username
+              <input
+                value={draft.username}
+                onChange={(e) => set({ username: e.target.value })}
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={draft.password}
+                onChange={(e) => set({ password: e.target.value })}
+              />
+            </label>
+          </>
+        ) : (
+          <label>
+            API key
+            <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
+          </label>
+        )}
+        <label>
+          Category
+          <input
+            value={draft.category}
+            onChange={(e) => set({ category: e.target.value })}
+          />
+        </label>
+        <div className="settings-actions">
+          <button
+            disabled={busy || !draftValid}
+            onClick={() => {
+              setBusy(true);
+              setNotice("");
+              api
+                .testDownloadClient(draft)
+                .then(() => setNotice("✓ Connection OK"))
+                .catch((err: unknown) =>
+                  setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+                )
+                .finally(() => setBusy(false));
+            }}
+          >
+            Test
+          </button>
+          <button
+            disabled={busy || !draftValid}
+            onClick={() =>
+              act(() => api.addDownloadClient(draft).then(() => setDraft(emptyDownloadClient)), "✓ Client added")
+            }
+          >
+            Add
+          </button>
+          {notice && (
+            <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
+              {notice}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

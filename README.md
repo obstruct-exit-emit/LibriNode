@@ -173,6 +173,7 @@ scriptable:
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
+| Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab`, `GET /queue` |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
@@ -214,8 +215,8 @@ metadata endpoints return 503.
 - [x] **Prowlarr application sync** — add LibriNode to Prowlarr as a *Readarr* application; Prowlarr pushes/updates/removes indexers automatically *(Readarr v1 API emulation; live verification against a real Prowlarr pending)*
 - [x] Release parsing + scoring (formats, retail, language, year, scene names; book-aware search rejects wrong author/title/dead torrents and ranks the rest)
 - [x] Quality profiles per library (ordered format preferences, language, size bounds; default profile drives search scoring; managed in Settings)
-- [ ] **qBittorrent** client: add, track, seed goals, remove
-- [ ] **SABnzbd** client: add, track, post-process
+- [x] **qBittorrent** client: add, track, remove (category-scoped; seed goals with CDH)
+- [x] **SABnzbd** client: add, track, remove (category-scoped; post-process hand-off with CDH)
 - [ ] Completed Download Handling: import, rename, cleanup, failed-download handling
 - [ ] Automatic search for wanted items + RSS sync loop
 - [ ] Interactive search UI

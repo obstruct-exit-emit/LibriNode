@@ -115,6 +115,28 @@ export interface Release {
   peers: number;
 }
 
+export interface DownloadClient {
+  id: number;
+  name: string;
+  type: "qbittorrent" | "sabnzbd";
+  host: string;
+  username: string;
+  password: string;
+  apiKey: string;
+  category: string;
+  enabled: boolean;
+  priority: number;
+}
+
+export interface QueueItem {
+  client: string;
+  id: string;
+  title: string;
+  status: string;
+  progress: number;
+  path?: string;
+}
+
 export interface QualityProfile {
   id: number;
   name: string;
@@ -278,6 +300,27 @@ export const api = {
     ),
   dismissFile: (fileId: number) =>
     request<void>(`/api/v1/bookfile/${fileId}`, { method: "DELETE" }),
+
+  listDownloadClients: () =>
+    request<DownloadClient[]>("/api/v1/downloadclient"),
+  addDownloadClient: (c: Omit<DownloadClient, "id">) =>
+    request<DownloadClient>("/api/v1/downloadclient", json(c)),
+  updateDownloadClient: (c: DownloadClient) =>
+    request<DownloadClient>(`/api/v1/downloadclient/${c.id}`, {
+      ...json(c),
+      method: "PUT",
+    }),
+  deleteDownloadClient: (id: number) =>
+    request<void>(`/api/v1/downloadclient/${id}`, { method: "DELETE" }),
+  testDownloadClient: (c: Omit<DownloadClient, "id">) =>
+    request<{ ok: boolean }>("/api/v1/downloadclient/test", json(c)),
+  grabRelease: (title: string, downloadUrl: string, protocol: string) =>
+    request<{ client: string; id?: string }>(
+      "/api/v1/release/grab",
+      json({ title, downloadUrl, protocol }),
+    ),
+  queue: () =>
+    request<{ items: QueueItem[]; errors: string[] }>("/api/v1/queue"),
 
   listProfiles: () => request<QualityProfile[]>("/api/v1/qualityprofile"),
   addProfile: (p: Partial<QualityProfile>) =>

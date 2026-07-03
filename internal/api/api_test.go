@@ -15,6 +15,7 @@ import (
 
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
+	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
 )
@@ -498,6 +499,72 @@ func TestIndexerCRUDAndReleaseSearch(t *testing.T) {
 
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNoContent)
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNotFound)
+}
+
+func TestDownloadClientsAndGrab(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	// Minimal SABnzbd mock.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("mode") {
+		case "version":
+			w.Write([]byte(`{"version": "4.3.2"}`))
+		case "addurl":
+			w.Write([]byte(`{"status": true, "nzo_ids": ["nzo_1"]}`))
+		case "queue":
+			w.Write([]byte(`{"queue": {"slots": [{"nzo_id": "nzo_1", "filename": "Mort", "status": "Downloading", "percentage": "50"}]}}`))
+		case "history":
+			w.Write([]byte(`{"history": {"slots": []}}`))
+		default:
+			w.Write([]byte(`{"status": false, "error": "unknown mode"}`))
+		}
+	}))
+	defer srv.Close()
+
+	// Validation.
+	a.want(a.call("POST", "/api/v1/downloadclient",
+		map[string]any{"name": "x", "type": "transmission", "host": srv.URL}, nil), http.StatusBadRequest)
+	a.want(a.call("POST", "/api/v1/downloadclient",
+		map[string]any{"name": "x", "type": "sabnzbd", "host": srv.URL}, nil), http.StatusBadRequest) // no apiKey
+
+	// Test-before-save, then create.
+	a.want(a.call("POST", "/api/v1/downloadclient/test",
+		map[string]any{"name": "sab", "type": "sabnzbd", "host": srv.URL, "apiKey": "k"}, nil), http.StatusOK)
+	var client download.ClientConfig
+	a.want(a.call("POST", "/api/v1/downloadclient",
+		map[string]any{"name": "sab", "type": "sabnzbd", "host": srv.URL, "apiKey": "k", "enabled": true}, &client), http.StatusCreated)
+	if client.Category != "librinode" || client.Priority != 1 {
+		t.Fatalf("client defaults = %+v", client)
+	}
+
+	// Grab routes by protocol; no torrent client exists.
+	var grab download.GrabResult
+	a.want(a.call("POST", "/api/v1/release/grab",
+		map[string]any{"title": "Mort", "downloadUrl": "https://idx/get/1.nzb", "protocol": "usenet"}, &grab), http.StatusOK)
+	if grab.Client != "sab" || grab.ID != "nzo_1" {
+		t.Fatalf("grab = %+v", grab)
+	}
+	a.want(a.call("POST", "/api/v1/release/grab",
+		map[string]any{"title": "Mort", "downloadUrl": "magnet:?xt=x", "protocol": "torrent"}, nil), http.StatusServiceUnavailable)
+	a.want(a.call("POST", "/api/v1/release/grab",
+		map[string]any{"title": "Mort", "downloadUrl": "x", "protocol": "carrier-pigeon"}, nil), http.StatusBadRequest)
+
+	// Queue shows the download.
+	var queue struct {
+		Items []download.Item `json:"items"`
+	}
+	a.want(a.call("GET", "/api/v1/queue", nil, &queue), http.StatusOK)
+	if len(queue.Items) != 1 || queue.Items[0].Status != "downloading" || queue.Items[0].Progress != 0.5 {
+		t.Fatalf("queue = %+v", queue.Items)
+	}
+
+	// Disable → grab loses its client.
+	client.Enabled = false
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/downloadclient/%d", client.ID), client, nil), http.StatusOK)
+	a.want(a.call("POST", "/api/v1/release/grab",
+		map[string]any{"title": "Mort", "downloadUrl": "https://idx/get/1.nzb", "protocol": "usenet"}, nil), http.StatusServiceUnavailable)
+
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/downloadclient/%d", client.ID), nil, nil), http.StatusNoContent)
 }
 
 // TestProwlarrSyncFlow simulates the conversation Prowlarr has with a
