@@ -390,6 +390,43 @@ func TestNamingSettingsAndRename(t *testing.T) {
 	}
 }
 
+func TestAddingBookRematchesScannedFiles(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// Scan finds the file before its book exists.
+	rootDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(rootDir, "Terry Pratchett"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(rootDir, "Terry Pratchett", "The Colour of Magic.epub")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	var unmatched []library.BookFile
+	a.want(a.call("GET", "/api/v1/bookfile?unmatched=true", nil, &unmatched), http.StatusOK)
+	if len(unmatched) != 1 {
+		t.Fatalf("unmatched = %+v", unmatched)
+	}
+
+	// Adding the book attaches the file with no re-scan.
+	var book library.Book
+	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, &book), http.StatusCreated)
+
+	a.want(a.call("GET", "/api/v1/bookfile?unmatched=true", nil, &unmatched), http.StatusOK)
+	if len(unmatched) != 0 {
+		t.Fatalf("file still unmatched after adding its book: %+v", unmatched)
+	}
+	var detail library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", book.ID), nil, &detail), http.StatusOK)
+	if !detail.HasFile || len(detail.Files) != 1 {
+		t.Fatalf("book after add = hasFile %v, files %+v", detail.HasFile, detail.Files)
+	}
+}
+
 func TestDismissBookFile(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

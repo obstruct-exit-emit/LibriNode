@@ -134,6 +134,52 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 	return nil
 }
 
+// RematchUnmatched re-runs matching for unmatched file records against the
+// current library — no disk walk, pure DB. Called after books are added so
+// files found by an earlier scan attach the moment their book exists.
+func (s *Service) RematchUnmatched() (int, error) {
+	files, err := s.store.ListUnmatchedBookFiles()
+	if err != nil || len(files) == 0 {
+		return 0, err
+	}
+	roots, err := s.store.ListRootFolders()
+	if err != nil {
+		return 0, err
+	}
+	rootByID := map[int64]string{}
+	for _, r := range roots {
+		rootByID[r.ID] = r.Path
+	}
+	index, err := s.buildIndex()
+	if err != nil {
+		return 0, err
+	}
+
+	matched := 0
+	for _, f := range files {
+		root, ok := rootByID[f.RootFolderID]
+		if !ok {
+			continue
+		}
+		rel, err := filepath.Rel(root, f.Path)
+		if err != nil {
+			continue
+		}
+		bookID := index.match(ParsePath(rel))
+		if bookID == 0 {
+			continue
+		}
+		if err := s.store.SetBookFileBook(f.ID, bookID); err != nil {
+			return matched, err
+		}
+		matched++
+	}
+	if matched > 0 {
+		slog.Info("rematched unmatched files", "matched", matched)
+	}
+	return matched, nil
+}
+
 // matchIndex holds normalized lookups over the whole library, built once per
 // scan run.
 type matchIndex struct {

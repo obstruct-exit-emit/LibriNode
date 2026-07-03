@@ -184,10 +184,10 @@ export default function LibraryView({
         <section className="card">
           <h2>Unmatched files ({unmatched.length})</h2>
           <p className="muted">
-            Found on disk but not matched to any library book. Pick the right
-            book to import (the file is moved into place), or dismiss the
-            record (disk is never touched). Books not in the library yet can
-            be added from the Search tab first.
+            Found on disk but not matched to any library book. Files match a
+            book automatically as soon as you add it (Search tab) — or pick
+            the book manually below to import it (the file is moved into
+            place). Dismiss forgets the record; disk is never touched.
           </p>
           <ul className="rows">
             {unmatched.map((f) => (
@@ -233,20 +233,33 @@ function UnmatchedRow({
       <div className="row">
         <span className="file-path">{file.path}</span>
         <span className="row-actions">
-          <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
-            <option value={0}>Match to book…</option>
-            {books.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.title}
-              </option>
-            ))}
-          </select>
-          <button
-            disabled={busy || bookID === 0}
-            onClick={() => run(() => api.matchFile(file.id, bookID))}
-          >
-            Import
-          </button>
+          {books.length === 0 ? (
+            <span className="muted">
+              Add this book via the Search tab — it will match automatically.
+            </span>
+          ) : (
+            <>
+              <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
+                <option value={0}>Match to book…</option>
+                {books.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.title}
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={busy || bookID === 0}
+                title={
+                  bookID === 0
+                    ? "Pick the matching book first"
+                    : "Assign this file to the selected book and move it into place"
+                }
+                onClick={() => run(() => api.matchFile(file.id, bookID))}
+              >
+                Import
+              </button>
+            </>
+          )}
           <button
             className="toggle"
             disabled={busy}

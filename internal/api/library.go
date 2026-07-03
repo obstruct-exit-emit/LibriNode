@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -125,7 +126,16 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 		writeSyncError(w, err)
 		return
 	}
+	s.rematchFiles()
 	s.writeAuthorDetail(w, http.StatusCreated, author.ID)
+}
+
+// rematchFiles attaches previously scanned unmatched files to newly added
+// books, so "add the book" is all a user needs to do after a scan.
+func (s *server) rematchFiles() {
+	if _, err := s.scanner.RematchUnmatched(); err != nil {
+		slog.Warn("rematching unmatched files", "error", err)
+	}
 }
 
 // handleRefreshAuthor re-syncs an existing author (and bibliography) from the
@@ -248,6 +258,7 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 		writeSyncError(w, err)
 		return
 	}
+	s.rematchFiles()
 	s.writeBookDetail(w, http.StatusCreated, book.ID)
 }
 
