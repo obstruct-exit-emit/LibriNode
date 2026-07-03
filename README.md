@@ -6,6 +6,10 @@ Quillarr monitors your wanted list, searches your indexers, sends releases to yo
 
 Runs on **Windows** and **Linux** (bare metal or Docker).
 
+> 🚧 **Pre-alpha.** The Phase 1 library core is feature-complete and usable
+> today — [see what works now](#getting-started-what-works-today). The
+> acquisition pipeline (indexers, download clients) is Phase 2, in planning.
+
 ---
 
 ## Why another *arr?
@@ -77,9 +81,36 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 - **Distribution:** Windows installer + service, Linux systemd unit, Docker image (linuxserver-style paths/PUID/PGID conventions)
 - **License:** GPL-3.0 (same family as Sonarr/Radarr/Prowlarr)
 
+## Getting started (what works today)
+
+1. Build and run the server (see [Development](#development) below), then
+   open `http://localhost:7845` and paste the API key from `config.yaml` in
+   your data directory.
+2. **Settings → Metadata Provider:** paste your
+   [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
+   then **Save** — search goes live immediately, no restart.
+3. **Settings → Root Folders:** add the folder(s) where your ebooks live.
+4. **Search:** find authors or books on Hardcover and add them to the
+   library (adding an author pulls the full bibliography; adding a book
+   pulls its editions).
+5. **Library → Scan files:** match files you already own to library books —
+   every book shows an **owned**/**wanted** badge; strays land in an
+   unmatched list where you can import them against the right book or
+   dismiss them.
+6. **Library → Organize…:** preview, then apply, moving files into the
+   naming-template layout.
+
+File naming templates live under **Settings → File Naming**. Tokens:
+`{Author Name}`, `{Author SortName}`, `{Book Title}`, `{Series Title}`,
+`{Series Position}`, `{Release Year}` — tokens without a value drop out
+cleanly, so the default
+`{Author Name}/{Series Title} {Series Position} - {Book Title}` renders
+`Terry Pratchett/Discworld 1 - The Colour of Magic.epub` for series books
+and `Neil Gaiman/Coraline.epub` for standalones.
+
 ## Development
 
-Requires Go 1.24+.
+Requires Go 1.25+.
 
 > **Windows note:** if Smart App Control is enabled, Windows blocks locally
 > compiled (unsigned) binaries from running. Develop inside WSL, or turn off
@@ -211,7 +242,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 1 feature-complete.** The library core works end-to-end from the embedded web UI or the REST API: configure a metadata provider, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh, scan root folders to match files you own, organize files with naming templates (preview, then apply), and manually import unmatched files. One asterisk: Hardcover calls are mock-tested pending a live API token. Phase 2 (indexers, download clients — the acquisition pipeline) is next.
+🚧 **Pre-alpha — Phase 1 (library core) feature-complete.** Everything in [Getting started](#getting-started-what-works-today) works end-to-end from the embedded web UI or the REST API. One asterisk: Hardcover calls are mock-tested pending a live API token. Phase 2 (indexers, download clients — the acquisition pipeline) is next.
 
 ## License
 
