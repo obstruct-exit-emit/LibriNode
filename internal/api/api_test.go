@@ -498,6 +498,89 @@ func TestIndexerCRUDAndReleaseSearch(t *testing.T) {
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNotFound)
 }
 
+func TestQualityProfiles(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	// Seeded default present.
+	var profiles []library.QualityProfile
+	a.want(a.call("GET", "/api/v1/qualityprofile", nil, &profiles), http.StatusOK)
+	if len(profiles) != 1 || profiles[0].Name != "Standard Ebook" || !profiles[0].IsDefault {
+		t.Fatalf("profiles = %+v", profiles)
+	}
+	seeded := profiles[0].ID
+
+	// Create an epub-only profile; validation rejects junk.
+	a.want(a.call("POST", "/api/v1/qualityprofile",
+		map[string]any{"name": "Bad", "formats": []string{"docx"}}, nil), http.StatusBadRequest)
+	var epubOnly library.QualityProfile
+	a.want(a.call("POST", "/api/v1/qualityprofile",
+		map[string]any{"name": "EPUB Only", "formats": []string{"epub"}, "language": "english"}, &epubOnly), http.StatusCreated)
+	if epubOnly.IsDefault {
+		t.Error("new profile must not steal default")
+	}
+
+	// Default swap and guarded delete.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/qualityprofile/%d/default", epubOnly.ID), nil, nil), http.StatusOK)
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/qualityprofile/%d", epubOnly.ID), nil, nil), http.StatusBadRequest)
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/qualityprofile/%d", seeded), nil, nil), http.StatusNoContent)
+
+	// Update the remaining profile.
+	var updated library.QualityProfile
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/qualityprofile/%d", epubOnly.ID),
+		map[string]any{"name": "EPUB Only", "formats": []string{"epub", "azw3"}, "retailBonus": 30}, &updated), http.StatusOK)
+	if len(updated.Formats) != 2 || updated.RetailBonus != 30 || !updated.IsDefault {
+		t.Errorf("updated = %+v", updated)
+	}
+}
+
+func TestProfileDrivesSearchScoring(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	// Mock indexer serving one mobi release.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("t") == "caps" {
+			w.Write([]byte(`<caps><server title="mock"/></caps>`))
+			return
+		}
+		w.Write([]byte(`<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>
+			<item><title>Mort MOBI</title><guid>g1</guid><link>https://mock/dl/1</link>
+			<torznab:attr name="seeders" value="5"/><torznab:attr name="size" value="1048576"/></item>
+		</channel></rss>`))
+	}))
+	defer srv.Close()
+	a.want(a.call("POST", "/api/v1/indexer",
+		map[string]any{"name": "mock", "type": "torznab", "baseUrl": srv.URL, "enabled": true}, nil), http.StatusCreated)
+
+	approved := func() bool {
+		var result struct {
+			Releases []struct {
+				Approved   bool     `json:"approved"`
+				Rejections []string `json:"rejections"`
+			} `json:"releases"`
+		}
+		a.want(a.call("GET", "/api/v1/release?term=mort", nil, &result), http.StatusOK)
+		if len(result.Releases) != 1 {
+			t.Fatalf("releases = %+v", result.Releases)
+		}
+		return result.Releases[0].Approved
+	}
+
+	// Seeded default allows mobi.
+	if !approved() {
+		t.Fatal("mobi should be approved under the standard profile")
+	}
+
+	// Switch the default to an epub-only profile: same release now rejected.
+	var epubOnly library.QualityProfile
+	a.want(a.call("POST", "/api/v1/qualityprofile",
+		map[string]any{"name": "EPUB Only", "formats": []string{"epub"}}, &epubOnly), http.StatusCreated)
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/qualityprofile/%d/default", epubOnly.ID), nil, nil), http.StatusOK)
+	if approved() {
+		t.Fatal("mobi should be rejected under the epub-only profile")
+	}
+}
+
 func TestBookAwareReleaseSearch(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

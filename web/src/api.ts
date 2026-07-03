@@ -114,6 +114,18 @@ export interface Release {
   peers: number;
 }
 
+export interface QualityProfile {
+  id: number;
+  name: string;
+  mediaType: string;
+  formats: string[];
+  language: string;
+  retailBonus: number;
+  minSize: number;
+  maxSize: number;
+  isDefault: boolean;
+}
+
 export interface NamingSettings {
   ebookFolder: string;
   ebookFile: string;
@@ -265,6 +277,16 @@ export const api = {
     ),
   dismissFile: (fileId: number) =>
     request<void>(`/api/v1/bookfile/${fileId}`, { method: "DELETE" }),
+
+  listProfiles: () => request<QualityProfile[]>("/api/v1/qualityprofile"),
+  addProfile: (p: Partial<QualityProfile>) =>
+    request<QualityProfile>("/api/v1/qualityprofile", json(p)),
+  deleteProfile: (id: number) =>
+    request<void>(`/api/v1/qualityprofile/${id}`, { method: "DELETE" }),
+  setDefaultProfile: (id: number) =>
+    request<QualityProfile>(`/api/v1/qualityprofile/${id}/default`, {
+      method: "PUT",
+    }),
 
   listIndexers: () => request<Indexer[]>("/api/v1/indexer"),
   addIndexer: (ind: Omit<Indexer, "id" | "addedAt">) =>

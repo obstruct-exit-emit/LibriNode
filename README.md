@@ -162,6 +162,7 @@ scriptable:
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
+| Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
@@ -202,7 +203,7 @@ metadata endpoints return 503.
 - [x] Indexer framework: Newznab + Torznab clients (add/test in Settings, manual release search across enabled indexers)
 - [ ] **Prowlarr application sync** (Prowlarr adds/updates/removes indexers in LibriNode)
 - [x] Release parsing + scoring (formats, retail, language, year, scene names; book-aware search rejects wrong author/title/dead torrents and ranks the rest)
-- [ ] Quality profiles per library
+- [x] Quality profiles per library (ordered format preferences, language, size bounds; default profile drives search scoring; managed in Settings)
 - [ ] **qBittorrent** client: add, track, seed goals, remove
 - [ ] **SABnzbd** client: add, track, post-process
 - [ ] Completed Download Handling: import, rename, cleanup, failed-download handling

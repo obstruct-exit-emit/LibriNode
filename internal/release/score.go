@@ -34,6 +34,27 @@ func DefaultEbookPreferences() Preferences {
 	}
 }
 
+// PreferencesFromProfile converts a quality profile into scoring
+// preferences. Format scores derive from list order: best 100, then
+// descending in steps of 20 (floored at 20).
+func PreferencesFromProfile(p library.QualityProfile) Preferences {
+	prefs := Preferences{
+		FormatScores: make(map[string]int, len(p.Formats)),
+		RetailBonus:  p.RetailBonus,
+		Language:     p.Language,
+		MinSize:      p.MinSize,
+		MaxSize:      p.MaxSize,
+	}
+	for i, f := range p.Formats {
+		score := 100 - 20*i
+		if score < 20 {
+			score = 20
+		}
+		prefs.FormatScores[f] = score
+	}
+	return prefs
+}
+
 // Candidate is a release with its parse, score, and verdict. Release fields
 // stay flat in JSON via embedding.
 type Candidate struct {

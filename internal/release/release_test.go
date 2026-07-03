@@ -136,6 +136,40 @@ func TestScoreAgainstBook(t *testing.T) {
 	}
 }
 
+func TestPreferencesFromProfile(t *testing.T) {
+	prefs := PreferencesFromProfile(library.QualityProfile{
+		Formats:     []string{"azw3", "epub"},
+		Language:    "german",
+		RetailBonus: 40,
+		MinSize:     100,
+		MaxSize:     1000,
+	})
+	if prefs.FormatScores["azw3"] != 100 || prefs.FormatScores["epub"] != 80 {
+		t.Errorf("format scores = %v", prefs.FormatScores)
+	}
+	if _, ok := prefs.FormatScores["pdf"]; ok {
+		t.Error("unlisted format should be absent (rejected)")
+	}
+
+	// An epub-only German profile rejects English pdf, prefers azw3.
+	pdf := Score(rel("Mort PDF", indexer.ProtocolUsenet, 500, -1), prefs, nil, nil)
+	if pdf.Approved {
+		t.Errorf("pdf approved under azw3/epub profile: %+v", pdf)
+	}
+	azw3 := Score(rel("Der Mort AZW3 German Retail", indexer.ProtocolUsenet, 500, -1), prefs, nil, nil)
+	if !azw3.Approved || azw3.Score != 150 { // 100 + retail 40 + usenet 10
+		t.Errorf("azw3 = %+v, want approved score 150", azw3)
+	}
+
+	// Long format lists floor at 20.
+	many := PreferencesFromProfile(library.QualityProfile{
+		Formats: []string{"epub", "azw3", "mobi", "pdf", "cbz", "cbr"},
+	})
+	if many.FormatScores["cbz"] != 20 || many.FormatScores["cbr"] != 20 {
+		t.Errorf("floored scores = %v", many.FormatScores)
+	}
+}
+
 func TestRank(t *testing.T) {
 	prefs := DefaultEbookPreferences()
 	candidates := []Candidate{

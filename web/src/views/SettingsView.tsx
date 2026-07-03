@@ -5,6 +5,7 @@ import {
   type MetadataSettings,
   type NamingSettings,
   type ProviderSettings,
+  type QualityProfile,
   type RootFolder,
 } from "../api";
 
@@ -18,8 +19,137 @@ export default function SettingsView({
       <MetadataCard onError={onError} />
       <RootFoldersCard onError={onError} />
       <IndexersCard onError={onError} />
+      <QualityProfilesCard onError={onError} />
       <NamingCard onError={onError} />
     </>
+  );
+}
+
+function QualityProfilesCard({
+  onError,
+}: {
+  onError: (message: string) => void;
+}) {
+  const [profiles, setProfiles] = useState<QualityProfile[]>([]);
+  const [name, setName] = useState("");
+  const [formats, setFormats] = useState("epub,azw3,mobi");
+  const [language, setLanguage] = useState("english");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const reload = useCallback(() => {
+    api
+      .listProfiles()
+      .then(setProfiles)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  useEffect(reload, [reload]);
+
+  const run = (action: () => Promise<unknown>) => {
+    setBusy(true);
+    setNotice("");
+    action()
+      .then(reload)
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  const add = () =>
+    run(() =>
+      api
+        .addProfile({
+          name: name.trim(),
+          formats: formats.split(",").map((f) => f.trim()).filter(Boolean),
+          language,
+          retailBonus: 25,
+        })
+        .then(() => setName("")),
+    );
+
+  return (
+    <section className="card">
+      <h2>Quality Profiles</h2>
+      <p className="muted">
+        Which release formats are grabbable, best first — release search
+        rejects formats a profile doesn't list. The <strong>default</strong>{" "}
+        profile drives scoring; per-author profiles come later.
+      </p>
+
+      <ul className="rows">
+        {profiles.map((p) => (
+          <li key={p.id}>
+            <div className="row">
+              <span>
+                {p.name}{" "}
+                {p.isDefault && <span className="owned yes">default</span>}
+              </span>
+              <span className="row-actions">
+                <span className="muted">
+                  {p.formats.join(" › ")}
+                  {p.language ? ` · ${p.language}` : " · any language"}
+                </span>
+                {!p.isDefault && (
+                  <>
+                    <button
+                      className="toggle"
+                      disabled={busy}
+                      onClick={() => run(() => api.setDefaultProfile(p.id))}
+                    >
+                      make default
+                    </button>
+                    <button
+                      className="danger"
+                      disabled={busy}
+                      onClick={() => run(() => api.deleteProfile(p.id))}
+                    >
+                      remove
+                    </button>
+                  </>
+                )}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="settings-form" style={{ marginTop: "0.75rem" }}>
+        <label>
+          Name
+          <input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label>
+          Formats (best first)
+          <input
+            value={formats}
+            onChange={(e) => setFormats(e.target.value)}
+            placeholder="epub,azw3,mobi"
+          />
+        </label>
+        <label>
+          Language
+          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <option value="english">English only</option>
+            <option value="">Any language</option>
+            <option value="german">German</option>
+            <option value="french">French</option>
+            <option value="spanish">Spanish</option>
+          </select>
+        </label>
+        <div className="settings-actions">
+          <button disabled={busy || !name.trim() || !formats.trim()} onClick={add}>
+            Add profile
+          </button>
+          {notice && (
+            <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
+              {notice}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

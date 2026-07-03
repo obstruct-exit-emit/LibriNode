@@ -84,6 +84,12 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/settings/naming", s.auth(s.handleGetNamingSettings))
 	mux.HandleFunc("PUT /api/v1/settings/naming", s.auth(s.handlePutNamingSettings))
 
+	mux.HandleFunc("GET /api/v1/qualityprofile", s.auth(s.handleListProfiles))
+	mux.HandleFunc("POST /api/v1/qualityprofile", s.auth(s.handleAddProfile))
+	mux.HandleFunc("PUT /api/v1/qualityprofile/{id}", s.auth(s.handleUpdateProfile))
+	mux.HandleFunc("PUT /api/v1/qualityprofile/{id}/default", s.auth(s.handleDefaultProfile))
+	mux.HandleFunc("DELETE /api/v1/qualityprofile/{id}", s.auth(s.handleDeleteProfile))
+
 	mux.HandleFunc("GET /api/v1/indexer", s.auth(s.handleListIndexers))
 	mux.HandleFunc("POST /api/v1/indexer", s.auth(s.handleAddIndexer))
 	mux.HandleFunc("PUT /api/v1/indexer/{id}", s.auth(s.handleUpdateIndexer))
