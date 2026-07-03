@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/librinode/librinode/internal/config"
@@ -496,6 +498,104 @@ func TestIndexerCRUDAndReleaseSearch(t *testing.T) {
 
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNoContent)
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNotFound)
+}
+
+// TestProwlarrSyncFlow simulates the conversation Prowlarr has with a
+// Readarr-type application: status check, schema fetch, then indexer
+// add/list/update/delete using arr-style resources with fields[].
+func TestProwlarrSyncFlow(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	// 1. Test: status must expose a dotted parseable version.
+	var status struct {
+		Version    string `json:"version"`
+		AppVersion string `json:"appVersion"`
+	}
+	a.want(a.call("GET", "/api/v1/system/status", nil, &status), http.StatusOK)
+	for _, part := range strings.Split(status.Version, ".") {
+		if _, err := strconv.Atoi(part); err != nil {
+			t.Fatalf("version %q is not a dotted number", status.Version)
+		}
+	}
+	if status.AppVersion == "" {
+		t.Error("real app version missing")
+	}
+
+	// 2. Schema: both implementations offered.
+	var schema []struct {
+		Implementation string `json:"implementation"`
+		ConfigContract string `json:"configContract"`
+	}
+	a.want(a.call("GET", "/api/v1/indexer/schema", nil, &schema), http.StatusOK)
+	if len(schema) != 2 || schema[0].Implementation != "Newznab" || schema[1].ConfigContract != "TorznabSettings" {
+		t.Fatalf("schema = %+v", schema)
+	}
+
+	// 3. Tags resolve (empty).
+	a.want(a.call("GET", "/api/v1/tag", nil, nil), http.StatusOK)
+
+	// 4. Push an indexer the way Prowlarr does.
+	payload := map[string]any{
+		"name":                    "MyIndexer (Prowlarr)",
+		"implementation":          "Torznab",
+		"configContract":          "TorznabSettings",
+		"enableRss":               true,
+		"enableAutomaticSearch":   true,
+		"enableInteractiveSearch": true,
+		"priority":                20,
+		"fields": []map[string]any{
+			{"name": "baseUrl", "value": "http://prowlarr:9696/1/"},
+			{"name": "apiPath", "value": "/api"},
+			{"name": "apiKey", "value": "prowlarr-key"},
+			{"name": "categories", "value": []int{7000, 7010, 7020}},
+		},
+	}
+	var created map[string]any
+	a.want(a.call("POST", "/api/v1/indexer", payload, &created), http.StatusCreated)
+	id := int64(created["id"].(float64))
+
+	// Stored natively and correctly.
+	if created["type"] != "torznab" || created["baseUrl"] != "http://prowlarr:9696/1" ||
+		created["categories"] != "7000,7010,7020" || created["apiKey"] != "prowlarr-key" {
+		t.Fatalf("created = %+v", created)
+	}
+	// And the arr view round-trips for Prowlarr's diffing.
+	if created["implementation"] != "Torznab" || created["protocol"] != "torrent" {
+		t.Fatalf("arr view = %+v", created)
+	}
+	fields, ok := created["fields"].([]any)
+	if !ok || len(fields) == 0 {
+		t.Fatalf("fields missing from response: %+v", created)
+	}
+
+	// 5. List and get-by-id include both dialects.
+	var list []map[string]any
+	a.want(a.call("GET", "/api/v1/indexer", nil, &list), http.StatusOK)
+	if len(list) != 1 || list[0]["implementation"] != "Torznab" || list[0]["name"] != "MyIndexer (Prowlarr)" {
+		t.Fatalf("list = %+v", list)
+	}
+	var got map[string]any
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/indexer/%d", id), nil, &got), http.StatusOK)
+	if got["implementation"] != "Torznab" {
+		t.Fatalf("get = %+v", got)
+	}
+
+	// 6. Prowlarr updates (e.g. disables) the indexer.
+	payload["enableRss"] = false
+	payload["enableAutomaticSearch"] = false
+	payload["enableInteractiveSearch"] = false
+	var updated map[string]any
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/indexer/%d", id), payload, &updated), http.StatusOK)
+	if updated["enabled"] != false || updated["enableRss"] != false {
+		t.Fatalf("updated = %+v", updated)
+	}
+
+	// 7. And removes it.
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", id), nil, nil), http.StatusNoContent)
+
+	// Unsupported implementations are rejected cleanly.
+	payload["implementation"] = "Omgwtfnzbs"
+	a.want(a.call("POST", "/api/v1/indexer", payload, nil), http.StatusBadRequest)
 }
 
 func TestQualityProfiles(t *testing.T) {

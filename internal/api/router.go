@@ -92,9 +92,12 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 
 	mux.HandleFunc("GET /api/v1/indexer", s.auth(s.handleListIndexers))
 	mux.HandleFunc("POST /api/v1/indexer", s.auth(s.handleAddIndexer))
+	mux.HandleFunc("GET /api/v1/indexer/schema", s.auth(s.handleIndexerSchema))
+	mux.HandleFunc("GET /api/v1/indexer/{id}", s.auth(s.handleGetIndexer))
 	mux.HandleFunc("PUT /api/v1/indexer/{id}", s.auth(s.handleUpdateIndexer))
 	mux.HandleFunc("DELETE /api/v1/indexer/{id}", s.auth(s.handleDeleteIndexer))
 	mux.HandleFunc("POST /api/v1/indexer/test", s.auth(s.handleTestIndexer))
+	mux.HandleFunc("GET /api/v1/tag", s.auth(s.handleListTags))
 	mux.HandleFunc("GET /api/v1/release", s.auth(s.handleSearchReleases))
 
 	mux.HandleFunc("/", s.handleIndex)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,9 +26,34 @@ func writeIndexerError(w http.ResponseWriter, err error) {
 }
 
 // decodeIndexer reads and validates an indexer definition from the body.
+// Two dialects arrive here: LibriNode's native flat JSON and the Readarr v1
+// resource Prowlarr pushes (marked by an "implementation" key with fields[]).
 func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		return nil, "reading body"
+	}
+
+	var probe struct {
+		Implementation string `json:"implementation"`
+	}
+	if json.Unmarshal(body, &probe) == nil && probe.Implementation != "" {
+		var res arrIndexerResource
+		if err := json.Unmarshal(body, &res); err != nil {
+			return nil, "invalid JSON body"
+		}
+		in, err := res.toIndexer()
+		if err != nil {
+			return nil, err.Error()
+		}
+		if in.Name == "" {
+			return nil, "name is required"
+		}
+		return in, ""
+	}
+
 	var in indexer.Indexer
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := json.Unmarshal(body, &in); err != nil {
 		return nil, "invalid JSON body"
 	}
 	in.Name = strings.TrimSpace(in.Name)
@@ -56,7 +82,25 @@ func (s *server) handleListIndexers(w http.ResponseWriter, r *http.Request) {
 		writeIndexerError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, indexers)
+	resources := make([]map[string]any, 0, len(indexers))
+	for i := range indexers {
+		resources = append(resources, mergedIndexerResource(&indexers[i]))
+	}
+	writeJSON(w, http.StatusOK, resources)
+}
+
+func (s *server) handleGetIndexer(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	ind, err := s.indexers.Store().Get(id)
+	if err != nil {
+		writeIndexerError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, mergedIndexerResource(ind))
 }
 
 func (s *server) handleAddIndexer(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +113,7 @@ func (s *server) handleAddIndexer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "could not save indexer (duplicate name?): "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, in)
+	writeJSON(w, http.StatusCreated, mergedIndexerResource(in))
 }
 
 func (s *server) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +137,7 @@ func (s *server) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		writeIndexerError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, mergedIndexerResource(updated))
 }
 
 func (s *server) handleDeleteIndexer(w http.ResponseWriter, r *http.Request) {

@@ -100,6 +100,16 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 6. **Library → Organize…:** preview, then apply, moving files into the
    naming-template layout.
 
+**Indexers** can be added two ways: manually under **Settings → Indexers**
+(any Newznab/Torznab endpoint, including per-indexer feed URLs from
+Prowlarr or Jackett), or automatically via **Prowlarr application sync** —
+in Prowlarr, add an application of type **Readarr** with LibriNode's URL
+(`http://localhost:7845`) and API key, and Prowlarr will push its indexers
+into LibriNode and keep them in sync. The indexer endpoints accept both
+LibriNode's native JSON and Readarr v1 resources, and
+`/api/v1/system/status` reports a Readarr-compatible `version` for
+Prowlarr's checks (LibriNode's own version is `appVersion`).
+
 File naming templates live under **Settings → File Naming**. Tokens:
 `{Author Name}`, `{Author SortName}`, `{Book Title}`, `{Series Title}`,
 `{Series Position}`, `{Release Year}` — tokens without a value drop out
@@ -161,7 +171,7 @@ scriptable:
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
-| Indexers | `GET/POST /indexer`, `PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
+| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
@@ -201,7 +211,7 @@ metadata endpoints return 503.
 
 ### Phase 2 — Acquisition pipeline
 - [x] Indexer framework: Newznab + Torznab clients (add/test in Settings, manual release search across enabled indexers)
-- [ ] **Prowlarr application sync** (Prowlarr adds/updates/removes indexers in LibriNode)
+- [x] **Prowlarr application sync** — add LibriNode to Prowlarr as a *Readarr* application; Prowlarr pushes/updates/removes indexers automatically *(Readarr v1 API emulation; live verification against a real Prowlarr pending)*
 - [x] Release parsing + scoring (formats, retail, language, year, scene names; book-aware search rejects wrong author/title/dead torrents and ranks the rest)
 - [x] Quality profiles per library (ordered format preferences, language, size bounds; default profile drives search scoring; managed in Settings)
 - [ ] **qBittorrent** client: add, track, seed goals, remove

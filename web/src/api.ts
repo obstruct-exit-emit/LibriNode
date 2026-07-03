@@ -4,6 +4,7 @@
 export interface SystemStatus {
   appName: string;
   version: string;
+  appVersion?: string;
   os: string;
   arch: string;
   uptime: string;

@@ -16,13 +16,17 @@ func (s *server) handlePing(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"appName":   "LibriNode",
-		"version":   s.version,
-		"os":        runtime.GOOS,
-		"arch":      runtime.GOARCH,
-		"uptime":    time.Since(startTime).Round(time.Second).String(),
-		"dataDir":   s.cfg.DataDir(),
-		"startTime": startTime.UTC().Format(time.RFC3339),
+		"appName": "LibriNode",
+		// Prowlarr's Readarr application sync parses "version" as a dotted
+		// .NET Version and enforces a minimum, so this reports a
+		// Readarr-compatible number; LibriNode's real version is appVersion.
+		"version":    "0.4.18.2805",
+		"appVersion": s.version,
+		"os":         runtime.GOOS,
+		"arch":       runtime.GOARCH,
+		"uptime":     time.Since(startTime).Round(time.Second).String(),
+		"dataDir":    s.cfg.DataDir(),
+		"startTime":  startTime.UTC().Format(time.RFC3339),
 	})
 }
 

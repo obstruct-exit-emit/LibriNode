@@ -22,7 +22,7 @@ export default function SystemView({
       <h2>System</h2>
       <dl>
         <dt>Version</dt>
-        <dd>{status.version}</dd>
+        <dd>{status.appVersion ?? status.version}</dd>
         <dt>Platform</dt>
         <dd>
           {status.os}/{status.arch}
