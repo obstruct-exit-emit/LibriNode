@@ -427,7 +427,7 @@ func mockTorznab(t *testing.T) *httptest.Server {
 		case "search":
 			w.Write([]byte(`<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item>
 				<title>Mort epub</title><guid>g1</guid><link>https://mock/dl/1</link>
-				<torznab:attr name="seeders" value="5"/><torznab:attr name="size" value="1000"/>
+				<torznab:attr name="seeders" value="5"/><torznab:attr name="size" value="1048576"/>
 			</item></channel></rss>`))
 		default:
 			http.Error(w, "bad t", http.StatusBadRequest)
@@ -480,6 +480,10 @@ func TestIndexerCRUDAndReleaseSearch(t *testing.T) {
 	if result.Releases[0]["title"] != "Mort epub" || result.Releases[0]["protocol"] != "torrent" {
 		t.Errorf("release = %+v", result.Releases[0])
 	}
+	// Generic scoring fields present: epub recognized and approved.
+	if result.Releases[0]["approved"] != true {
+		t.Errorf("release not approved: %+v", result.Releases[0])
+	}
 	a.want(a.call("GET", "/api/v1/release", nil, nil), http.StatusBadRequest)
 
 	// Disable it: searches now hit zero indexers.
@@ -492,6 +496,56 @@ func TestIndexerCRUDAndReleaseSearch(t *testing.T) {
 
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNoContent)
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNotFound)
+}
+
+func TestBookAwareReleaseSearch(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// Indexer returning one right and one wrong release for any query.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("t") == "caps" {
+			w.Write([]byte(`<caps><server title="mock"/></caps>`))
+			return
+		}
+		w.Write([]byte(`<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>
+			<item><title>Terry Pratchett - The Colour of Magic Retail EPUB</title><guid>g1</guid>
+				<link>https://mock/dl/1</link>
+				<torznab:attr name="seeders" value="9"/><torznab:attr name="size" value="1048576"/></item>
+			<item><title>Stephen King - It EPUB</title><guid>g2</guid>
+				<link>https://mock/dl/2</link>
+				<torznab:attr name="seeders" value="99"/><torznab:attr name="size" value="1048576"/></item>
+		</channel></rss>`))
+	}))
+	defer srv.Close()
+	a.want(a.call("POST", "/api/v1/indexer",
+		map[string]any{"name": "mock", "type": "torznab", "baseUrl": srv.URL, "enabled": true}, nil), http.StatusCreated)
+
+	var book library.Book
+	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, &book), http.StatusCreated)
+
+	var result struct {
+		Releases []struct {
+			Title      string   `json:"title"`
+			Approved   bool     `json:"approved"`
+			Score      int      `json:"score"`
+			Rejections []string `json:"rejections"`
+		} `json:"releases"`
+	}
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/release?bookId=%d", book.ID), nil, &result), http.StatusOK)
+	if len(result.Releases) != 2 {
+		t.Fatalf("releases = %+v", result.Releases)
+	}
+	// The right book ranks first despite fewer seeders; the wrong one is rejected.
+	first, second := result.Releases[0], result.Releases[1]
+	if !first.Approved || first.Title != "Terry Pratchett - The Colour of Magic Retail EPUB" {
+		t.Errorf("first = %+v", first)
+	}
+	if second.Approved || len(second.Rejections) == 0 {
+		t.Errorf("wrong book not rejected: %+v", second)
+	}
+
+	a.want(a.call("GET", "/api/v1/release?bookId=9999", nil, nil), http.StatusNotFound)
 }
 
 func TestRefreshEndpoints(t *testing.T) {

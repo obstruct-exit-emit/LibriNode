@@ -161,7 +161,7 @@ scriptable:
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
-| Indexers | `GET/POST /indexer`, `PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /release?term=` (search all enabled indexers) |
+| Indexers | `GET/POST /indexer`, `PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
@@ -201,7 +201,7 @@ metadata endpoints return 503.
 ### Phase 2 — Acquisition pipeline
 - [x] Indexer framework: Newznab + Torznab clients (add/test in Settings, manual release search across enabled indexers)
 - [ ] **Prowlarr application sync** (Prowlarr adds/updates/removes indexers in LibriNode)
-- [ ] Release parsing + scoring (format, quality, language, revision)
+- [x] Release parsing + scoring (formats, retail, language, year, scene names; book-aware search rejects wrong author/title/dead torrents and ranks the rest)
 - [ ] Quality profiles per library
 - [ ] **qBittorrent** client: add, track, seed goals, remove
 - [ ] **SABnzbd** client: add, track, post-process

@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/librinode/librinode/internal/indexer"
+	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/release"
 )
 
 const indexerTestTimeout = 30 * time.Second
@@ -124,22 +127,53 @@ func (s *server) handleTestIndexer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleSearchReleases is the manual release search: query every enabled
-// indexer and return merged candidates. Per-indexer failures come back in
-// "errors" alongside the results that did arrive.
+// handleSearchReleases searches every enabled indexer and returns parsed,
+// scored candidates. Two modes: ?term= is a free search (generic scoring
+// only), ?bookId=N builds the query from the book and rejects releases that
+// aren't it — the interactive-search backend. Per-indexer failures come back
+// in "errors" alongside the results that did arrive.
 func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	term := r.URL.Query().Get("term")
+
+	var book *library.Book
+	var author *library.Author
+	if v := r.URL.Query().Get("bookId"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid bookId")
+			return
+		}
+		if book, err = s.store.GetBook(id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		if author, err = s.store.GetAuthor(book.AuthorID); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		if term == "" {
+			term = author.Name + " " + book.Title
+		}
+	}
 	if term == "" {
-		writeError(w, http.StatusBadRequest, "term is required")
+		writeError(w, http.StatusBadRequest, "term or bookId is required")
 		return
 	}
+
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	releases, errs, err := s.indexers.SearchAll(ctx, term)
+	found, errs, err := s.indexers.SearchAll(ctx, term)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"releases": releases, "errors": errs})
+
+	prefs := release.DefaultEbookPreferences()
+	candidates := make([]release.Candidate, 0, len(found))
+	for _, rel := range found {
+		candidates = append(candidates, release.Score(rel, prefs, book, author))
+	}
+	release.Rank(candidates)
+	writeJSON(w, http.StatusOK, map[string]any{"releases": candidates, "errors": errs})
 }
