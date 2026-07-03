@@ -1,8 +1,8 @@
-# Quillarr
+# LibriNode
 
 A self-hosted media automation server for **written media** — the Readarr / LazyLibrarian successor that treats ebooks, audiobooks, manga, and comics as first-class citizens.
 
-Quillarr monitors your wanted list, searches your indexers, sends releases to your download client, then imports, renames, and organizes files into per-type libraries — automatically.
+LibriNode monitors your wanted list, searches your indexers, sends releases to your download client, then imports, renames, and organizes files into per-type libraries — automatically.
 
 Runs on **Windows** and **Linux** (bare metal or Docker).
 
@@ -18,7 +18,7 @@ Runs on **Windows** and **Linux** (bare metal or Docker).
 - **LazyLibrarian** covers a lot but has an aging UI and inconsistent metadata.
 - **Mylar** does comics only; **Kavita/Komga** are readers, not automation.
 
-Nothing today automates **all four** written-media types in one app with modern metadata (Hardcover) and clean *arr-style integrations. That's the gap Quillarr fills.
+Nothing today automates **all four** written-media types in one app with modern metadata (Hardcover) and clean *arr-style integrations. That's the gap LibriNode fills.
 
 ## Core Features
 
@@ -37,11 +37,11 @@ An author/series can exist in multiple libraries at once (e.g. own the ebook *an
 ### ⬇️ Download clients
 - **qBittorrent** (torrents) — category support, seed-goal awareness, remove-after-import
 - **SABnzbd** (usenet) — category support, post-processing hand-off
-- Per-media-type category mapping (e.g. `quillarr-ebooks`, `quillarr-manga`)
+- Per-media-type category mapping (e.g. `librinode-ebooks`, `librinode-manga`)
 - Completed Download Handling: watch, import, rename, clean up
 
 ### 🔍 Indexers via Prowlarr
-- Full **Prowlarr application sync** — Prowlarr pushes indexers to Quillarr automatically, just like it does for Sonarr/Radarr
+- Full **Prowlarr application sync** — Prowlarr pushes indexers to LibriNode automatically, just like it does for Sonarr/Radarr
 - Standard **Newznab / Torznab** API support for manual indexer entry
 - Per-indexer category mapping to media types (books, audio, comics categories)
 - Interactive (manual) search and automatic RSS-based grabbing
@@ -77,7 +77,7 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 - **Frontend:** **React** SPA (Vite), embedded into the binary and served on one port (*arr-style)
 - **Database:** SQLite via `modernc.org/sqlite` (pure Go, no cgo) with embedded schema migrations
 - **API:** versioned REST API (`/api/v1`) with API-key auth — the same API the UI uses, so everything is scriptable; Prowlarr-compatible surface for app sync
-- **Default port:** `7845` (Q-U-I-L on a phone keypad)
+- **Default port:** `7845`
 - **Distribution:** Windows installer + service, Linux systemd unit, Docker image (linuxserver-style paths/PUID/PGID conventions)
 - **License:** GPL-3.0 (same family as Sonarr/Radarr/Prowlarr)
 
@@ -118,9 +118,9 @@ Requires Go 1.25+.
 > code-signed so end users are unaffected.
 
 ```sh
-go run ./cmd/quillarr          # starts on http://localhost:7845
+go run ./cmd/librinode          # starts on http://localhost:7845
 go test ./...                  # run tests
-go build ./cmd/quillarr        # produce the quillarr binary
+go build ./cmd/librinode        # produce the librinode binary
 ```
 
 Frontend (requires Node 22+):
@@ -135,11 +135,11 @@ npm run build                  # production build into web/dist
 `go build` embeds `web/dist` into the binary, which then serves the UI on
 its own port; without a frontend build it falls back to a plain status page.
 
-On first run Quillarr creates its data directory (`%AppData%\Quillarr` on
-Windows, `~/.config/quillarr` on Linux) containing `config.yaml` — with a
+On first run LibriNode creates its data directory (`%AppData%\LibriNode` on
+Windows, `~/.config/librinode` on Linux) containing `config.yaml` — with a
 generated API key — and the SQLite database. Override the location with
-`--data <dir>`; settings can also be set via `QUILLARR_*` env vars
-(`QUILLARR_PORT`, `QUILLARR_API_KEY`, ...).
+`--data <dir>`; settings can also be set via `LIBRINODE_*` env vars
+(`LIBRINODE_PORT`, `LIBRINODE_API_KEY`, ...).
 
 API calls need the key from `config.yaml`:
 
@@ -170,7 +170,7 @@ book with its editions (creating an unmonitored author stub if needed).
 
 Metadata search and add require a [Hardcover](https://hardcover.app) API
 token: paste it under **Settings → Metadata Provider** in the web UI (it
-takes effect immediately — no restart) or set `QUILLARR_HARDCOVER_TOKEN`.
+takes effect immediately — no restart) or set `LIBRINODE_HARDCOVER_TOKEN`.
 Tokens live under the `metadata:` section of `config.yaml`. Without one,
 metadata endpoints return 503.
 
@@ -179,7 +179,7 @@ metadata endpoints return 503.
 ## Roadmap
 
 ### Phase 0 — Foundation
-- [x] Finalize name (Quillarr), license (GPL-3.0), repo structure
+- [x] Finalize name (LibriNode), license (GPL-3.0), repo structure
 - [x] Choose stack (Go backend, React frontend) and scaffold the project
 - [x] SQLite schema + migrations framework
 - [x] Config system (file + env vars), logging, cross-platform paths
@@ -200,7 +200,7 @@ metadata endpoints return 503.
 
 ### Phase 2 — Acquisition pipeline
 - [x] Indexer framework: Newznab + Torznab clients (add/test in Settings, manual release search across enabled indexers)
-- [ ] **Prowlarr application sync** (Prowlarr adds/updates/removes indexers in Quillarr)
+- [ ] **Prowlarr application sync** (Prowlarr adds/updates/removes indexers in LibriNode)
 - [ ] Release parsing + scoring (format, quality, language, revision)
 - [ ] Quality profiles per library
 - [ ] **qBittorrent** client: add, track, seed goals, remove

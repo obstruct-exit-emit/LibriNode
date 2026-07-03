@@ -29,7 +29,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>🖋️ Quillarr</h1>
+        <h1>🖋️ LibriNode</h1>
         {connected && (
           <nav>
             {(["library", "search", "settings", "system"] as const).map((t) => (
@@ -52,7 +52,7 @@ export default function App() {
         <section className="card">
           <h2>Connect</h2>
           <p>
-            Paste the API key from <code>config.yaml</code> in your Quillarr
+            Paste the API key from <code>config.yaml</code> in your LibriNode
             data directory.
           </p>
           <ApiKeyForm onSave={setKey} />

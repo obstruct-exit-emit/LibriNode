@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/quillarr/quillarr/internal/config"
-	"github.com/quillarr/quillarr/internal/database"
-	"github.com/quillarr/quillarr/internal/library"
+	"github.com/librinode/librinode/internal/config"
+	"github.com/librinode/librinode/internal/database"
+	"github.com/librinode/librinode/internal/library"
 )
 
 type fx struct {

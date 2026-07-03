@@ -1,4 +1,4 @@
--- Quillarr initial schema.
+-- LibriNode initial schema.
 -- Media types are fixed strings: 'ebook', 'audiobook', 'manga', 'comic'.
 
 CREATE TABLE root_folders (

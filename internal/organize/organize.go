@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/quillarr/quillarr/internal/config"
-	"github.com/quillarr/quillarr/internal/library"
-	"github.com/quillarr/quillarr/internal/naming"
+	"github.com/librinode/librinode/internal/config"
+	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/naming"
 )
 
 type Service struct {

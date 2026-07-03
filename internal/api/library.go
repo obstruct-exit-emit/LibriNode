@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/quillarr/quillarr/internal/library"
-	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/metadata"
 )
 
 const metadataTimeout = 60 * time.Second

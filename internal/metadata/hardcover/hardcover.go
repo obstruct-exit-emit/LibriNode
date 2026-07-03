@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/librinode/librinode/internal/metadata"
 )
 
 const DefaultEndpoint = "https://api.hardcover.app/v1/graphql"

@@ -1,6 +1,6 @@
-// Package config loads and persists Quillarr's server configuration.
+// Package config loads and persists LibriNode's server configuration.
 //
-// Precedence (highest wins): environment variables (QUILLARR_*),
+// Precedence (highest wins): environment variables (LIBRINODE_*),
 // values in <dataDir>/config.yaml, built-in defaults. The config file is
 // created with defaults (including a freshly generated API key) on first run.
 package config
@@ -19,7 +19,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/librinode/librinode/internal/metadata"
 )
 
 // MetadataSettings selects the active metadata provider and stores each
@@ -65,7 +65,7 @@ type Config struct {
 func defaults() *Config {
 	return &Config{
 		Host:     "0.0.0.0",
-		Port:     7845, // Q-U-I-L on a phone keypad
+		Port:     7845,
 		LogLevel: "info",
 		Metadata: MetadataSettings{
 			Active:    "hardcover",
@@ -76,15 +76,15 @@ func defaults() *Config {
 }
 
 // DefaultDataDir returns the OS-appropriate data directory:
-// %AppData%\Quillarr on Windows, ~/.config/quillarr on Linux.
+// %AppData%\LibriNode on Windows, ~/.config/librinode on Linux.
 func DefaultDataDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	name := "quillarr"
+	name := "librinode"
 	if runtime.GOOS == "windows" {
-		name = "Quillarr"
+		name = "LibriNode"
 	}
 	return filepath.Join(base, name), nil
 }
@@ -131,7 +131,7 @@ func Load(dataDir string) (*Config, error) {
 		}
 		cfg.LegacyHardcoverToken = ""
 	}
-	if v := os.Getenv("QUILLARR_HARDCOVER_TOKEN"); v != "" {
+	if v := os.Getenv("LIBRINODE_HARDCOVER_TOKEN"); v != "" {
 		cfg.setProviderToken("hardcover", v)
 	}
 
@@ -155,18 +155,18 @@ func Load(dataDir string) (*Config, error) {
 }
 
 func applyEnvOverrides(cfg *Config) {
-	if v := os.Getenv("QUILLARR_HOST"); v != "" {
+	if v := os.Getenv("LIBRINODE_HOST"); v != "" {
 		cfg.Host = v
 	}
-	if v := os.Getenv("QUILLARR_PORT"); v != "" {
+	if v := os.Getenv("LIBRINODE_PORT"); v != "" {
 		if p, err := strconv.Atoi(v); err == nil {
 			cfg.Port = p
 		}
 	}
-	if v := os.Getenv("QUILLARR_API_KEY"); v != "" {
+	if v := os.Getenv("LIBRINODE_API_KEY"); v != "" {
 		cfg.APIKey = v
 	}
-	if v := os.Getenv("QUILLARR_LOG_LEVEL"); v != "" {
+	if v := os.Getenv("LIBRINODE_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
 	}
 }
@@ -235,7 +235,7 @@ func (c *Config) save() error {
 
 func (c *Config) filePath() string     { return filepath.Join(c.dataDir, "config.yaml") }
 func (c *Config) DataDir() string      { return c.dataDir }
-func (c *Config) DatabasePath() string { return filepath.Join(c.dataDir, "quillarr.db") }
+func (c *Config) DatabasePath() string { return filepath.Join(c.dataDir, "librinode.db") }
 
 func (c *Config) ListenAddr() string {
 	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/quillarr/quillarr/internal/database"
-	"github.com/quillarr/quillarr/internal/library"
+	"github.com/librinode/librinode/internal/database"
+	"github.com/librinode/librinode/internal/library"
 )
 
 // fx bundles everything the scanner tests need.

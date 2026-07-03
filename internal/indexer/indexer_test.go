@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/quillarr/quillarr/internal/database"
+	"github.com/librinode/librinode/internal/database"
 )
 
 const capsXML = `<?xml version="1.0" encoding="UTF-8"?>

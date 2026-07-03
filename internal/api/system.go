@@ -16,7 +16,7 @@ func (s *server) handlePing(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"appName":   "Quillarr",
+		"appName":   "LibriNode",
 		"version":   s.version,
 		"os":        runtime.GOOS,
 		"arch":      runtime.GOARCH,
@@ -52,10 +52,10 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(`<!doctype html>
-<title>Quillarr</title>
+<title>LibriNode</title>
 <style>body{font-family:system-ui;display:grid;place-items:center;min-height:90vh;background:#14141b;color:#e8e6e3}main{text-align:center}h1{font-size:2.5rem}p{color:#9a97a3}code{background:#22222c;padding:.2em .5em;border-radius:4px}</style>
 <main>
-  <h1>&#128396;&#65039; Quillarr</h1>
+  <h1>&#128396;&#65039; LibriNode</h1>
   <p>The written-media automation server is running.</p>
   <p>Web UI coming in Phase 1 &mdash; meanwhile, try <code>GET /api/v1/system/status</code> with your API key.</p>
 </main>`))

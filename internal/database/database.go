@@ -1,4 +1,4 @@
-// Package database opens Quillarr's SQLite database and applies embedded
+// Package database opens LibriNode's SQLite database and applies embedded
 // schema migrations. The driver is modernc.org/sqlite (pure Go, no cgo),
 // which keeps Windows and cross-compiled builds toolchain-free.
 package database

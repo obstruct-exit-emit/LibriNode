@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/librinode/librinode/internal/metadata"
 )
 
 // mockAPI serves canned GraphQL responses keyed by operation name and

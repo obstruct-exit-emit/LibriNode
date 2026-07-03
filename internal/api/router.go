@@ -1,4 +1,4 @@
-// Package api exposes Quillarr's versioned REST API and serves the web UI.
+// Package api exposes LibriNode's versioned REST API and serves the web UI.
 // Every endpoint under /api/v1 requires the API key via the X-Api-Key header
 // (or ?apikey= query parameter); /ping is open for health checks.
 package api
@@ -10,14 +10,14 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/quillarr/quillarr/internal/config"
-	"github.com/quillarr/quillarr/internal/indexer"
-	"github.com/quillarr/quillarr/internal/library"
-	"github.com/quillarr/quillarr/internal/metadata"
-	"github.com/quillarr/quillarr/internal/organize"
-	"github.com/quillarr/quillarr/internal/refresh"
-	"github.com/quillarr/quillarr/internal/scanner"
-	"github.com/quillarr/quillarr/web"
+	"github.com/librinode/librinode/internal/config"
+	"github.com/librinode/librinode/internal/indexer"
+	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/organize"
+	"github.com/librinode/librinode/internal/refresh"
+	"github.com/librinode/librinode/internal/scanner"
+	"github.com/librinode/librinode/web"
 )
 
 type server struct {

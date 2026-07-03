@@ -41,7 +41,7 @@ func (c *Client) get(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Quillarr")
+	req.Header.Set("User-Agent", "LibriNode")
 	resp, err := c.httpc.Do(req)
 	if err != nil {
 		return nil, err

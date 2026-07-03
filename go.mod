@@ -1,4 +1,4 @@
-module github.com/quillarr/quillarr
+module github.com/librinode/librinode
 
 go 1.25.0
 

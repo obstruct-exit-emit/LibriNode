@@ -9,9 +9,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/quillarr/quillarr/internal/config"
-	"github.com/quillarr/quillarr/internal/metadata"
-	"github.com/quillarr/quillarr/internal/naming"
+	"github.com/librinode/librinode/internal/config"
+	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/naming"
 )
 
 // metadataSettingsResponse is the settings UI's view of metadata config:

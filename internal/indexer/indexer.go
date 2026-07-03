@@ -1,4 +1,4 @@
-// Package indexer implements Quillarr's indexer framework: Newznab (usenet)
+// Package indexer implements LibriNode's indexer framework: Newznab (usenet)
 // and Torznab (torrent) clients behind one API, indexer configuration
 // storage, and aggregated release search. Release scoring and automatic
 // grabbing build on top of this in later Phase 2 slices.

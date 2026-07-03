@@ -1,4 +1,4 @@
-// Package library holds Quillarr's library domain model — authors, series,
+// Package library holds LibriNode's library domain model — authors, series,
 // books, and editions — and the SQLite persistence layer for it. Types carry
 // JSON tags so API handlers can serialize them directly, *arr-style.
 package library

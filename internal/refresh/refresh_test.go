@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/quillarr/quillarr/internal/database"
-	"github.com/quillarr/quillarr/internal/library"
-	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/librinode/librinode/internal/database"
+	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/metadata"
 )
 
 // mutableProvider serves in-memory metadata that tests can change between

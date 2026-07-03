@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/quillarr/quillarr/internal/api"
-	"github.com/quillarr/quillarr/internal/config"
-	"github.com/quillarr/quillarr/internal/database"
-	"github.com/quillarr/quillarr/internal/library"
-	"github.com/quillarr/quillarr/internal/metadata"
-	"github.com/quillarr/quillarr/internal/metadata/hardcover"
-	"github.com/quillarr/quillarr/internal/refresh"
+	"github.com/librinode/librinode/internal/api"
+	"github.com/librinode/librinode/internal/config"
+	"github.com/librinode/librinode/internal/database"
+	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/metadata/hardcover"
+	"github.com/librinode/librinode/internal/refresh"
 )
 
 // metadataRefreshInterval is how often the whole library is re-synced with
@@ -35,12 +35,12 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("Quillarr", version)
+		fmt.Println("LibriNode", version)
 		return
 	}
 
 	if err := run(*dataDir); err != nil {
-		slog.Error("quillarr exited with error", "error", err)
+		slog.Error("librinode exited with error", "error", err)
 		os.Exit(1)
 	}
 }
@@ -56,7 +56,7 @@ func run(dataDir string) error {
 	}))
 	slog.SetDefault(logger)
 
-	logger.Info("starting Quillarr",
+	logger.Info("starting LibriNode",
 		"version", version,
 		"dataDir", cfg.DataDir(),
 		"listen", cfg.ListenAddr(),

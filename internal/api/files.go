@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/quillarr/quillarr/internal/organize"
+	"github.com/librinode/librinode/internal/organize"
 )
 
 // scans can walk large libraries on slow disks; generous but bounded.

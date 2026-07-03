@@ -34,8 +34,8 @@ func TestLoadFirstRunCreatesConfigWithAPIKey(t *testing.T) {
 }
 
 func TestEnvOverrides(t *testing.T) {
-	t.Setenv("QUILLARR_PORT", "9999")
-	t.Setenv("QUILLARR_LOG_LEVEL", "debug")
+	t.Setenv("LIBRINODE_PORT", "9999")
+	t.Setenv("LIBRINODE_LOG_LEVEL", "debug")
 
 	cfg, err := Load(t.TempDir())
 	if err != nil {

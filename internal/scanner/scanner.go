@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quillarr/quillarr/internal/library"
+	"github.com/librinode/librinode/internal/library"
 )
 
 type Service struct {

@@ -1,4 +1,4 @@
-// Typed client for Quillarr's REST API. The API key is kept in localStorage
+// Typed client for LibriNode's REST API. The API key is kept in localStorage
 // for now; proper session handling comes with the settings UI.
 
 export interface SystemStatus {
@@ -161,7 +161,7 @@ export interface MetadataSettings {
   providers: Record<string, ProviderSettings>;
 }
 
-const KEY_STORAGE = "quillarr-api-key";
+const KEY_STORAGE = "librinode-api-key";
 
 export function getApiKey(): string {
   return localStorage.getItem(KEY_STORAGE) ?? "";

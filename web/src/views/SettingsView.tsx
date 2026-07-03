@@ -469,7 +469,7 @@ function RootFoldersCard({
       <p className="muted">
         Where your libraries live on disk. The scanner walks these to match
         files you already own; note the path must exist on the machine running
-        Quillarr (in WSL, Windows drives are under <code>/mnt/c/…</code>).
+        LibriNode (in WSL, Windows drives are under <code>/mnt/c/…</code>).
       </p>
 
       {folders.length > 0 && (

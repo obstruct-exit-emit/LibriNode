@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/quillarr/quillarr/internal/database"
+	"github.com/librinode/librinode/internal/database"
 )
 
 func newTestStore(t *testing.T) *Store {

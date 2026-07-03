@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quillarr/quillarr/internal/indexer"
+	"github.com/librinode/librinode/internal/indexer"
 )
 
 const indexerTestTimeout = 30 * time.Second
