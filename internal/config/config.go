@@ -15,9 +15,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"sync"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/quillarr/quillarr/internal/metadata"
 )
+
+// MetadataSettings selects the active metadata provider and stores each
+// provider's settings (kept even while inactive, so switching back is
+// painless).
+type MetadataSettings struct {
+	Active    string                       `yaml:"active"`
+	Providers map[string]metadata.Settings `yaml:"providers"`
+}
 
 type Config struct {
 	Host     string `yaml:"host"`
@@ -25,10 +36,13 @@ type Config struct {
 	APIKey   string `yaml:"api_key"`
 	LogLevel string `yaml:"log_level"` // debug, info, warn, error
 
-	// HardcoverToken is the Hardcover.app API token used for book and
-	// audiobook metadata. Empty disables the provider (search/add return 503).
-	HardcoverToken string `yaml:"hardcover_token"`
+	Metadata MetadataSettings `yaml:"metadata"`
 
+	// Legacy flat field, migrated into Metadata.Providers on load and
+	// dropped from the file on the next save.
+	LegacyHardcoverToken string `yaml:"hardcover_token,omitempty"`
+
+	mu      sync.Mutex
 	dataDir string
 }
 
@@ -37,6 +51,10 @@ func defaults() *Config {
 		Host:     "0.0.0.0",
 		Port:     7845, // Q-U-I-L on a phone keypad
 		LogLevel: "info",
+		Metadata: MetadataSettings{
+			Active:    "hardcover",
+			Providers: map[string]metadata.Settings{},
+		},
 	}
 }
 
@@ -85,6 +103,21 @@ func Load(dataDir string) (*Config, error) {
 
 	applyEnvOverrides(cfg)
 
+	if cfg.Metadata.Providers == nil {
+		cfg.Metadata.Providers = map[string]metadata.Settings{}
+	}
+	// Migrate the legacy flat token into the provider map; omitempty drops
+	// the old field from the file on save.
+	if cfg.LegacyHardcoverToken != "" {
+		if cfg.Metadata.Providers["hardcover"].Token == "" {
+			cfg.setProviderToken("hardcover", cfg.LegacyHardcoverToken)
+		}
+		cfg.LegacyHardcoverToken = ""
+	}
+	if v := os.Getenv("QUILLARR_HARDCOVER_TOKEN"); v != "" {
+		cfg.setProviderToken("hardcover", v)
+	}
+
 	if cfg.APIKey == "" {
 		cfg.APIKey = newAPIKey()
 	}
@@ -111,9 +144,35 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("QUILLARR_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
 	}
-	if v := os.Getenv("QUILLARR_HARDCOVER_TOKEN"); v != "" {
-		cfg.HardcoverToken = v
+}
+
+func (c *Config) setProviderToken(provider, token string) {
+	s := c.Metadata.Providers[provider]
+	s.Token = token
+	c.Metadata.Providers[provider] = s
+}
+
+// SetMetadata replaces the metadata settings and persists the config.
+// Safe for concurrent use from API handlers.
+func (c *Config) SetMetadata(ms MetadataSettings) error {
+	c.mu.Lock()
+	c.Metadata = ms
+	c.mu.Unlock()
+	return c.save()
+}
+
+// MetadataSettings returns a deep copy so callers can't mutate shared state.
+func (c *Config) MetadataSettings() MetadataSettings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := MetadataSettings{
+		Active:    c.Metadata.Active,
+		Providers: make(map[string]metadata.Settings, len(c.Metadata.Providers)),
 	}
+	for name, s := range c.Metadata.Providers {
+		out.Providers[name] = s
+	}
+	return out
 }
 
 func newAPIKey() string {
@@ -125,6 +184,8 @@ func newAPIKey() string {
 }
 
 func (c *Config) save() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	out, err := yaml.Marshal(c)
 	if err != nil {
 		return err

@@ -16,6 +16,16 @@ import (
 	"github.com/quillarr/quillarr/internal/metadata"
 )
 
+func init() {
+	// Register the fake provider so settings endpoints can build it.
+	metadata.Register("fake", func(s metadata.Settings) (metadata.Provider, error) {
+		if s.Token == "" {
+			return nil, metadata.ErrNotConfigured
+		}
+		return fakeProvider{}, nil
+	})
+}
+
 // fakeProvider is an in-memory metadata.Provider with a tiny Discworld corpus.
 type fakeProvider struct{}
 
@@ -85,7 +95,11 @@ func newTestAPI(t *testing.T, provider metadata.Provider) *testAPI {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	srv := httptest.NewServer(NewRouter(cfg, db, provider, "test"))
+	mgr := metadata.NewManager()
+	if provider != nil {
+		mgr.Set(provider)
+	}
+	srv := httptest.NewServer(NewRouter(cfg, db, mgr, "test"))
 	t.Cleanup(srv.Close)
 	return &testAPI{srv: srv, apiKey: cfg.APIKey, t: t}
 }
@@ -163,6 +177,55 @@ func TestSearchWithoutProvider(t *testing.T) {
 	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, nil), http.StatusServiceUnavailable)
 	a.want(a.call("POST", "/api/v1/author/1/refresh", nil, nil), http.StatusServiceUnavailable)
 	a.want(a.call("POST", "/api/v1/book/1/refresh", nil, nil), http.StatusServiceUnavailable)
+}
+
+func TestMetadataSettingsHotSwap(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	// No provider yet: search unavailable, settings show what's registerable.
+	a.want(a.call("GET", "/api/v1/search?term=x", nil, nil), http.StatusServiceUnavailable)
+	var settings struct {
+		Active    string                       `json:"active"`
+		Available []string                     `json:"available"`
+		Providers map[string]metadata.Settings `json:"providers"`
+	}
+	a.want(a.call("GET", "/api/v1/settings/metadata", nil, &settings), http.StatusOK)
+	found := false
+	for _, name := range settings.Available {
+		if name == "fake" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("available providers %v missing 'fake'", settings.Available)
+	}
+
+	// Unknown provider name is rejected.
+	a.want(a.call("PUT", "/api/v1/settings/metadata",
+		map[string]any{"active": "bogus"}, nil), http.StatusBadRequest)
+
+	// Test button: empty token rejected, real token accepted.
+	a.want(a.call("POST", "/api/v1/settings/metadata/test",
+		map[string]any{"provider": "fake", "settings": map[string]string{"token": ""}}, nil), http.StatusBadRequest)
+	a.want(a.call("POST", "/api/v1/settings/metadata/test",
+		map[string]any{"provider": "fake", "settings": map[string]string{"token": "tok"}}, nil), http.StatusOK)
+
+	// Saving a token activates the provider without a restart.
+	a.want(a.call("PUT", "/api/v1/settings/metadata", map[string]any{
+		"active":    "fake",
+		"providers": map[string]any{"fake": map[string]string{"token": "tok"}},
+	}, &settings), http.StatusOK)
+	if settings.Active != "fake" || settings.Providers["fake"].Token != "tok" {
+		t.Errorf("settings after save = %+v", settings)
+	}
+	a.want(a.call("GET", "/api/v1/search?term=magic", nil, nil), http.StatusOK)
+
+	// Clearing the token deactivates it again.
+	a.want(a.call("PUT", "/api/v1/settings/metadata", map[string]any{
+		"active":    "fake",
+		"providers": map[string]any{"fake": map[string]string{"token": ""}},
+	}, nil), http.StatusOK)
+	a.want(a.call("GET", "/api/v1/search?term=magic", nil, nil), http.StatusServiceUnavailable)
 }
 
 func TestRefreshEndpoints(t *testing.T) {

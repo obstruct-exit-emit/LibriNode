@@ -76,6 +76,16 @@ export interface SearchBook {
   coverUrl: string;
 }
 
+export interface ProviderSettings {
+  token: string;
+}
+
+export interface MetadataSettings {
+  active: string;
+  available: string[];
+  providers: Record<string, ProviderSettings>;
+}
+
 const KEY_STORAGE = "quillarr-api-key";
 
 export function getApiKey(): string {
@@ -166,4 +176,15 @@ export const api = {
       ...json({ monitored }),
       method: "PUT",
     }),
+
+  getMetadataSettings: () =>
+    request<MetadataSettings>("/api/v1/settings/metadata"),
+  saveMetadataSettings: (active: string, providers: Record<string, ProviderSettings>) =>
+    request<MetadataSettings>("/api/v1/settings/metadata", {
+      ...json({ active, providers }),
+      method: "PUT",
+    }),
+  testMetadataProvider: (provider: string, settings: ProviderSettings) =>
+    request<{ ok: boolean }>("/api/v1/settings/metadata/test",
+      json({ provider, settings })),
 };

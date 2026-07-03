@@ -243,3 +243,51 @@ button.toggle.on {
   font-size: 0.85rem;
   white-space: nowrap;
 }
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 480px;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.settings-form select {
+  align-self: flex-start;
+  min-width: 200px;
+}
+
+.token-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.token-row input {
+  flex: 1;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.notice {
+  font-size: 0.9rem;
+}
+
+.notice.ok {
+  color: var(--ok);
+}
+
+.notice.bad {
+  color: var(--danger);
+}

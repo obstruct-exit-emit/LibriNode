@@ -21,17 +21,21 @@ type server struct {
 	cfg      *config.Config
 	db       *sql.DB
 	store    *library.Store
-	metadata metadata.Provider // nil when no provider is configured
-	refresh  *refresh.Service  // nil when no provider is configured
-	webFS    fs.FS             // nil when no frontend build is embedded
+	metadata *metadata.Manager // active provider is swappable at runtime
+	refresh  *refresh.Service
+	webFS    fs.FS // nil when no frontend build is embedded
 	version  string
 }
 
-func NewRouter(cfg *config.Config, db *sql.DB, provider metadata.Provider, version string) http.Handler {
+func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, version string) http.Handler {
 	store := library.NewStore(db)
-	s := &server{cfg: cfg, db: db, store: store, metadata: provider, version: version}
-	if provider != nil {
-		s.refresh = refresh.New(store, provider)
+	s := &server{
+		cfg:      cfg,
+		db:       db,
+		store:    store,
+		metadata: providers,
+		refresh:  refresh.New(store, providers),
+		version:  version,
 	}
 	if dist, ok := web.FS(); ok {
 		s.webFS = dist
@@ -58,6 +62,10 @@ func NewRouter(cfg *config.Config, db *sql.DB, provider metadata.Provider, versi
 	mux.HandleFunc("POST /api/v1/book/{id}/refresh", s.auth(s.handleRefreshBook))
 	mux.HandleFunc("DELETE /api/v1/book/{id}", s.auth(s.handleDeleteBook))
 	mux.HandleFunc("PUT /api/v1/edition/{id}/monitor", s.auth(s.handleMonitorEdition))
+
+	mux.HandleFunc("GET /api/v1/settings/metadata", s.auth(s.handleGetMetadataSettings))
+	mux.HandleFunc("PUT /api/v1/settings/metadata", s.auth(s.handlePutMetadataSettings))
+	mux.HandleFunc("POST /api/v1/settings/metadata/test", s.auth(s.handleTestMetadataProvider))
 
 	mux.HandleFunc("/", s.handleIndex)
 

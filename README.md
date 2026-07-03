@@ -117,8 +117,10 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 ```
 
 Metadata search and add require a [Hardcover](https://hardcover.app) API
-token: set `hardcover_token` in `config.yaml` (or
-`QUILLARR_HARDCOVER_TOKEN`). Without it those endpoints return 503.
+token: paste it under **Settings → Metadata Provider** in the web UI (it
+takes effect immediately — no restart) or set `QUILLARR_HARDCOVER_TOKEN`.
+Tokens live under the `metadata:` section of `config.yaml`. Without one,
+metadata endpoints return 503.
 
 ---
 
@@ -139,6 +141,7 @@ token: set `hardcover_token` in `config.yaml` (or
 - [x] Add author or book → monitor wanted editions
 - [x] React + Vite web UI: library browsing, search-and-add, monitor toggles (embedded in the binary)
 - [x] Scheduled + manual metadata refresh
+- [x] Provider registry + metadata settings in the UI (token entry, Test button, hot-swap without restart)
 - [ ] Library scanning: detect existing files, match to metadata
 - [ ] File naming templates + rename engine
 - [ ] Manual import with match correction

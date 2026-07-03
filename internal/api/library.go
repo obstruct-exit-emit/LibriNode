@@ -32,12 +32,28 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, err.Error())
 }
 
+const notConfiguredMsg = "no metadata provider configured — add a provider token under Settings"
+
+// writeSyncError maps refresh-service errors to HTTP responses.
+func writeSyncError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, metadata.ErrNotConfigured):
+		writeError(w, http.StatusServiceUnavailable, notConfiguredMsg)
+	case errors.Is(err, library.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, metadata.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found at metadata provider")
+	default:
+		writeError(w, http.StatusBadGateway, err.Error())
+	}
+}
+
 // --- Search (metadata provider proxy) ---
 
 func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	if s.metadata == nil {
-		writeError(w, http.StatusServiceUnavailable,
-			"no metadata provider configured — set hardcover_token in config.yaml or QUILLARR_HARDCOVER_TOKEN")
+	provider := s.metadata.Current()
+	if provider == nil {
+		writeError(w, http.StatusServiceUnavailable, notConfiguredMsg)
 		return
 	}
 	term := r.URL.Query().Get("term")
@@ -55,14 +71,14 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	switch kind {
 	case "author":
-		results, err := s.metadata.SearchAuthors(ctx, term)
+		results, err := provider.SearchAuthors(ctx, term)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, results)
 	case "book":
-		results, err := s.metadata.SearchBooks(ctx, term)
+		results, err := provider.SearchBooks(ctx, term)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
@@ -88,10 +104,6 @@ func (s *server) handleListAuthors(w http.ResponseWriter, r *http.Request) {
 // bibliography (monitored by default). Editions are pulled in when a specific
 // book is added or refreshed.
 func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
-	if s.refresh == nil {
-		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
-		return
-	}
 	var req struct {
 		ForeignAuthorID string `json:"foreignAuthorId"`
 		Monitored       *bool  `json:"monitored"`
@@ -109,12 +121,8 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	author, err := s.refresh.SyncAuthor(ctx, req.ForeignAuthorID, monitored)
-	if errors.Is(err, metadata.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "author not found at metadata provider")
-		return
-	}
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeSyncError(w, err)
 		return
 	}
 	s.writeAuthorDetail(w, http.StatusCreated, author.ID)
@@ -123,10 +131,6 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 // handleRefreshAuthor re-syncs an existing author (and bibliography) from the
 // metadata provider.
 func (s *server) handleRefreshAuthor(w http.ResponseWriter, r *http.Request) {
-	if s.refresh == nil {
-		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
-		return
-	}
 	id, ok := pathID(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -136,14 +140,7 @@ func (s *server) handleRefreshAuthor(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := s.refresh.RefreshAuthor(ctx, id); err != nil {
-		switch {
-		case errors.Is(err, library.ErrNotFound):
-			writeError(w, http.StatusNotFound, "not found")
-		case errors.Is(err, metadata.ErrNotFound):
-			writeError(w, http.StatusBadGateway, "author no longer exists at metadata provider")
-		default:
-			writeError(w, http.StatusBadGateway, err.Error())
-		}
+		writeSyncError(w, err)
 		return
 	}
 	s.writeAuthorDetail(w, http.StatusOK, id)
@@ -230,10 +227,6 @@ func (s *server) handleListBooks(w http.ResponseWriter, r *http.Request) {
 // The author is created as an unmonitored stub when not in the library yet;
 // ebook editions start monitored (Phase 1 is ebook-first).
 func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
-	if s.refresh == nil {
-		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
-		return
-	}
 	var req struct {
 		ForeignBookID string `json:"foreignBookId"`
 		Monitored     *bool  `json:"monitored"`
@@ -251,12 +244,8 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	book, err := s.refresh.SyncBook(ctx, req.ForeignBookID, monitored)
-	if errors.Is(err, metadata.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "book not found at metadata provider")
-		return
-	}
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeSyncError(w, err)
 		return
 	}
 	s.writeBookDetail(w, http.StatusCreated, book.ID)
@@ -264,10 +253,6 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 
 // handleRefreshBook re-syncs an existing book's metadata and editions.
 func (s *server) handleRefreshBook(w http.ResponseWriter, r *http.Request) {
-	if s.refresh == nil {
-		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
-		return
-	}
 	id, ok := pathID(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -277,14 +262,7 @@ func (s *server) handleRefreshBook(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := s.refresh.RefreshBook(ctx, id); err != nil {
-		switch {
-		case errors.Is(err, library.ErrNotFound):
-			writeError(w, http.StatusNotFound, "not found")
-		case errors.Is(err, metadata.ErrNotFound):
-			writeError(w, http.StatusBadGateway, "book no longer exists at metadata provider")
-		default:
-			writeError(w, http.StatusBadGateway, err.Error())
-		}
+		writeSyncError(w, err)
 		return
 	}
 	s.writeBookDetail(w, http.StatusOK, id)

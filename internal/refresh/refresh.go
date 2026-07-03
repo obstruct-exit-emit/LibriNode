@@ -16,25 +16,39 @@ import (
 )
 
 type Service struct {
-	store    *library.Store
-	provider metadata.Provider
+	store     *library.Store
+	providers *metadata.Manager
 }
 
-func New(store *library.Store, provider metadata.Provider) *Service {
-	return &Service{store: store, provider: provider}
+func New(store *library.Store, providers *metadata.Manager) *Service {
+	return &Service{store: store, providers: providers}
+}
+
+// provider returns the active metadata provider, or ErrNotConfigured. Looked
+// up per call so a provider configured in the settings UI takes effect
+// immediately.
+func (s *Service) provider() (metadata.Provider, error) {
+	if p := s.providers.Current(); p != nil {
+		return p, nil
+	}
+	return nil, metadata.ErrNotConfigured
 }
 
 // SyncAuthor fetches an author and their full bibliography from the provider
 // and persists everything. New books inherit the monitored flag; existing
 // rows keep theirs. Returns the local author (without books).
 func (s *Service) SyncAuthor(ctx context.Context, foreignID string, monitored bool) (*library.Author, error) {
-	remote, err := s.provider.GetAuthor(ctx, foreignID)
+	p, err := s.provider()
+	if err != nil {
+		return nil, err
+	}
+	remote, err := p.GetAuthor(ctx, foreignID)
 	if err != nil {
 		return nil, err
 	}
 
 	author := &library.Author{
-		Source:      s.provider.Name(),
+		Source:      p.Name(),
 		ForeignID:   remote.ForeignID,
 		Name:        remote.Name,
 		Description: remote.Description,
@@ -45,7 +59,7 @@ func (s *Service) SyncAuthor(ctx context.Context, foreignID string, monitored bo
 		return nil, err
 	}
 	for i := range remote.Books {
-		if err := s.persistBook(&remote.Books[i], author.ID, monitored); err != nil {
+		if err := s.persistBook(p, &remote.Books[i], author.ID, monitored); err != nil {
 			return nil, err
 		}
 	}
@@ -56,7 +70,11 @@ func (s *Service) SyncAuthor(ctx context.Context, foreignID string, monitored bo
 // persists it. The author is created as an unmonitored stub when not in the
 // library yet — adding a single book must not pull in the whole bibliography.
 func (s *Service) SyncBook(ctx context.Context, foreignID string, monitored bool) (*library.Book, error) {
-	remote, err := s.provider.GetBook(ctx, foreignID)
+	p, err := s.provider()
+	if err != nil {
+		return nil, err
+	}
+	remote, err := p.GetBook(ctx, foreignID)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +82,7 @@ func (s *Service) SyncBook(ctx context.Context, foreignID string, monitored bool
 		return nil, fmt.Errorf("provider returned book %s without an author", foreignID)
 	}
 
-	source := s.provider.Name()
+	source := p.Name()
 	author, err := s.store.GetAuthorByForeignID(source, remote.AuthorForeignID)
 	if errors.Is(err, library.ErrNotFound) {
 		author = &library.Author{
@@ -79,7 +97,7 @@ func (s *Service) SyncBook(ctx context.Context, foreignID string, monitored bool
 		return nil, err
 	}
 
-	if err := s.persistBook(remote, author.ID, monitored); err != nil {
+	if err := s.persistBook(p, remote, author.ID, monitored); err != nil {
 		return nil, err
 	}
 	return s.store.GetBookByForeignID(source, remote.ForeignID)
@@ -88,6 +106,9 @@ func (s *Service) SyncBook(ctx context.Context, foreignID string, monitored bool
 // RefreshAuthor re-syncs an existing author by local id. Books discovered
 // since the last sync are added with the author's monitored flag.
 func (s *Service) RefreshAuthor(ctx context.Context, id int64) error {
+	if _, err := s.provider(); err != nil {
+		return err
+	}
 	author, err := s.store.GetAuthor(id)
 	if err != nil {
 		return err
@@ -99,6 +120,9 @@ func (s *Service) RefreshAuthor(ctx context.Context, id int64) error {
 // RefreshBook re-syncs an existing book by local id, updating its metadata,
 // series links, and editions.
 func (s *Service) RefreshBook(ctx context.Context, id int64) error {
+	if _, err := s.provider(); err != nil {
+		return err
+	}
 	book, err := s.store.GetBook(id)
 	if err != nil {
 		return err
@@ -110,8 +134,8 @@ func (s *Service) RefreshBook(ctx context.Context, id int64) error {
 // persistBook stores a provider book plus its series links and editions
 // under the given author. New ebook editions inherit the book's monitored
 // flag (Phase 1 is ebook-first; audiobook monitoring arrives in Phase 3).
-func (s *Service) persistBook(remote *metadata.Book, authorID int64, monitored bool) error {
-	source := s.provider.Name()
+func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, authorID int64, monitored bool) error {
+	source := p.Name()
 	book := &library.Book{
 		AuthorID:    authorID,
 		Source:      source,
@@ -162,9 +186,13 @@ func (s *Service) persistBook(remote *metadata.Book, authorID int64, monitored b
 	return nil
 }
 
-// RefreshAll re-syncs every author in the library. Individual failures are
-// logged and skipped so one dead provider record can't stall the rest.
+// RefreshAll re-syncs every author in the library. It is a no-op without a
+// configured provider; individual failures are logged and skipped so one
+// dead provider record can't stall the rest.
 func (s *Service) RefreshAll(ctx context.Context) {
+	if _, err := s.provider(); err != nil {
+		return
+	}
 	authors, err := s.store.ListAuthors()
 	if err != nil {
 		slog.Error("metadata refresh: listing authors", "error", err)

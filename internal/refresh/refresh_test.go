@@ -73,7 +73,22 @@ func newFixture(t *testing.T) (*Service, *library.Store, mutableProvider) {
 			},
 		},
 	}
-	return New(store, provider), store, provider
+	mgr := metadata.NewManager()
+	mgr.Set(provider)
+	return New(store, mgr), store, provider
+}
+
+func TestSyncWithoutProviderReturnsNotConfigured(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	svc := New(library.NewStore(db), metadata.NewManager())
+	if _, err := svc.SyncAuthor(context.Background(), "100", true); !errors.Is(err, metadata.ErrNotConfigured) {
+		t.Errorf("err = %v, want ErrNotConfigured", err)
+	}
 }
 
 func TestSyncAuthorThenRefreshPicksUpNewBooks(t *testing.T) {

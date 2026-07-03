@@ -22,6 +22,15 @@ import (
 
 const DefaultEndpoint = "https://api.hardcover.app/v1/graphql"
 
+// Factory builds the provider for the metadata registry; an empty token
+// reports the provider as not configured rather than failing.
+func Factory(s metadata.Settings) (metadata.Provider, error) {
+	if s.Token == "" {
+		return nil, metadata.ErrNotConfigured
+	}
+	return New(s.Token), nil
+}
+
 type Client struct {
 	endpoint string
 	token    string
@@ -52,6 +61,13 @@ func New(token string, opts ...Option) *Client {
 }
 
 func (c *Client) Name() string { return "hardcover" }
+
+// Validate checks the token against the live API using the `me` query, the
+// cheapest authenticated call Hardcover offers.
+func (c *Client) Validate(ctx context.Context) error {
+	var out json.RawMessage
+	return c.do(ctx, `query Validate { me { username } }`, nil, &out)
+}
 
 // --- GraphQL transport ---
 

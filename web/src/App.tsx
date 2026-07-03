@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { api, ApiError, getApiKey, setApiKey } from "./api";
 import LibraryView from "./views/LibraryView";
 import SearchView from "./views/SearchView";
+import SettingsView from "./views/SettingsView";
 import SystemView from "./views/SystemView";
 import "./App.css";
 
-type Tab = "library" | "search" | "system";
+type Tab = "library" | "search" | "settings" | "system";
 
 export default function App() {
   const [key, setKey] = useState(getApiKey());
@@ -31,7 +32,7 @@ export default function App() {
         <h1>🖋️ Quillarr</h1>
         {connected && (
           <nav>
-            {(["library", "search", "system"] as const).map((t) => (
+            {(["library", "search", "settings", "system"] as const).map((t) => (
               <button
                 key={t}
                 className={tab === t ? "tab active" : "tab"}
@@ -77,6 +78,7 @@ export default function App() {
 
       {connected && tab === "library" && <LibraryView onError={setError} />}
       {connected && tab === "search" && <SearchView onError={setError} />}
+      {connected && tab === "settings" && <SettingsView onError={setError} />}
       {connected && tab === "system" && <SystemView onError={setError} />}
     </div>
   );

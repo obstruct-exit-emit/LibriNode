@@ -68,21 +68,30 @@ func run(dataDir string) error {
 	}
 	defer db.Close()
 
-	var provider metadata.Provider
-	if cfg.HardcoverToken != "" {
-		provider = hardcover.New(cfg.HardcoverToken)
-		logger.Info("metadata provider configured", "provider", provider.Name())
+	// Register all built-in metadata providers, then activate the configured
+	// one. New providers are one Register call away; the settings UI and API
+	// pick them up automatically.
+	metadata.Register("hardcover", hardcover.Factory)
 
-		refreshCtx, cancelRefresh := context.WithCancel(context.Background())
-		defer cancelRefresh()
-		go refresh.New(library.NewStore(db), provider).RunPeriodic(refreshCtx, metadataRefreshInterval)
-	} else {
-		logger.Warn("no metadata provider configured — set hardcover_token in config.yaml to enable search and add")
+	providers := metadata.NewManager()
+	if err := providers.Configure(cfg.Metadata.Active, cfg.Metadata.Providers); err != nil {
+		logger.Warn("activating metadata provider failed", "provider", cfg.Metadata.Active, "error", err)
 	}
+	if p := providers.Current(); p != nil {
+		logger.Info("metadata provider active", "provider", p.Name())
+	} else {
+		logger.Warn("no metadata provider configured — add a provider token under Settings in the web UI")
+	}
+
+	// The periodic refresh keeps polling the manager, so a provider added
+	// later via the settings UI is picked up without a restart.
+	refreshCtx, cancelRefresh := context.WithCancel(context.Background())
+	defer cancelRefresh()
+	go refresh.New(library.NewStore(db), providers).RunPeriodic(refreshCtx, metadataRefreshInterval)
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr(),
-		Handler:           api.NewRouter(cfg, db, provider, version),
+		Handler:           api.NewRouter(cfg, db, providers, version),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
