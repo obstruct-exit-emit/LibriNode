@@ -1,30 +1,26 @@
 import { useEffect, useState } from "react";
-import {
-  api,
-  ApiError,
-  getApiKey,
-  setApiKey,
-  type Author,
-  type SystemStatus,
-} from "./api";
+import { api, ApiError, getApiKey, setApiKey } from "./api";
+import LibraryView from "./views/LibraryView";
+import SearchView from "./views/SearchView";
+import SystemView from "./views/SystemView";
 import "./App.css";
+
+type Tab = "library" | "search" | "system";
 
 export default function App() {
   const [key, setKey] = useState(getApiKey());
-  const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [authors, setAuthors] = useState<Author[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [tab, setTab] = useState<Tab>("library");
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!key) return;
     setError("");
-    Promise.all([api.systemStatus(), api.listAuthors()])
-      .then(([st, au]) => {
-        setStatus(st);
-        setAuthors(au);
-      })
+    api
+      .systemStatus()
+      .then(() => setConnected(true))
       .catch((err: unknown) => {
-        setStatus(null);
+        setConnected(false);
         setError(err instanceof ApiError ? err.message : String(err));
       });
   }, [key]);
@@ -33,7 +29,22 @@ export default function App() {
     <div className="app">
       <header>
         <h1>🖋️ Quillarr</h1>
-        <p className="tagline">written-media automation</p>
+        {connected && (
+          <nav>
+            {(["library", "search", "system"] as const).map((t) => (
+              <button
+                key={t}
+                className={tab === t ? "tab active" : "tab"}
+                onClick={() => {
+                  setError("");
+                  setTab(t);
+                }}
+              >
+                {t[0].toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </nav>
+        )}
       </header>
 
       {!key && (
@@ -50,48 +61,23 @@ export default function App() {
       {error && (
         <section className="card error">
           <p>{error}</p>
-          <button onClick={() => setKey("")}>Change API key</button>
-        </section>
-      )}
-
-      {status && (
-        <section className="card">
-          <h2>System</h2>
-          <dl>
-            <dt>Version</dt>
-            <dd>{status.version}</dd>
-            <dt>Platform</dt>
-            <dd>
-              {status.os}/{status.arch}
-            </dd>
-            <dt>Uptime</dt>
-            <dd>{status.uptime}</dd>
-          </dl>
-        </section>
-      )}
-
-      {status && (
-        <section className="card">
-          <h2>Authors ({authors.length})</h2>
-          {authors.length === 0 ? (
-            <p className="muted">
-              Library is empty. Add authors via the API — the full browsing UI
-              is on its way.
-            </p>
-          ) : (
-            <ul className="authors">
-              {authors.map((a) => (
-                <li key={a.id}>
-                  <span>{a.name}</span>
-                  <span className="muted">
-                    {a.monitored ? "monitored" : "unmonitored"}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          {!connected && key && (
+            <button
+              onClick={() => {
+                setApiKey("");
+                setKey("");
+                setError("");
+              }}
+            >
+              Change API key
+            </button>
           )}
         </section>
       )}
+
+      {connected && tab === "library" && <LibraryView onError={setError} />}
+      {connected && tab === "search" && <SearchView onError={setError} />}
+      {connected && tab === "system" && <SystemView onError={setError} />}
     </div>
   );
 }

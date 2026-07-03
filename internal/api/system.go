@@ -30,6 +30,11 @@ func (s *server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 // falls back to index.html so client-side routes work. Without an embedded
 // build (backend-only compile) it serves a plain status page.
 func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	// Unknown API routes must 404 as JSON, never fall back to the SPA.
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		writeError(w, http.StatusNotFound, "unknown API route")
+		return
+	}
 	if s.webFS != nil {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path != "" && path != "index.html" {

@@ -101,6 +101,9 @@ npm run dev                    # Vite dev server, proxies /api to :7845
 npm run build                  # production build into web/dist
 ```
 
+`go build` embeds `web/dist` into the binary, which then serves the UI on
+its own port; without a frontend build it falls back to a plain status page.
+
 On first run Quillarr creates its data directory (`%AppData%\Quillarr` on
 Windows, `~/.config/quillarr` on Linux) containing `config.yaml` — with a
 generated API key — and the SQLite database. Override the location with
@@ -134,8 +137,8 @@ token: set `hardcover_token` in `config.yaml` (or
 - [x] Author / Series / Book / Edition data model
 - [x] Hardcover metadata provider: search, author/series/book lookup, covers *(mock-tested; live API verification pending a Hardcover token)*
 - [x] Add author or book → monitor wanted editions
-- [ ] React + Vite web UI: library browsing, search-and-add (scaffold in `web/` done)
-- [ ] Scheduled + manual metadata refresh
+- [x] React + Vite web UI: library browsing, search-and-add, monitor toggles (embedded in the binary)
+- [x] Scheduled + manual metadata refresh
 - [ ] Library scanning: detect existing files, match to metadata
 - [ ] File naming templates + rename engine
 - [ ] Manual import with match correction
@@ -185,7 +188,7 @@ token: set `hardcover_token` in `config.yaml` (or
 
 ## Status
 
-🚧 **Pre-alpha — Phase 1 in progress.** The backend library core works end-to-end: search Hardcover, add authors/books, monitor editions — all over the REST API. The web UI and library scanning are next.
+🚧 **Pre-alpha — Phase 1 in progress.** The library core works end-to-end: search Hardcover, add authors/books, monitor editions, scheduled metadata refresh — from the embedded web UI or the REST API. Library scanning and the rename engine are next.
 
 ## License
 
