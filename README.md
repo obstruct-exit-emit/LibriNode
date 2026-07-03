@@ -161,6 +161,7 @@ scriptable:
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
+| Indexers | `GET/POST /indexer`, `PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /release?term=` (search all enabled indexers) |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
@@ -198,7 +199,7 @@ metadata endpoints return 503.
 - [x] Manual import with match correction (assign unmatched files to books, auto-move into place, dismiss)
 
 ### Phase 2 — Acquisition pipeline
-- [ ] Indexer framework: Newznab + Torznab clients
+- [x] Indexer framework: Newznab + Torznab clients (add/test in Settings, manual release search across enabled indexers)
 - [ ] **Prowlarr application sync** (Prowlarr adds/updates/removes indexers in Quillarr)
 - [ ] Release parsing + scoring (format, quality, language, revision)
 - [ ] Quality profiles per library
@@ -242,7 +243,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 1 (library core) feature-complete.** Everything in [Getting started](#getting-started-what-works-today) works end-to-end from the embedded web UI or the REST API. One asterisk: Hardcover calls are mock-tested pending a live API token. Phase 2 (indexers, download clients — the acquisition pipeline) is next.
+🚧 **Pre-alpha — Phase 2 (acquisition pipeline) started.** The Phase 1 library core is feature-complete: everything in [Getting started](#getting-started-what-works-today) works end-to-end from the embedded web UI or the REST API (one asterisk: Hardcover calls are mock-tested pending a live API token). Phase 2 has begun with the indexer framework — add Newznab/Torznab indexers under Settings and search releases across them via `GET /api/v1/release`. Release parsing/scoring, quality profiles, Prowlarr sync, and download clients are next.
 
 ## License
 

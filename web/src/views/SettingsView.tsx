@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  type Indexer,
   type MetadataSettings,
   type NamingSettings,
   type ProviderSettings,
@@ -16,8 +17,182 @@ export default function SettingsView({
     <>
       <MetadataCard onError={onError} />
       <RootFoldersCard onError={onError} />
+      <IndexersCard onError={onError} />
       <NamingCard onError={onError} />
     </>
+  );
+}
+
+const emptyIndexer: Omit<Indexer, "id" | "addedAt"> = {
+  name: "",
+  type: "torznab",
+  baseUrl: "",
+  apiKey: "",
+  categories: "7000,7020",
+  enabled: true,
+  priority: 25,
+};
+
+function IndexersCard({
+  onError,
+}: {
+  onError: (message: string) => void;
+}) {
+  const [indexers, setIndexers] = useState<Indexer[]>([]);
+  const [draft, setDraft] = useState(emptyIndexer);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const reload = useCallback(() => {
+    api
+      .listIndexers()
+      .then(setIndexers)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  useEffect(reload, [reload]);
+
+  const set = (patch: Partial<typeof emptyIndexer>) =>
+    setDraft((d) => ({ ...d, ...patch }));
+
+  const run = (action: () => Promise<unknown>, done?: string) => {
+    setBusy(true);
+    setNotice("");
+    action()
+      .then(() => {
+        if (done) setNotice(done);
+        reload();
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  const testDraft = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .testIndexer(draft)
+      .then(() => setNotice("✓ Connection OK"))
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  const add = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .addIndexer(draft)
+      .then(() => {
+        setDraft(emptyIndexer);
+        setNotice("✓ Indexer added");
+        reload();
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  const toggle = (ind: Indexer) =>
+    run(() => api.updateIndexer({ ...ind, enabled: !ind.enabled }));
+
+  const remove = (ind: Indexer) => {
+    if (!confirm(`Remove indexer ${ind.name}?`)) return;
+    run(() => api.deleteIndexer(ind.id));
+  };
+
+  const draftValid =
+    draft.name.trim() !== "" && /^https?:\/\//.test(draft.baseUrl.trim());
+
+  return (
+    <section className="card">
+      <h2>Indexers</h2>
+      <p className="muted">
+        Newznab (usenet) and Torznab (torrents — Prowlarr/Jackett feeds work)
+        endpoints. Categories default to books (<code>7000,7020</code>).
+        Prowlarr application sync comes later in Phase 2.
+      </p>
+
+      {indexers.length > 0 && (
+        <ul className="rows">
+          {indexers.map((ind) => (
+            <li key={ind.id}>
+              <div className="row">
+                <span>
+                  {ind.name} <span className="muted">({ind.type})</span>
+                </span>
+                <span className="row-actions">
+                  <span className="muted file-path">{ind.baseUrl}</span>
+                  <button
+                    className={ind.enabled ? "toggle on" : "toggle"}
+                    disabled={busy}
+                    onClick={() => toggle(ind)}
+                  >
+                    {ind.enabled ? "enabled" : "disabled"}
+                  </button>
+                  <button className="danger" disabled={busy} onClick={() => remove(ind)}>
+                    remove
+                  </button>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="settings-form" style={{ marginTop: "0.75rem" }}>
+        <label>
+          Name
+          <input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+        </label>
+        <label>
+          Type
+          <select
+            value={draft.type}
+            onChange={(e) => set({ type: e.target.value as Indexer["type"] })}
+          >
+            <option value="torznab">Torznab (torrents)</option>
+            <option value="newznab">Newznab (usenet)</option>
+          </select>
+        </label>
+        <label>
+          URL
+          <input
+            placeholder="https://indexer.example (or a Prowlarr/Jackett feed URL)"
+            value={draft.baseUrl}
+            onChange={(e) => set({ baseUrl: e.target.value })}
+          />
+        </label>
+        <label>
+          API key
+          <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
+        </label>
+        <label>
+          Categories
+          <input
+            value={draft.categories}
+            onChange={(e) => set({ categories: e.target.value })}
+          />
+        </label>
+        <div className="settings-actions">
+          <button disabled={busy || !draftValid} onClick={testDraft}>
+            Test
+          </button>
+          <button disabled={busy || !draftValid} onClick={add}>
+            Add
+          </button>
+          {notice && (
+            <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
+              {notice}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

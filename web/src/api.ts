@@ -88,6 +88,32 @@ export interface ScanResult {
   errors?: string[];
 }
 
+export interface Indexer {
+  id: number;
+  name: string;
+  type: "newznab" | "torznab";
+  baseUrl: string;
+  apiKey: string;
+  categories: string;
+  enabled: boolean;
+  priority: number;
+  addedAt?: string;
+}
+
+export interface Release {
+  indexerId: number;
+  indexer: string;
+  protocol: "usenet" | "torrent";
+  title: string;
+  guid: string;
+  infoUrl?: string;
+  downloadUrl: string;
+  size: number;
+  publishDate?: string;
+  seeders: number;
+  peers: number;
+}
+
 export interface NamingSettings {
   ebookFolder: string;
   ebookFile: string;
@@ -239,6 +265,23 @@ export const api = {
     ),
   dismissFile: (fileId: number) =>
     request<void>(`/api/v1/bookfile/${fileId}`, { method: "DELETE" }),
+
+  listIndexers: () => request<Indexer[]>("/api/v1/indexer"),
+  addIndexer: (ind: Omit<Indexer, "id" | "addedAt">) =>
+    request<Indexer>("/api/v1/indexer", json(ind)),
+  updateIndexer: (ind: Indexer) =>
+    request<Indexer>(`/api/v1/indexer/${ind.id}`, {
+      ...json(ind),
+      method: "PUT",
+    }),
+  deleteIndexer: (id: number) =>
+    request<void>(`/api/v1/indexer/${id}`, { method: "DELETE" }),
+  testIndexer: (ind: Omit<Indexer, "id" | "addedAt">) =>
+    request<{ ok: boolean }>("/api/v1/indexer/test", json(ind)),
+  searchReleases: (term: string) =>
+    request<{ releases: Release[]; errors: string[] }>(
+      `/api/v1/release?term=${encodeURIComponent(term)}`,
+    ),
 
   getNamingSettings: () => request<NamingSettings>("/api/v1/settings/naming"),
   saveNamingSettings: (ebookFolder: string, ebookFile: string) =>

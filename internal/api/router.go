@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/quillarr/quillarr/internal/config"
+	"github.com/quillarr/quillarr/internal/indexer"
 	"github.com/quillarr/quillarr/internal/library"
 	"github.com/quillarr/quillarr/internal/metadata"
 	"github.com/quillarr/quillarr/internal/organize"
@@ -27,6 +28,7 @@ type server struct {
 	refresh  *refresh.Service
 	scanner  *scanner.Service
 	organize *organize.Service
+	indexers *indexer.Service
 	webFS    fs.FS // nil when no frontend build is embedded
 	version  string
 }
@@ -41,6 +43,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		refresh:  refresh.New(store, providers),
 		scanner:  scanner.New(store),
 		organize: organize.New(store, cfg),
+		indexers: indexer.NewService(indexer.NewStore(db)),
 		version:  version,
 	}
 	if dist, ok := web.FS(); ok {
@@ -80,6 +83,13 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("POST /api/v1/settings/metadata/test", s.auth(s.handleTestMetadataProvider))
 	mux.HandleFunc("GET /api/v1/settings/naming", s.auth(s.handleGetNamingSettings))
 	mux.HandleFunc("PUT /api/v1/settings/naming", s.auth(s.handlePutNamingSettings))
+
+	mux.HandleFunc("GET /api/v1/indexer", s.auth(s.handleListIndexers))
+	mux.HandleFunc("POST /api/v1/indexer", s.auth(s.handleAddIndexer))
+	mux.HandleFunc("PUT /api/v1/indexer/{id}", s.auth(s.handleUpdateIndexer))
+	mux.HandleFunc("DELETE /api/v1/indexer/{id}", s.auth(s.handleDeleteIndexer))
+	mux.HandleFunc("POST /api/v1/indexer/test", s.auth(s.handleTestIndexer))
+	mux.HandleFunc("GET /api/v1/release", s.auth(s.handleSearchReleases))
 
 	mux.HandleFunc("/", s.handleIndex)
 

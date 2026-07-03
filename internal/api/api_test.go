@@ -416,6 +416,84 @@ func TestDismissBookFile(t *testing.T) {
 	a.want(a.call("POST", "/api/v1/bookfile/1/match", map[string]int64{"bookId": 999}, nil), http.StatusNotFound)
 }
 
+// mockTorznab serves a minimal caps + one-release search response.
+func mockTorznab(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		switch r.URL.Query().Get("t") {
+		case "caps":
+			w.Write([]byte(`<caps><server title="mock"/></caps>`))
+		case "search":
+			w.Write([]byte(`<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item>
+				<title>Mort epub</title><guid>g1</guid><link>https://mock/dl/1</link>
+				<torznab:attr name="seeders" value="5"/><torznab:attr name="size" value="1000"/>
+			</item></channel></rss>`))
+		default:
+			http.Error(w, "bad t", http.StatusBadRequest)
+		}
+	}))
+}
+
+func TestIndexerCRUDAndReleaseSearch(t *testing.T) {
+	a := newTestAPI(t, nil)
+	srv := mockTorznab(t)
+	defer srv.Close()
+
+	// Validation.
+	a.want(a.call("POST", "/api/v1/indexer",
+		map[string]string{"name": "x", "type": "gopher", "baseUrl": srv.URL}, nil), http.StatusBadRequest)
+	a.want(a.call("POST", "/api/v1/indexer",
+		map[string]string{"name": "x", "type": "torznab", "baseUrl": "ftp://nope"}, nil), http.StatusBadRequest)
+
+	// Test-before-save against the mock endpoint.
+	a.want(a.call("POST", "/api/v1/indexer/test",
+		map[string]any{"name": "mock", "type": "torznab", "baseUrl": srv.URL}, nil), http.StatusOK)
+
+	// Create, list, update, search, delete.
+	var ind struct {
+		ID       int64  `json:"id"`
+		Priority int    `json:"priority"`
+		Enabled  bool   `json:"enabled"`
+		Name     string `json:"name"`
+	}
+	a.want(a.call("POST", "/api/v1/indexer",
+		map[string]any{"name": "mock", "type": "torznab", "baseUrl": srv.URL, "enabled": true}, &ind), http.StatusCreated)
+	if ind.ID == 0 || ind.Priority != 25 {
+		t.Fatalf("created indexer = %+v", ind)
+	}
+
+	var list []map[string]any
+	a.want(a.call("GET", "/api/v1/indexer", nil, &list), http.StatusOK)
+	if len(list) != 1 {
+		t.Fatalf("list = %+v", list)
+	}
+
+	var result struct {
+		Releases []map[string]any `json:"releases"`
+		Errors   []string         `json:"errors"`
+	}
+	a.want(a.call("GET", "/api/v1/release?term=mort", nil, &result), http.StatusOK)
+	if len(result.Releases) != 1 || len(result.Errors) != 0 {
+		t.Fatalf("release search = %+v", result)
+	}
+	if result.Releases[0]["title"] != "Mort epub" || result.Releases[0]["protocol"] != "torrent" {
+		t.Errorf("release = %+v", result.Releases[0])
+	}
+	a.want(a.call("GET", "/api/v1/release", nil, nil), http.StatusBadRequest)
+
+	// Disable it: searches now hit zero indexers.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/indexer/%d", ind.ID),
+		map[string]any{"name": "mock", "type": "torznab", "baseUrl": srv.URL, "enabled": false}, nil), http.StatusOK)
+	a.want(a.call("GET", "/api/v1/release?term=mort", nil, &result), http.StatusOK)
+	if len(result.Releases) != 0 {
+		t.Errorf("disabled indexer still searched: %+v", result)
+	}
+
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNoContent)
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/indexer/%d", ind.ID), nil, nil), http.StatusNotFound)
+}
+
 func TestRefreshEndpoints(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 
