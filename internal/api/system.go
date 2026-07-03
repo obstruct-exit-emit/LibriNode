@@ -1,8 +1,10 @@
 package api
 
 import (
+	"io/fs"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -24,7 +26,21 @@ func (s *server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleIndex serves the embedded web UI: real files directly, anything else
+// falls back to index.html so client-side routes work. Without an embedded
+// build (backend-only compile) it serves a plain status page.
 func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if s.webFS != nil {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path != "" && path != "index.html" {
+			if _, err := fs.Stat(s.webFS, path); err == nil {
+				http.ServeFileFS(w, r, s.webFS, path)
+				return
+			}
+		}
+		http.ServeFileFS(w, r, s.webFS, "index.html")
+		return
+	}
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return

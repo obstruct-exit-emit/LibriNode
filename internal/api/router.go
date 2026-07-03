@@ -6,12 +6,15 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 
 	"github.com/quillarr/quillarr/internal/config"
 	"github.com/quillarr/quillarr/internal/library"
 	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/quillarr/quillarr/internal/refresh"
+	"github.com/quillarr/quillarr/web"
 )
 
 type server struct {
@@ -19,11 +22,20 @@ type server struct {
 	db       *sql.DB
 	store    *library.Store
 	metadata metadata.Provider // nil when no provider is configured
+	refresh  *refresh.Service  // nil when no provider is configured
+	webFS    fs.FS             // nil when no frontend build is embedded
 	version  string
 }
 
 func NewRouter(cfg *config.Config, db *sql.DB, provider metadata.Provider, version string) http.Handler {
-	s := &server{cfg: cfg, db: db, store: library.NewStore(db), metadata: provider, version: version}
+	store := library.NewStore(db)
+	s := &server{cfg: cfg, db: db, store: store, metadata: provider, version: version}
+	if provider != nil {
+		s.refresh = refresh.New(store, provider)
+	}
+	if dist, ok := web.FS(); ok {
+		s.webFS = dist
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ping", s.handlePing)
@@ -37,11 +49,13 @@ func NewRouter(cfg *config.Config, db *sql.DB, provider metadata.Provider, versi
 	mux.HandleFunc("POST /api/v1/author", s.auth(s.handleAddAuthor))
 	mux.HandleFunc("GET /api/v1/author/{id}", s.auth(s.handleGetAuthor))
 	mux.HandleFunc("PUT /api/v1/author/{id}/monitor", s.auth(s.handleMonitorAuthor))
+	mux.HandleFunc("POST /api/v1/author/{id}/refresh", s.auth(s.handleRefreshAuthor))
 	mux.HandleFunc("DELETE /api/v1/author/{id}", s.auth(s.handleDeleteAuthor))
 	mux.HandleFunc("GET /api/v1/book", s.auth(s.handleListBooks))
 	mux.HandleFunc("POST /api/v1/book", s.auth(s.handleAddBook))
 	mux.HandleFunc("GET /api/v1/book/{id}", s.auth(s.handleGetBook))
 	mux.HandleFunc("PUT /api/v1/book/{id}/monitor", s.auth(s.handleMonitorBook))
+	mux.HandleFunc("POST /api/v1/book/{id}/refresh", s.auth(s.handleRefreshBook))
 	mux.HandleFunc("DELETE /api/v1/book/{id}", s.auth(s.handleDeleteBook))
 	mux.HandleFunc("PUT /api/v1/edition/{id}/monitor", s.auth(s.handleMonitorEdition))
 

@@ -161,6 +161,32 @@ func TestSearchWithoutProvider(t *testing.T) {
 	a.want(a.call("GET", "/api/v1/search?term=x", nil, nil), http.StatusServiceUnavailable)
 	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, nil), http.StatusServiceUnavailable)
 	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, nil), http.StatusServiceUnavailable)
+	a.want(a.call("POST", "/api/v1/author/1/refresh", nil, nil), http.StatusServiceUnavailable)
+	a.want(a.call("POST", "/api/v1/book/1/refresh", nil, nil), http.StatusServiceUnavailable)
+}
+
+func TestRefreshEndpoints(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
+	var book library.Book
+	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, &book), http.StatusCreated)
+
+	var refreshed library.Author
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/author/%d/refresh", author.ID), nil, &refreshed), http.StatusOK)
+	if refreshed.ID != author.ID || len(refreshed.Books) == 0 {
+		t.Errorf("refreshed author = %+v", refreshed)
+	}
+
+	var refreshedBook library.Book
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/book/%d/refresh", book.ID), nil, &refreshedBook), http.StatusOK)
+	if refreshedBook.ID != book.ID || len(refreshedBook.Editions) != 3 {
+		t.Errorf("refreshed book = %+v", refreshedBook)
+	}
+
+	a.want(a.call("POST", "/api/v1/author/9999/refresh", nil, nil), http.StatusNotFound)
+	a.want(a.call("POST", "/api/v1/book/9999/refresh", nil, nil), http.StatusNotFound)
 }
 
 func TestAddAuthorFlow(t *testing.T) {

@@ -84,11 +84,11 @@ func (s *server) handleListAuthors(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, authors)
 }
 
-// handleAddAuthor fetches an author from the metadata provider and persists
-// them with all their books (monitored by default). Editions are pulled in
-// when a specific book is added or on a later metadata refresh.
+// handleAddAuthor syncs an author from the metadata provider with their full
+// bibliography (monitored by default). Editions are pulled in when a specific
+// book is added or refreshed.
 func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
-	if s.metadata == nil {
+	if s.refresh == nil {
 		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
 		return
 	}
@@ -108,7 +108,7 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	remote, err := s.metadata.GetAuthor(ctx, req.ForeignAuthorID)
+	author, err := s.refresh.SyncAuthor(ctx, req.ForeignAuthorID, monitored)
 	if errors.Is(err, metadata.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "author not found at metadata provider")
 		return
@@ -117,27 +117,36 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	s.writeAuthorDetail(w, http.StatusCreated, author.ID)
+}
 
-	author := &library.Author{
-		Source:      s.metadata.Name(),
-		ForeignID:   remote.ForeignID,
-		Name:        remote.Name,
-		Description: remote.Description,
-		ImageURL:    remote.ImageURL,
-		Monitored:   monitored,
-	}
-	if err := s.store.UpsertAuthor(author); err != nil {
-		writeStoreError(w, err)
+// handleRefreshAuthor re-syncs an existing author (and bibliography) from the
+// metadata provider.
+func (s *server) handleRefreshAuthor(w http.ResponseWriter, r *http.Request) {
+	if s.refresh == nil {
+		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
 		return
 	}
-	for i := range remote.Books {
-		if err := s.persistBook(&remote.Books[i], author.ID, monitored); err != nil {
-			writeStoreError(w, err)
-			return
-		}
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
 	}
+	ctx, cancel := s.metadataCtx(r)
+	defer cancel()
 
-	s.writeAuthorDetail(w, http.StatusCreated, author.ID)
+	if err := s.refresh.RefreshAuthor(ctx, id); err != nil {
+		switch {
+		case errors.Is(err, library.ErrNotFound):
+			writeError(w, http.StatusNotFound, "not found")
+		case errors.Is(err, metadata.ErrNotFound):
+			writeError(w, http.StatusBadGateway, "author no longer exists at metadata provider")
+		default:
+			writeError(w, http.StatusBadGateway, err.Error())
+		}
+		return
+	}
+	s.writeAuthorDetail(w, http.StatusOK, id)
 }
 
 func (s *server) handleGetAuthor(w http.ResponseWriter, r *http.Request) {
@@ -217,13 +226,11 @@ func (s *server) handleListBooks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, books)
 }
 
-// handleAddBook fetches one book (with editions) from the metadata provider
-// and persists it. The author is created as an unmonitored stub when not in
-// the library yet — adding a single book must not pull in the whole
-// bibliography. Ebook editions start monitored (Phase 1 is ebook-first);
-// audiobook monitoring arrives in Phase 3.
+// handleAddBook syncs one book (with editions) from the metadata provider.
+// The author is created as an unmonitored stub when not in the library yet;
+// ebook editions start monitored (Phase 1 is ebook-first).
 func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
-	if s.metadata == nil {
+	if s.refresh == nil {
 		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
 		return
 	}
@@ -243,7 +250,7 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	remote, err := s.metadata.GetBook(ctx, req.ForeignBookID)
+	book, err := s.refresh.SyncBook(ctx, req.ForeignBookID, monitored)
 	if errors.Is(err, metadata.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "book not found at metadata provider")
 		return
@@ -252,91 +259,35 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	if remote.AuthorForeignID == "" {
-		writeError(w, http.StatusBadGateway, "metadata provider returned a book without an author")
-		return
-	}
-
-	source := s.metadata.Name()
-	author, err := s.store.GetAuthorByForeignID(source, remote.AuthorForeignID)
-	if errors.Is(err, library.ErrNotFound) {
-		author = &library.Author{
-			Source:    source,
-			ForeignID: remote.AuthorForeignID,
-			Name:      remote.AuthorName,
-			Monitored: false,
-		}
-		err = s.store.UpsertAuthor(author)
-	}
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-
-	if err := s.persistBook(remote, author.ID, monitored); err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	book, err := s.store.GetBookByForeignID(source, remote.ForeignID)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
 	s.writeBookDetail(w, http.StatusCreated, book.ID)
 }
 
-// persistBook stores a provider book plus its series links and editions
-// under the given author. Ebook editions inherit the book's monitored flag.
-func (s *server) persistBook(remote *metadata.Book, authorID int64, monitored bool) error {
-	source := s.metadata.Name()
-	book := &library.Book{
-		AuthorID:    authorID,
-		Source:      source,
-		ForeignID:   remote.ForeignID,
-		Title:       remote.Title,
-		Description: remote.Description,
-		ReleaseDate: remote.ReleaseDate,
-		Rating:      remote.Rating,
-		CoverURL:    remote.CoverURL,
-		Monitored:   monitored,
+// handleRefreshBook re-syncs an existing book's metadata and editions.
+func (s *server) handleRefreshBook(w http.ResponseWriter, r *http.Request) {
+	if s.refresh == nil {
+		writeError(w, http.StatusServiceUnavailable, "no metadata provider configured")
+		return
 	}
-	if err := s.store.UpsertBook(book); err != nil {
-		return err
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
 	}
-	for _, sl := range remote.Series {
-		series := &library.Series{
-			Source:      source,
-			ForeignID:   sl.ForeignID,
-			Title:       sl.Title,
-			Description: sl.Description,
+	ctx, cancel := s.metadataCtx(r)
+	defer cancel()
+
+	if err := s.refresh.RefreshBook(ctx, id); err != nil {
+		switch {
+		case errors.Is(err, library.ErrNotFound):
+			writeError(w, http.StatusNotFound, "not found")
+		case errors.Is(err, metadata.ErrNotFound):
+			writeError(w, http.StatusBadGateway, "book no longer exists at metadata provider")
+		default:
+			writeError(w, http.StatusBadGateway, err.Error())
 		}
-		if err := s.store.UpsertSeries(series); err != nil {
-			return err
-		}
-		if err := s.store.LinkBookSeries(book.ID, series.ID, sl.Position); err != nil {
-			return err
-		}
+		return
 	}
-	for _, ed := range remote.Editions {
-		edition := &library.Edition{
-			BookID:      book.ID,
-			Source:      source,
-			ForeignID:   ed.ForeignID,
-			Title:       ed.Title,
-			ISBN13:      ed.ISBN13,
-			ASIN:        ed.ASIN,
-			Format:      ed.Format,
-			Publisher:   ed.Publisher,
-			Language:    ed.Language,
-			ReleaseDate: ed.ReleaseDate,
-			CoverURL:    ed.CoverURL,
-			Monitored:   monitored && ed.Format == library.FormatEbook,
-		}
-		if err := s.store.UpsertEdition(edition); err != nil {
-			return err
-		}
-	}
-	return nil
+	s.writeBookDetail(w, http.StatusOK, id)
 }
 
 func (s *server) handleGetBook(w http.ResponseWriter, r *http.Request) {

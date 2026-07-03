@@ -15,9 +15,16 @@ import (
 	"github.com/quillarr/quillarr/internal/api"
 	"github.com/quillarr/quillarr/internal/config"
 	"github.com/quillarr/quillarr/internal/database"
+	"github.com/quillarr/quillarr/internal/library"
 	"github.com/quillarr/quillarr/internal/metadata"
 	"github.com/quillarr/quillarr/internal/metadata/hardcover"
+	"github.com/quillarr/quillarr/internal/refresh"
 )
+
+// metadataRefreshInterval is how often the whole library is re-synced with
+// the metadata provider. Configurable scheduling can come with the settings
+// UI in Phase 5.
+const metadataRefreshInterval = 24 * time.Hour
 
 // version is overridden at build time via -ldflags "-X main.version=x.y.z".
 var version = "0.0.1-alpha"
@@ -65,6 +72,10 @@ func run(dataDir string) error {
 	if cfg.HardcoverToken != "" {
 		provider = hardcover.New(cfg.HardcoverToken)
 		logger.Info("metadata provider configured", "provider", provider.Name())
+
+		refreshCtx, cancelRefresh := context.WithCancel(context.Background())
+		defer cancelRefresh()
+		go refresh.New(library.NewStore(db), provider).RunPeriodic(refreshCtx, metadataRefreshInterval)
 	} else {
 		logger.Warn("no metadata provider configured — set hardcover_token in config.yaml to enable search and add")
 	}
