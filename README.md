@@ -184,7 +184,7 @@ metadata endpoints return 503.
 - [x] SQLite schema + migrations framework
 - [x] Config system (file + env vars), logging, cross-platform paths
 - [x] REST API skeleton with API-key auth (system status, root folder CRUD)
-- [ ] CI: build + test on Windows and Linux
+- [x] CI: build + test on Windows and Linux
 
 ### Phase 1 — Library core (ebooks first)
 - [x] Media type + root folder model (multiple roots per type)
