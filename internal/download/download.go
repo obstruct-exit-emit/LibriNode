@@ -55,6 +55,7 @@ func (c *ClientConfig) Protocol() string {
 // Status is one of: queued, downloading, paused, completed, failed.
 type Item struct {
 	Client   string  `json:"client"`
+	ConfigID int64   `json:"clientConfigId"`
 	ID       string  `json:"id"`
 	Title    string  `json:"title"`
 	Status   string  `json:"status"`
@@ -211,6 +212,19 @@ func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabR
 		return &GrabResult{Client: cfg.Name, ClientID: cfg.ID, ID: id}, nil
 	}
 	return nil, ErrNoClient
+}
+
+// Remove deletes an item from the client identified by its config id.
+func (s *Service) Remove(ctx context.Context, configID int64, itemID string, deleteData bool) error {
+	cfg, err := s.store.Get(configID)
+	if err != nil {
+		return err
+	}
+	client, err := New(cfg)
+	if err != nil {
+		return err
+	}
+	return client.Remove(ctx, itemID, deleteData)
 }
 
 // Queue aggregates the download queues of all enabled clients. Client

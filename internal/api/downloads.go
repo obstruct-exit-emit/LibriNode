@@ -133,12 +133,14 @@ func (s *server) handleTestDownloadClient(w http.ResponseWriter, r *http.Request
 }
 
 // handleGrabRelease sends a release to the matching download client — the
-// button behind interactive search results.
+// button behind interactive search results. bookId ties the download to a
+// book so Completed Download Handling can import it automatically.
 func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title       string `json:"title"`
 		DownloadURL string `json:"downloadUrl"`
 		Protocol    string `json:"protocol"`
+		BookID      int64  `json:"bookId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DownloadURL == "" {
 		writeError(w, http.StatusBadRequest, "downloadUrl is required")
@@ -147,6 +149,12 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 	if req.Protocol != download.ProtocolTorrent && req.Protocol != download.ProtocolUsenet {
 		writeError(w, http.StatusBadRequest, "protocol must be torrent or usenet")
 		return
+	}
+	if req.BookID > 0 {
+		if _, err := s.store.GetBook(req.BookID); err != nil {
+			writeStoreError(w, err)
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
 	defer cancel()
@@ -161,7 +169,51 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+
+	grab := &download.GrabRecord{
+		BookID:         req.BookID,
+		ClientConfigID: result.ClientID,
+		ClientItemID:   result.ID,
+		Title:          req.Title,
+		Protocol:       req.Protocol,
+	}
+	if err := s.downloads.Store().AddGrab(grab); err != nil {
+		writeError(w, http.StatusInternalServerError, "recording grab: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"client": result.Client, "id": result.ID, "grabId": grab.ID,
+	})
+}
+
+// handleImport runs one Completed Download Handling pass on demand.
+func (s *server) handleImport(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
+	defer cancel()
+
+	result, err := s.importer.Run(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// handleHistory lists grab records, newest first (?status= filters).
+func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	switch status {
+	case "", download.GrabStatusGrabbed, download.GrabStatusImported, download.GrabStatusFailed:
+	default:
+		writeError(w, http.StatusBadRequest, "status must be grabbed, imported, or failed")
+		return
+	}
+	grabs, err := s.downloads.Store().ListGrabs(status)
+	if err != nil {
+		writeDownloadError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, grabs)
 }
 
 // handleQueue shows every LibriNode download across all enabled clients.

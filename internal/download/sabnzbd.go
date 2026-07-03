@@ -129,7 +129,7 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 
 	items := []Item{}
 	for _, slot := range queue.Queue.Slots {
-		item := Item{Client: s.cfg.Name, ID: slot.NzoID, Title: slot.Filename}
+		item := Item{Client: s.cfg.Name, ConfigID: s.cfg.ID, ID: slot.NzoID, Title: slot.Filename}
 		if pct, err := strconv.ParseFloat(slot.Percentage, 64); err == nil {
 			item.Progress = pct / 100
 		}
@@ -144,7 +144,7 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 		items = append(items, item)
 	}
 	for _, slot := range history.History.Slots {
-		item := Item{Client: s.cfg.Name, ID: slot.NzoID, Title: slot.Name, Path: slot.Storage}
+		item := Item{Client: s.cfg.Name, ConfigID: s.cfg.ID, ID: slot.NzoID, Title: slot.Name, Path: slot.Storage}
 		switch strings.ToLower(slot.Status) {
 		case "completed":
 			item.Status = "completed"

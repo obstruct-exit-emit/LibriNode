@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type QueueItem } from "../api";
+import { api, type GrabRecord, type QueueItem } from "../api";
 
 export default function ActivityView({
   onError,
@@ -7,19 +7,36 @@ export default function ActivityView({
   onError: (message: string) => void;
 }) {
   const [items, setItems] = useState<QueueItem[]>([]);
+  const [history, setHistory] = useState<GrabRecord[]>([]);
   const [clientErrors, setClientErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const reload = useCallback(() => {
-    api
-      .queue()
-      .then((q) => {
+    Promise.all([api.queue(), api.history()])
+      .then(([q, h]) => {
         setItems(q.items);
         setClientErrors(q.errors);
+        setHistory(h);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
   }, [onError]);
+
+  const runImport = () => {
+    setImporting(true);
+    setNotice("");
+    api
+      .runImport()
+      .then((r) => {
+        const extra = r.messages?.length ? ` — ${r.messages.join("; ")}` : "";
+        setNotice(`Imported ${r.imported}, failed ${r.failed}, skipped ${r.skipped}${extra}`);
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setImporting(false));
+  };
 
   // Poll while the tab is open; downloads move fast.
   useEffect(() => {
@@ -31,13 +48,18 @@ export default function ActivityView({
   if (loading) return <p className="muted">Loading queue…</p>;
 
   return (
+    <>
     <section className="card">
       <div className="card-head">
         <h2>Queue ({items.length})</h2>
         <span className="row-actions">
+          <button disabled={importing} onClick={runImport} title="Import finished downloads now">
+            {importing ? "Importing…" : "Import now"}
+          </button>
           <button onClick={reload}>Refresh</button>
         </span>
       </div>
+      {notice && <p className="muted">{notice}</p>}
       {clientErrors.map((e) => (
         <p key={e} className="notice bad">
           {e}
@@ -71,5 +93,30 @@ export default function ActivityView({
         </ul>
       )}
     </section>
+
+    {history.length > 0 && (
+      <section className="card">
+        <h2>History ({history.length})</h2>
+        <ul className="rows">
+          {history.map((g) => (
+            <li key={g.id}>
+              <div className="row">
+                <span>
+                  {g.title}
+                  {g.message && <span className="file-path muted"> — {g.message}</span>}
+                </span>
+                <span className="row-actions">
+                  <span className="muted">{g.protocol}</span>
+                  <span className={`owned ${g.status === "failed" ? "no" : "yes"}`}>
+                    {g.status}
+                  </span>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+    </>
   );
 }

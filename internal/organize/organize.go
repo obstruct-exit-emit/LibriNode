@@ -133,13 +133,22 @@ func (s *Service) targetPath(f *library.BookFile, rootByID map[int64]string) (st
 	if err != nil {
 		return "", "", fmt.Errorf("book %d: %w", f.BookID, err)
 	}
+	target, err := s.renderPath(root, book, f.Format)
+	if err != nil {
+		return "", "", err
+	}
+	return target, book.Title, nil
+}
+
+// renderPath renders <root>/<folder template>/<file template>.<ext> for a book.
+func (s *Service) renderPath(root string, book *library.Book, format string) (string, error) {
 	author, err := s.store.GetAuthor(book.AuthorID)
 	if err != nil {
-		return "", "", fmt.Errorf("author %d: %w", book.AuthorID, err)
+		return "", fmt.Errorf("author %d: %w", book.AuthorID, err)
 	}
 	series, err := s.store.ListSeriesForBook(book.ID)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	data := naming.TokenData{
@@ -158,7 +167,28 @@ func (s *Service) targetPath(f *library.BookFile, rootByID map[int64]string) (st
 	ns := s.cfg.NamingSettings()
 	folder := naming.Format(ns.EbookFolder, data)
 	file := naming.Format(ns.EbookFile, data)
-	return filepath.Join(root, folder, file+"."+f.Format), book.Title, nil
+	return filepath.Join(root, folder, file+"."+format), nil
+}
+
+// PlaceFile computes where a newly imported file for book belongs: the first
+// ebook root folder plus the naming templates. Returns the root folder id
+// and the absolute target path.
+func (s *Service) PlaceFile(book *library.Book, format string) (int64, string, error) {
+	roots, err := s.store.ListRootFolders()
+	if err != nil {
+		return 0, "", err
+	}
+	for _, root := range roots {
+		if root.MediaType != "ebook" {
+			continue
+		}
+		target, err := s.renderPath(root.Path, book, format)
+		if err != nil {
+			return 0, "", err
+		}
+		return root.ID, target, nil
+	}
+	return 0, "", fmt.Errorf("no ebook root folder configured")
 }
 
 // sameFile compares paths the way the target filesystem does (Windows and

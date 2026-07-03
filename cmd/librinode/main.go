@@ -15,9 +15,12 @@ import (
 	"github.com/librinode/librinode/internal/api"
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
+	"github.com/librinode/librinode/internal/download"
+	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
 	"github.com/librinode/librinode/internal/metadata/hardcover"
+	"github.com/librinode/librinode/internal/organize"
 	"github.com/librinode/librinode/internal/refresh"
 )
 
@@ -25,6 +28,10 @@ import (
 // the metadata provider. Configurable scheduling can come with the settings
 // UI in Phase 5.
 const metadataRefreshInterval = 24 * time.Hour
+
+// importInterval is how often Completed Download Handling checks the
+// download clients for finished grabs.
+const importInterval = time.Minute
 
 // version is overridden at build time via -ldflags "-X main.version=x.y.z".
 var version = "0.0.1-alpha"
@@ -83,11 +90,15 @@ func run(dataDir string) error {
 		logger.Warn("no metadata provider configured — add a provider token under Settings in the web UI")
 	}
 
-	// The periodic refresh keeps polling the manager, so a provider added
-	// later via the settings UI is picked up without a restart.
-	refreshCtx, cancelRefresh := context.WithCancel(context.Background())
-	defer cancelRefresh()
-	go refresh.New(library.NewStore(db), providers).RunPeriodic(refreshCtx, metadataRefreshInterval)
+	// Background loops: metadata refresh polls the provider manager (so a
+	// provider added later via settings is picked up without a restart), and
+	// Completed Download Handling imports finished grabs.
+	bgCtx, cancelBg := context.WithCancel(context.Background())
+	defer cancelBg()
+	store := library.NewStore(db)
+	go refresh.New(store, providers).RunPeriodic(bgCtx, metadataRefreshInterval)
+	go importer.New(store, download.NewService(download.NewStore(db)), organize.New(store, cfg)).
+		RunPeriodic(bgCtx, importInterval)
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr(),

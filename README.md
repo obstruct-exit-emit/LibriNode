@@ -102,10 +102,13 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 7. **Settings → Download Clients:** point LibriNode at qBittorrent
    (torrents) and/or SABnzbd (usenet). Then search releases
    (`GET /api/v1/release?bookId=N` returns parsed, scored, ranked
-   candidates) and send one to a client with `POST /api/v1/release/grab` —
-   the **Activity** tab shows the live download queue. Format preferences
-   live under **Settings → Quality Profiles**. (Auto-import of finished
-   downloads and in-UI search buttons are the next slices.)
+   candidates) and send one to a client with `POST /api/v1/release/grab`
+   (include `bookId` and the finished download is imported into your library
+   automatically — checked every minute, or on demand via **Import now**).
+   The **Activity** tab shows the live queue and grab history. Format
+   preferences live under **Settings → Quality Profiles**. (In-UI search
+   buttons and the automatic wanted-list search are the last Phase 2
+   slices.)
 
 **Indexers** can be added two ways: manually under **Settings → Indexers**
 (any Newznab/Torznab endpoint, including per-indexer feed URLs from
@@ -180,7 +183,7 @@ scriptable:
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
-| Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab`, `GET /queue` |
+| Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history` |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
@@ -224,7 +227,7 @@ metadata endpoints return 503.
 - [x] Quality profiles per library (ordered format preferences, language, size bounds; default profile drives search scoring; managed in Settings)
 - [x] **qBittorrent** client: add, track, remove (category-scoped; seed goals with CDH)
 - [x] **SABnzbd** client: add, track, remove (category-scoped; post-process hand-off with CDH)
-- [ ] Completed Download Handling: import, rename, cleanup, failed-download handling
+- [x] Completed Download Handling: finished grabs import automatically (copy into naming-template layout, torrents keep seeding, usenet history cleaned up, failed downloads resolved + removed), with grab history and a manual Import Now
 - [ ] Automatic search for wanted items + RSS sync loop
 - [ ] Interactive search UI
 

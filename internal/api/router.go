@@ -12,6 +12,7 @@ import (
 
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/download"
+	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
@@ -22,31 +23,35 @@ import (
 )
 
 type server struct {
-	cfg      *config.Config
-	db       *sql.DB
-	store    *library.Store
-	metadata *metadata.Manager // active provider is swappable at runtime
-	refresh  *refresh.Service
-	scanner  *scanner.Service
+	cfg       *config.Config
+	db        *sql.DB
+	store     *library.Store
+	metadata  *metadata.Manager // active provider is swappable at runtime
+	refresh   *refresh.Service
+	scanner   *scanner.Service
 	organize  *organize.Service
 	indexers  *indexer.Service
 	downloads *download.Service
+	importer  *importer.Service
 	webFS     fs.FS // nil when no frontend build is embedded
 	version   string
 }
 
 func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, version string) http.Handler {
 	store := library.NewStore(db)
+	org := organize.New(store, cfg)
+	downloads := download.NewService(download.NewStore(db))
 	s := &server{
-		cfg:      cfg,
-		db:       db,
-		store:    store,
-		metadata: providers,
-		refresh:  refresh.New(store, providers),
-		scanner:  scanner.New(store),
-		organize:  organize.New(store, cfg),
+		cfg:       cfg,
+		db:        db,
+		store:     store,
+		metadata:  providers,
+		refresh:   refresh.New(store, providers),
+		scanner:   scanner.New(store),
+		organize:  org,
 		indexers:  indexer.NewService(indexer.NewStore(db)),
-		downloads: download.NewService(download.NewStore(db)),
+		downloads: downloads,
+		importer:  importer.New(store, downloads, org),
 		version:   version,
 	}
 	if dist, ok := web.FS(); ok {
@@ -110,6 +115,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("DELETE /api/v1/downloadclient/{id}", s.auth(s.handleDeleteDownloadClient))
 	mux.HandleFunc("POST /api/v1/downloadclient/test", s.auth(s.handleTestDownloadClient))
 	mux.HandleFunc("GET /api/v1/queue", s.auth(s.handleQueue))
+	mux.HandleFunc("POST /api/v1/library/import", s.auth(s.handleImport))
+	mux.HandleFunc("GET /api/v1/history", s.auth(s.handleHistory))
 
 	mux.HandleFunc("/", s.handleIndex)
 

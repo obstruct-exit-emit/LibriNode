@@ -137,6 +137,24 @@ export interface QueueItem {
   path?: string;
 }
 
+export interface GrabRecord {
+  id: number;
+  bookId?: number;
+  title: string;
+  protocol: string;
+  status: "grabbed" | "imported" | "failed";
+  message?: string;
+  grabbedAt: string;
+  completedAt?: string;
+}
+
+export interface ImportResult {
+  imported: number;
+  failed: number;
+  skipped: number;
+  messages?: string[];
+}
+
 export interface QualityProfile {
   id: number;
   name: string;
@@ -321,6 +339,9 @@ export const api = {
     ),
   queue: () =>
     request<{ items: QueueItem[]; errors: string[] }>("/api/v1/queue"),
+  history: () => request<GrabRecord[]>("/api/v1/history"),
+  runImport: () =>
+    request<ImportResult>("/api/v1/library/import", { method: "POST" }),
 
   listProfiles: () => request<QualityProfile[]>("/api/v1/qualityprofile"),
   addProfile: (p: Partial<QualityProfile>) =>

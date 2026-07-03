@@ -16,6 +16,12 @@ var ebookExtensions = map[string]bool{
 	".pdf":  true,
 }
 
+// IsEbookPath reports whether a filename has one of the ebook extensions
+// LibriNode handles (used by the scanner and the download importer).
+func IsEbookPath(name string) bool {
+	return ebookExtensions[strings.ToLower(filepath.Ext(name))]
+}
+
 // ParsedFile is the scanner's best guess at what a file is, derived purely
 // from its path. Zero fields mean "unknown".
 type ParsedFile struct {

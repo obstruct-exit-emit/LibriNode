@@ -144,6 +144,7 @@ func (q *qbittorrent) List(ctx context.Context) ([]Item, error) {
 	for _, t := range torrents {
 		item := Item{
 			Client:   q.cfg.Name,
+			ConfigID: q.cfg.ID,
 			ID:       t.Hash,
 			Title:    t.Name,
 			Progress: t.Progress,
