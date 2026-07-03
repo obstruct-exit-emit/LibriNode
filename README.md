@@ -211,7 +211,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 1 nearly done.** The library core works end-to-end: configure a metadata provider in the settings UI, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh, and scan root folders to match files you already own (owned/wanted per book) — all from the embedded web UI or the REST API. The rename engine and manual import close out Phase 1.
+🚧 **Pre-alpha — Phase 1 nearly done.** The library core works end-to-end: configure a metadata provider in the settings UI, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh, and scan root folders to match files you already own (owned/wanted per book) — all from the embedded web UI or the REST API. The rename engine and manual import (in progress) close out Phase 1; then Phase 2 starts the acquisition pipeline.
 
 ## License
 
