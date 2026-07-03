@@ -213,12 +213,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The ebook library's default quality profile drives scoring; the
-	// built-in defaults only apply if the profile table is somehow empty.
-	prefs := release.DefaultEbookPreferences()
-	if profile, err := s.store.DefaultProfile("ebook"); err == nil {
-		prefs = release.PreferencesFromProfile(*profile)
-	}
+	prefs := release.PreferencesForEbook(s.store)
 	candidates := make([]release.Candidate, 0, len(found))
 	for _, rel := range found {
 		candidates = append(candidates, release.Score(rel, prefs, book, author))

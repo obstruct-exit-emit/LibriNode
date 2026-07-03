@@ -24,6 +24,15 @@ type Preferences struct {
 	MaxSize  int64
 }
 
+// PreferencesForEbook resolves the active scoring rules: the default ebook
+// quality profile when one exists, built-in defaults otherwise.
+func PreferencesForEbook(store *library.Store) Preferences {
+	if p, err := store.DefaultProfile("ebook"); err == nil {
+		return PreferencesFromProfile(*p)
+	}
+	return DefaultEbookPreferences()
+}
+
 func DefaultEbookPreferences() Preferences {
 	return Preferences{
 		FormatScores: map[string]int{"epub": 100, "azw3": 80, "mobi": 60, "pdf": 30},

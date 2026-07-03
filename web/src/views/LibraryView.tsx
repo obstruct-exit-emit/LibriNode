@@ -5,6 +5,7 @@ import {
   type Book,
   type BookFile,
   type Edition,
+  type ReleaseCandidate,
   type RenameMove,
 } from "../api";
 
@@ -54,6 +55,27 @@ export default function LibraryView({
       .finally(() => setScanning(false));
   };
 
+  const searchWanted = () => {
+    setScanning(true);
+    setScanNotice("");
+    api
+      .searchWanted()
+      .then((r) => {
+        const details = r.outcomes
+          .filter((o) => !o.grabbed && o.message)
+          .slice(0, 3)
+          .map((o) => `${o.bookTitle}: ${o.message}`)
+          .join("; ");
+        setScanNotice(
+          r.searched === 0
+            ? "Nothing to search — every monitored book has a file (or a pending grab)."
+            : `Searched ${r.searched} wanted book(s), grabbed ${r.grabbed}.${details ? " " + details : ""}`,
+        );
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setScanning(false));
+  };
+
   const previewRenames = () => {
     setOrganizing(true);
     api
@@ -91,6 +113,13 @@ export default function LibraryView({
         <div className="card-head">
           <h2>Authors ({authors.length})</h2>
           <span className="row-actions">
+            <button
+              disabled={scanning}
+              onClick={searchWanted}
+              title="Search indexers for every monitored book without a file and grab the best releases"
+            >
+              Search wanted
+            </button>
             <button
               disabled={organizing}
               onClick={previewRenames}
@@ -321,6 +350,47 @@ function BookRow({
   const [detail, setDetail] = useState<Book | null>(null);
   const [open, setOpen] = useState(false);
   const [monitored, setMonitored] = useState(book.monitored);
+  const [candidates, setCandidates] = useState<ReleaseCandidate[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [grabNotice, setGrabNotice] = useState("");
+
+  const interactiveSearch = () => {
+    setSearching(true);
+    setGrabNotice("");
+    api
+      .searchReleasesForBook(book.id)
+      .then((r) => {
+        setCandidates(r.releases);
+        if (r.errors.length) setGrabNotice(`Some indexers failed: ${r.errors.join("; ")}`);
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setSearching(false));
+  };
+
+  const autoGrab = () => {
+    setSearching(true);
+    setGrabNotice("");
+    api
+      .autoSearchBook(book.id)
+      .then((o) =>
+        setGrabNotice(
+          o.grabbed
+            ? `✓ Grabbed "${o.release}" via ${o.client}`
+            : `✗ ${o.message ?? "nothing grabbed"}`,
+        ),
+      )
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setSearching(false));
+  };
+
+  const grab = (c: ReleaseCandidate) => {
+    api
+      .grabRelease(c.title, c.downloadUrl, c.protocol, book.id)
+      .then((r) => setGrabNotice(`✓ Sent "${c.title}" to ${r.client}`))
+      .catch((err: unknown) =>
+        setGrabNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      );
+  };
 
   const loadDetail = () => {
     if (!open) {
@@ -369,6 +439,47 @@ function BookRow({
                 .map((s) => `${s.title} #${s.position}`)
                 .join(", ")}
             </p>
+          )}
+          <div className="settings-actions">
+            <button disabled={searching} onClick={autoGrab} title="Search indexers and grab the best release">
+              {searching ? "Working…" : "Auto grab"}
+            </button>
+            <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
+              Search releases
+            </button>
+            {grabNotice && (
+              <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>
+                {grabNotice}
+              </span>
+            )}
+          </div>
+          {candidates && (
+            <ul className="rows nested">
+              {candidates.length === 0 && <li className="muted">No releases found.</li>}
+              {candidates.map((c) => (
+                <li key={c.guid + c.indexer}>
+                  <div className="row">
+                    <span className="file-path">
+                      {c.title}
+                      {!c.approved && c.rejections && (
+                        <span className="notice bad"> — {c.rejections.join(", ")}</span>
+                      )}
+                    </span>
+                    <span className="row-actions">
+                      <span className="muted">
+                        {c.indexer} · {c.protocol}
+                        {c.seeders >= 0 && ` · ${c.seeders} seeders`}
+                        {c.size > 0 && ` · ${(c.size / (1 << 20)).toFixed(1)} MiB`}
+                        {` · score ${c.score}`}
+                      </span>
+                      {c.approved && (
+                        <button onClick={() => grab(c)}>Grab</button>
+                      )}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
           {detail.files && detail.files.length > 0 && (
             <ul className="rows nested">

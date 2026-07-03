@@ -102,13 +102,14 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 7. **Settings → Download Clients:** point LibriNode at qBittorrent
    (torrents) and/or SABnzbd (usenet). Then search releases
    (`GET /api/v1/release?bookId=N` returns parsed, scored, ranked
-   candidates) and send one to a client with `POST /api/v1/release/grab`
-   (include `bookId` and the finished download is imported into your library
-   automatically — checked every minute, or on demand via **Import now**).
-   The **Activity** tab shows the live queue and grab history. Format
-   preferences live under **Settings → Quality Profiles**. (In-UI search
-   buttons and the automatic wanted-list search are the last Phase 2
-   slices.)
+   candidates). Every wanted book in the Library has **Auto grab** (search
+   indexers, grab the best release) and **Search releases** (pick from the
+   ranked candidates yourself); **Search wanted** in the Library header
+   sweeps everything at once, and a background pass does the same every six
+   hours. Finished downloads import automatically (checked every minute, or
+   via **Import now**), the **Activity** tab shows the live queue and grab
+   history, and format preferences live under **Settings → Quality
+   Profiles**.
 
 **Indexers** can be added two ways: manually under **Settings → Indexers**
 (any Newznab/Torznab endpoint, including per-indexer feed URLs from
@@ -184,6 +185,7 @@ scriptable:
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history` |
+| Auto search | `POST /book/{id}/search` (grab best release for one book), `POST /library/search` (sweep all wanted books) |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
@@ -228,8 +230,8 @@ metadata endpoints return 503.
 - [x] **qBittorrent** client: add, track, remove (category-scoped; seed goals with CDH)
 - [x] **SABnzbd** client: add, track, remove (category-scoped; post-process hand-off with CDH)
 - [x] Completed Download Handling: finished grabs import automatically (copy into naming-template layout, torrents keep seeding, usenet history cleaned up, failed downloads resolved + removed), with grab history and a manual Import Now
-- [ ] Automatic search for wanted items + RSS sync loop
-- [ ] Interactive search UI
+- [x] Automatic search for wanted items: periodic sweep (6h) + Search Wanted button + per-book Auto Grab; grabs the best approved release, skips books with pending grabs
+- [x] Interactive search UI: per-book release candidates with scores/rejections and Grab buttons in the Library
 
 ### Phase 3 — Audiobooks
 - [ ] Audiobook library type with its own root folders, formats, quality profile
@@ -265,7 +267,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 2 (acquisition pipeline) mostly done.** The Phase 1 library core is feature-complete, and the pipeline pieces are in place: Newznab/Torznab indexers (manual or via Prowlarr application sync), release parsing + scoring against quality profiles, and qBittorrent/SABnzbd download clients with a grab endpoint and live queue view — everything in [Getting started](#getting-started-what-works-today) works from the embedded web UI or the REST API. Remaining in Phase 2: completed download handling (auto-import of finished grabs), the automatic search + RSS loop, and the interactive search UI. Asterisks: Hardcover calls and the Prowlarr/download-client integrations are tested against faithful API mocks, not yet against the live services.
+🚧 **Pre-alpha — Phases 0–2 complete.** The full *arr loop works end-to-end for ebooks: add books from Hardcover, and LibriNode searches your Newznab/Torznab indexers (manual or Prowlarr-synced), scores releases against your quality profile, grabs the best via qBittorrent/SABnzbd, imports the finished download into your naming-template layout, and flips the book to *owned* — automatically on a schedule, or by hand at any step from the embedded web UI. Asterisk: Hardcover, Prowlarr, and download-client integrations are tested against faithful API mocks, not yet verified against the live services. Phase 3 (audiobooks) is next.
 
 ## License
 

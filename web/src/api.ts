@@ -137,6 +137,29 @@ export interface QueueItem {
   path?: string;
 }
 
+export interface ReleaseCandidate extends Release {
+  parsed: {
+    author?: string;
+    title?: string;
+    year?: number;
+    formats?: string[];
+    language?: string;
+    retail: boolean;
+  };
+  score: number;
+  approved: boolean;
+  rejections?: string[];
+}
+
+export interface SearchOutcome {
+  bookId: number;
+  bookTitle: string;
+  grabbed: boolean;
+  release?: string;
+  client?: string;
+  message?: string;
+}
+
 export interface GrabRecord {
   id: number;
   bookId?: number;
@@ -332,10 +355,21 @@ export const api = {
     request<void>(`/api/v1/downloadclient/${id}`, { method: "DELETE" }),
   testDownloadClient: (c: Omit<DownloadClient, "id">) =>
     request<{ ok: boolean }>("/api/v1/downloadclient/test", json(c)),
-  grabRelease: (title: string, downloadUrl: string, protocol: string) =>
-    request<{ client: string; id?: string }>(
+  grabRelease: (title: string, downloadUrl: string, protocol: string, bookId?: number) =>
+    request<{ client: string; id?: string; grabId: number }>(
       "/api/v1/release/grab",
-      json({ title, downloadUrl, protocol }),
+      json({ title, downloadUrl, protocol, bookId }),
+    ),
+  searchReleasesForBook: (bookId: number) =>
+    request<{ releases: ReleaseCandidate[]; errors: string[] }>(
+      `/api/v1/release?bookId=${bookId}`,
+    ),
+  autoSearchBook: (bookId: number) =>
+    request<SearchOutcome>(`/api/v1/book/${bookId}/search`, { method: "POST" }),
+  searchWanted: () =>
+    request<{ searched: number; grabbed: number; outcomes: SearchOutcome[] }>(
+      "/api/v1/library/search",
+      { method: "POST" },
     ),
   queue: () =>
     request<{ items: QueueItem[]; errors: string[] }>("/api/v1/queue"),

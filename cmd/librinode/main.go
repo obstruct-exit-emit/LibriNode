@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/librinode/librinode/internal/api"
+	"github.com/librinode/librinode/internal/autosearch"
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/importer"
+	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
 	"github.com/librinode/librinode/internal/metadata/hardcover"
@@ -32,6 +34,11 @@ const metadataRefreshInterval = 24 * time.Hour
 // importInterval is how often Completed Download Handling checks the
 // download clients for finished grabs.
 const importInterval = time.Minute
+
+// wantedSearchInterval is how often the automatic search sweeps the wanted
+// list. Kept conservative to be polite to indexers; per-book and search-all
+// endpoints cover "right now".
+const wantedSearchInterval = 6 * time.Hour
 
 // version is overridden at build time via -ldflags "-X main.version=x.y.z".
 var version = "0.0.1-alpha"
@@ -96,9 +103,11 @@ func run(dataDir string) error {
 	bgCtx, cancelBg := context.WithCancel(context.Background())
 	defer cancelBg()
 	store := library.NewStore(db)
+	downloads := download.NewService(download.NewStore(db))
 	go refresh.New(store, providers).RunPeriodic(bgCtx, metadataRefreshInterval)
-	go importer.New(store, download.NewService(download.NewStore(db)), organize.New(store, cfg)).
-		RunPeriodic(bgCtx, importInterval)
+	go importer.New(store, downloads, organize.New(store, cfg)).RunPeriodic(bgCtx, importInterval)
+	go autosearch.New(store, indexer.NewService(indexer.NewStore(db)), downloads).
+		RunPeriodic(bgCtx, wantedSearchInterval)
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr(),

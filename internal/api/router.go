@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/librinode/librinode/internal/autosearch"
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/importer"
@@ -33,6 +34,7 @@ type server struct {
 	indexers  *indexer.Service
 	downloads *download.Service
 	importer  *importer.Service
+	search    *autosearch.Service
 	webFS     fs.FS // nil when no frontend build is embedded
 	version   string
 }
@@ -41,6 +43,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	store := library.NewStore(db)
 	org := organize.New(store, cfg)
 	downloads := download.NewService(download.NewStore(db))
+	indexers := indexer.NewService(indexer.NewStore(db))
 	s := &server{
 		cfg:       cfg,
 		db:        db,
@@ -49,9 +52,10 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		refresh:   refresh.New(store, providers),
 		scanner:   scanner.New(store),
 		organize:  org,
-		indexers:  indexer.NewService(indexer.NewStore(db)),
+		indexers:  indexers,
 		downloads: downloads,
 		importer:  importer.New(store, downloads, org),
+		search:    autosearch.New(store, indexers, downloads),
 		version:   version,
 	}
 	if dist, ok := web.FS(); ok {
@@ -117,6 +121,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/queue", s.auth(s.handleQueue))
 	mux.HandleFunc("POST /api/v1/library/import", s.auth(s.handleImport))
 	mux.HandleFunc("GET /api/v1/history", s.auth(s.handleHistory))
+	mux.HandleFunc("POST /api/v1/book/{id}/search", s.auth(s.handleAutoSearchBook))
+	mux.HandleFunc("POST /api/v1/library/search", s.auth(s.handleSearchWanted))
 
 	mux.HandleFunc("/", s.handleIndex)
 

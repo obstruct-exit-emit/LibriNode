@@ -159,7 +159,7 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
 	defer cancel()
 
-	result, err := s.downloads.Grab(ctx, req.Protocol, req.DownloadURL, req.Title)
+	result, grab, err := s.downloads.GrabRelease(ctx, req.Protocol, req.DownloadURL, req.Title, req.BookID)
 	if errors.Is(err, download.ErrNoClient) {
 		writeError(w, http.StatusServiceUnavailable,
 			"no enabled "+req.Protocol+" download client — add one under Settings")
@@ -169,20 +169,49 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-
-	grab := &download.GrabRecord{
-		BookID:         req.BookID,
-		ClientConfigID: result.ClientID,
-		ClientItemID:   result.ID,
-		Title:          req.Title,
-		Protocol:       req.Protocol,
-	}
-	if err := s.downloads.Store().AddGrab(grab); err != nil {
-		writeError(w, http.StatusInternalServerError, "recording grab: "+err.Error())
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"client": result.Client, "id": result.ID, "grabId": grab.ID,
+	})
+}
+
+// handleAutoSearchBook searches indexers for one book and grabs the best
+// approved release automatically.
+func (s *server) handleAutoSearchBook(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	ctx, cancel := s.metadataCtx(r)
+	defer cancel()
+
+	outcome, err := s.search.SearchBook(ctx, id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, outcome)
+}
+
+// handleSearchWanted runs the automatic search over every wanted book now
+// (the background loop does the same on a schedule).
+func (s *server) handleSearchWanted(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+
+	outcomes, err := s.search.SearchWanted(ctx)
+	if err != nil && len(outcomes) == 0 {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	grabbed := 0
+	for _, o := range outcomes {
+		if o.Grabbed {
+			grabbed++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"searched": len(outcomes), "grabbed": grabbed, "outcomes": outcomes,
 	})
 }
 

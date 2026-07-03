@@ -798,6 +798,71 @@ func TestBookAwareReleaseSearch(t *testing.T) {
 	a.want(a.call("GET", "/api/v1/release?bookId=9999", nil, nil), http.StatusNotFound)
 }
 
+func TestAutoSearchEndpoints(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// Indexer offering the right book; SAB accepting grabs.
+	idx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("t") == "caps" {
+			w.Write([]byte(`<caps><server title="mock"/></caps>`))
+			return
+		}
+		w.Write([]byte(`<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel>
+			<item><title>Terry Pratchett - The Colour of Magic Retail EPUB</title><guid>g1</guid>
+			<link>https://idx/get/tcom.nzb</link><newznab:attr name="size" value="1048576"/></item>
+		</channel></rss>`))
+	}))
+	defer idx.Close()
+	sab := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("mode") {
+		case "addurl":
+			w.Write([]byte(`{"status": true, "nzo_ids": ["nzo_as"]}`))
+		default:
+			w.Write([]byte(`{"version": "4.3.2", "queue": {"slots": []}, "history": {"slots": []}}`))
+		}
+	}))
+	defer sab.Close()
+
+	a.want(a.call("POST", "/api/v1/indexer",
+		map[string]any{"name": "mock", "type": "newznab", "baseUrl": idx.URL, "enabled": true}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/downloadclient",
+		map[string]any{"name": "sab", "type": "sabnzbd", "host": sab.URL, "apiKey": "k", "enabled": true}, nil), http.StatusCreated)
+
+	var book library.Book
+	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, &book), http.StatusCreated)
+
+	// Per-book automatic search grabs the release.
+	var outcome struct {
+		Grabbed bool   `json:"grabbed"`
+		Release string `json:"release"`
+		Message string `json:"message"`
+	}
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/book/%d/search", book.ID), nil, &outcome), http.StatusOK)
+	if !outcome.Grabbed || outcome.Release == "" {
+		t.Fatalf("outcome = %+v", outcome)
+	}
+
+	// History has the grab tied to the book.
+	var history []download.GrabRecord
+	a.want(a.call("GET", "/api/v1/history", nil, &history), http.StatusOK)
+	if len(history) != 1 || history[0].BookID != book.ID {
+		t.Fatalf("history = %+v", history)
+	}
+
+	// Search-all skips the pending book.
+	var all struct {
+		Searched int `json:"searched"`
+		Grabbed  int `json:"grabbed"`
+	}
+	a.want(a.call("POST", "/api/v1/library/search", nil, &all), http.StatusOK)
+	if all.Searched != 0 || all.Grabbed != 0 {
+		t.Fatalf("search-all = %+v", all)
+	}
+
+	a.want(a.call("POST", "/api/v1/book/9999/search", nil, nil), http.StatusNotFound)
+}
+
 func TestRefreshEndpoints(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

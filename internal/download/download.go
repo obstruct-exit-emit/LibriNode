@@ -214,6 +214,28 @@ func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabR
 	return nil, ErrNoClient
 }
 
+// GrabRelease sends a release to the best client for its protocol and
+// records the grab (tied to a book when bookID > 0) so Completed Download
+// Handling can import the result. Used by both the grab endpoint and
+// automatic search.
+func (s *Service) GrabRelease(ctx context.Context, protocol, url, title string, bookID int64) (*GrabResult, *GrabRecord, error) {
+	result, err := s.Grab(ctx, protocol, url, title)
+	if err != nil {
+		return nil, nil, err
+	}
+	grab := &GrabRecord{
+		BookID:         bookID,
+		ClientConfigID: result.ClientID,
+		ClientItemID:   result.ID,
+		Title:          title,
+		Protocol:       protocol,
+	}
+	if err := s.store.AddGrab(grab); err != nil {
+		return result, nil, fmt.Errorf("recording grab: %w", err)
+	}
+	return result, grab, nil
+}
+
 // Remove deletes an item from the client identified by its config id.
 func (s *Service) Remove(ctx context.Context, configID int64, itemID string, deleteData bool) error {
 	cfg, err := s.store.Get(configID)
