@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   api,
   type MetadataSettings,
+  type NamingSettings,
   type ProviderSettings,
   type RootFolder,
 } from "../api";
@@ -15,7 +16,88 @@ export default function SettingsView({
     <>
       <MetadataCard onError={onError} />
       <RootFoldersCard onError={onError} />
+      <NamingCard onError={onError} />
     </>
+  );
+}
+
+function NamingCard({
+  onError,
+}: {
+  onError: (message: string) => void;
+}) {
+  const [settings, setSettings] = useState<NamingSettings | null>(null);
+  const [folder, setFolder] = useState("");
+  const [file, setFile] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    api
+      .getNamingSettings()
+      .then((s) => {
+        setSettings(s);
+        setFolder(s.ebookFolder);
+        setFile(s.ebookFile);
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  if (!settings) return null;
+
+  const save = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .saveNamingSettings(folder.trim(), file.trim())
+      .then((s) => {
+        setSettings(s);
+        setNotice("✓ Saved — use Organize in the Library tab to apply to existing files");
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <section className="card">
+      <h2>File Naming</h2>
+      <p className="muted">
+        How organized ebook files are placed inside a root folder. Available
+        tokens: {settings.tokens.map((t, i) => (
+          <span key={t}>
+            {i > 0 && " "}
+            <code>{t}</code>
+          </span>
+        ))}
+        . Tokens without a value (e.g. series, for standalone books) drop out
+        cleanly.
+      </p>
+      <div className="settings-form">
+        <label>
+          Folder template
+          <input value={folder} onChange={(e) => setFolder(e.target.value)} />
+        </label>
+        <label>
+          File template
+          <input value={file} onChange={(e) => setFile(e.target.value)} />
+        </label>
+        <p className="muted">
+          Example: <code>{settings.example}</code>
+        </p>
+        <div className="settings-actions">
+          <button disabled={busy || !folder.trim() || !file.trim()} onClick={save}>
+            Save
+          </button>
+          {notice && (
+            <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
+              {notice}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

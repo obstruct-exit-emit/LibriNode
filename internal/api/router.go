@@ -13,6 +13,7 @@ import (
 	"github.com/quillarr/quillarr/internal/config"
 	"github.com/quillarr/quillarr/internal/library"
 	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/quillarr/quillarr/internal/organize"
 	"github.com/quillarr/quillarr/internal/refresh"
 	"github.com/quillarr/quillarr/internal/scanner"
 	"github.com/quillarr/quillarr/web"
@@ -25,6 +26,7 @@ type server struct {
 	metadata *metadata.Manager // active provider is swappable at runtime
 	refresh  *refresh.Service
 	scanner  *scanner.Service
+	organize *organize.Service
 	webFS    fs.FS // nil when no frontend build is embedded
 	version  string
 }
@@ -38,6 +40,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		metadata: providers,
 		refresh:  refresh.New(store, providers),
 		scanner:  scanner.New(store),
+		organize: organize.New(store, cfg),
 		version:  version,
 	}
 	if dist, ok := web.FS(); ok {
@@ -66,11 +69,17 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("DELETE /api/v1/book/{id}", s.auth(s.handleDeleteBook))
 	mux.HandleFunc("PUT /api/v1/edition/{id}/monitor", s.auth(s.handleMonitorEdition))
 	mux.HandleFunc("POST /api/v1/library/scan", s.auth(s.handleScan))
+	mux.HandleFunc("GET /api/v1/library/rename", s.auth(s.handleRenamePreview))
+	mux.HandleFunc("POST /api/v1/library/rename", s.auth(s.handleRenameApply))
 	mux.HandleFunc("GET /api/v1/bookfile", s.auth(s.handleListBookFiles))
+	mux.HandleFunc("POST /api/v1/bookfile/{id}/match", s.auth(s.handleMatchBookFile))
+	mux.HandleFunc("DELETE /api/v1/bookfile/{id}", s.auth(s.handleDeleteBookFile))
 
 	mux.HandleFunc("GET /api/v1/settings/metadata", s.auth(s.handleGetMetadataSettings))
 	mux.HandleFunc("PUT /api/v1/settings/metadata", s.auth(s.handlePutMetadataSettings))
 	mux.HandleFunc("POST /api/v1/settings/metadata/test", s.auth(s.handleTestMetadataProvider))
+	mux.HandleFunc("GET /api/v1/settings/naming", s.auth(s.handleGetNamingSettings))
+	mux.HandleFunc("PUT /api/v1/settings/naming", s.auth(s.handlePutNamingSettings))
 
 	mux.HandleFunc("/", s.handleIndex)
 

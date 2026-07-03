@@ -88,6 +88,26 @@ export interface ScanResult {
   errors?: string[];
 }
 
+export interface NamingSettings {
+  ebookFolder: string;
+  ebookFile: string;
+  tokens: string[];
+  example: string;
+}
+
+export interface RenameMove {
+  fileId: number;
+  bookId: number;
+  bookTitle: string;
+  from: string;
+  to: string;
+}
+
+export interface RenameResult {
+  moves: RenameMove[];
+  skips: string[];
+}
+
 // Metadata provider search results (not yet in the library).
 export interface SearchAuthor {
   foreignAuthorId: string;
@@ -209,6 +229,23 @@ export const api = {
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
   listUnmatchedFiles: () =>
     request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
+  renamePreview: () => request<RenameResult>("/api/v1/library/rename"),
+  renameApply: () =>
+    request<RenameResult>("/api/v1/library/rename", { method: "POST" }),
+  matchFile: (fileId: number, bookId: number) =>
+    request<{ file: BookFile; skips: string[] }>(
+      `/api/v1/bookfile/${fileId}/match`,
+      json({ bookId }),
+    ),
+  dismissFile: (fileId: number) =>
+    request<void>(`/api/v1/bookfile/${fileId}`, { method: "DELETE" }),
+
+  getNamingSettings: () => request<NamingSettings>("/api/v1/settings/naming"),
+  saveNamingSettings: (ebookFolder: string, ebookFile: string) =>
+    request<NamingSettings>("/api/v1/settings/naming", {
+      ...json({ ebookFolder, ebookFile }),
+      method: "PUT",
+    }),
 
   listRootFolders: () => request<RootFolder[]>("/api/v1/rootfolder"),
   addRootFolder: (mediaType: string, path: string) =>

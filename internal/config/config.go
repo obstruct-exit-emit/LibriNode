@@ -30,6 +30,21 @@ type MetadataSettings struct {
 	Providers map[string]metadata.Settings `yaml:"providers"`
 }
 
+// NamingSettings holds the file-organization templates (per media type as
+// later phases land; ebooks first). Rendered per path segment by the naming
+// package.
+type NamingSettings struct {
+	EbookFolder string `yaml:"ebook_folder" json:"ebookFolder"`
+	EbookFile   string `yaml:"ebook_file" json:"ebookFile"`
+}
+
+func defaultNaming() NamingSettings {
+	return NamingSettings{
+		EbookFolder: "{Author Name}",
+		EbookFile:   "{Series Title} {Series Position} - {Book Title}",
+	}
+}
+
 type Config struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -37,6 +52,7 @@ type Config struct {
 	LogLevel string `yaml:"log_level"` // debug, info, warn, error
 
 	Metadata MetadataSettings `yaml:"metadata"`
+	Naming   NamingSettings   `yaml:"naming"`
 
 	// Legacy flat field, migrated into Metadata.Providers on load and
 	// dropped from the file on the next save.
@@ -55,6 +71,7 @@ func defaults() *Config {
 			Active:    "hardcover",
 			Providers: map[string]metadata.Settings{},
 		},
+		Naming: defaultNaming(),
 	}
 }
 
@@ -118,6 +135,14 @@ func Load(dataDir string) (*Config, error) {
 		cfg.setProviderToken("hardcover", v)
 	}
 
+	// Empty templates (fresh section, hand-edited file) fall back to defaults.
+	if cfg.Naming.EbookFolder == "" {
+		cfg.Naming.EbookFolder = defaultNaming().EbookFolder
+	}
+	if cfg.Naming.EbookFile == "" {
+		cfg.Naming.EbookFile = defaultNaming().EbookFile
+	}
+
 	if cfg.APIKey == "" {
 		cfg.APIKey = newAPIKey()
 	}
@@ -159,6 +184,21 @@ func (c *Config) SetMetadata(ms MetadataSettings) error {
 	c.Metadata = ms
 	c.mu.Unlock()
 	return c.save()
+}
+
+// SetNaming replaces the naming templates and persists the config.
+func (c *Config) SetNaming(ns NamingSettings) error {
+	c.mu.Lock()
+	c.Naming = ns
+	c.mu.Unlock()
+	return c.save()
+}
+
+// NamingSettings returns the current naming templates.
+func (c *Config) NamingSettings() NamingSettings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Naming
 }
 
 // MetadataSettings returns a deep copy so callers can't mutate shared state.

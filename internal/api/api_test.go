@@ -288,6 +288,134 @@ func TestScanFlow(t *testing.T) {
 	a.want(a.call("GET", "/api/v1/bookfile", nil, nil), http.StatusBadRequest)
 }
 
+func TestNamingSettingsAndRename(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// Defaults come with tokens and a rendered example.
+	var ns struct {
+		EbookFolder string   `json:"ebookFolder"`
+		EbookFile   string   `json:"ebookFile"`
+		Tokens      []string `json:"tokens"`
+		Example     string   `json:"example"`
+	}
+	a.want(a.call("GET", "/api/v1/settings/naming", nil, &ns), http.StatusOK)
+	if ns.EbookFolder != "{Author Name}" || len(ns.Tokens) == 0 {
+		t.Fatalf("naming defaults = %+v", ns)
+	}
+	if ns.Example != "Terry Pratchett/Discworld 1 - The Colour of Magic.epub" {
+		t.Fatalf("example = %q", ns.Example)
+	}
+
+	// Empty templates rejected; valid update re-renders the example.
+	a.want(a.call("PUT", "/api/v1/settings/naming",
+		map[string]string{"ebookFolder": "", "ebookFile": "x"}, nil), http.StatusBadRequest)
+	a.want(a.call("PUT", "/api/v1/settings/naming", map[string]string{
+		"ebookFolder": "{Author SortName}",
+		"ebookFile":   "{Book Title} ({Release Year})",
+	}, &ns), http.StatusOK)
+	if ns.Example != "Pratchett, Terry/The Colour of Magic (1983).epub" {
+		t.Fatalf("updated example = %q", ns.Example)
+	}
+
+	// Set up a real file, misplaced, matched to a book.
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "wrong-name.epub"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+	var book library.Book
+	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, &book), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	// The scan can't match "wrong-name" — import it manually.
+	var unmatched []library.BookFile
+	a.want(a.call("GET", "/api/v1/bookfile?unmatched=true", nil, &unmatched), http.StatusOK)
+	if len(unmatched) != 1 {
+		t.Fatalf("unmatched = %+v", unmatched)
+	}
+	var imported struct {
+		File  library.BookFile `json:"file"`
+		Skips []string         `json:"skips"`
+	}
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/bookfile/%d/match", unmatched[0].ID),
+		map[string]int64{"bookId": book.ID}, &imported), http.StatusOK)
+	if imported.File.BookID != book.ID {
+		t.Fatalf("imported file = %+v", imported)
+	}
+	// Manual import moved it straight into the template location.
+	wantPath := filepath.Join(rootDir, "Pratchett, Terry", "The Colour of Magic (1983).epub")
+	if imported.File.Path != wantPath {
+		t.Fatalf("imported path = %q, want %q", imported.File.Path, wantPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("file not on disk at target: %v", err)
+	}
+
+	// Rename preview now reports nothing to do.
+	var preview struct {
+		Moves []map[string]any `json:"moves"`
+	}
+	a.want(a.call("GET", "/api/v1/library/rename", nil, &preview), http.StatusOK)
+	if len(preview.Moves) != 0 {
+		t.Fatalf("preview after import = %+v", preview.Moves)
+	}
+
+	// Changing templates makes the preview propose a move; apply executes it.
+	a.want(a.call("PUT", "/api/v1/settings/naming", map[string]string{
+		"ebookFolder": "{Author Name}",
+		"ebookFile":   "{Book Title}",
+	}, nil), http.StatusOK)
+	a.want(a.call("GET", "/api/v1/library/rename", nil, &preview), http.StatusOK)
+	if len(preview.Moves) != 1 {
+		t.Fatalf("preview after template change = %+v", preview.Moves)
+	}
+	var applied struct {
+		Moves []map[string]any `json:"moves"`
+		Skips []string         `json:"skips"`
+	}
+	a.want(a.call("POST", "/api/v1/library/rename", nil, &applied), http.StatusOK)
+	if len(applied.Moves) != 1 || len(applied.Skips) != 0 {
+		t.Fatalf("apply = %+v", applied)
+	}
+	if _, err := os.Stat(filepath.Join(rootDir, "Terry Pratchett", "The Colour of Magic.epub")); err != nil {
+		t.Fatalf("file not at new target: %v", err)
+	}
+	// Old author dir swept.
+	if _, err := os.Stat(filepath.Join(rootDir, "Pratchett, Terry")); !os.IsNotExist(err) {
+		t.Error("old folder not swept")
+	}
+}
+
+func TestDismissBookFile(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "junk.epub"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	var unmatched []library.BookFile
+	a.want(a.call("GET", "/api/v1/bookfile?unmatched=true", nil, &unmatched), http.StatusOK)
+	if len(unmatched) != 1 {
+		t.Fatalf("unmatched = %+v", unmatched)
+	}
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/bookfile/%d", unmatched[0].ID), nil, nil), http.StatusNoContent)
+	a.want(a.call("GET", "/api/v1/bookfile?unmatched=true", nil, &unmatched), http.StatusOK)
+	if len(unmatched) != 0 {
+		t.Error("dismissed file still listed")
+	}
+	// Disk untouched.
+	if _, err := os.Stat(filepath.Join(rootDir, "junk.epub")); err != nil {
+		t.Errorf("dismiss must not delete from disk: %v", err)
+	}
+	// Match with a bogus book id is rejected cleanly.
+	a.want(a.call("POST", "/api/v1/bookfile/1/match", map[string]int64{"bookId": 999}, nil), http.StatusNotFound)
+}
+
 func TestRefreshEndpoints(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

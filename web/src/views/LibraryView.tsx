@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Author, type Book, type BookFile, type Edition } from "../api";
+import {
+  api,
+  type Author,
+  type Book,
+  type BookFile,
+  type Edition,
+  type RenameMove,
+} from "../api";
 
 export default function LibraryView({
   onError,
@@ -7,16 +14,20 @@ export default function LibraryView({
   onError: (message: string) => void;
 }) {
   const [authors, setAuthors] = useState<Author[]>([]);
+  const [allBooks, setAllBooks] = useState<Book[]>([]);
   const [unmatched, setUnmatched] = useState<BookFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [openAuthor, setOpenAuthor] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanNotice, setScanNotice] = useState("");
+  const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
+  const [organizing, setOrganizing] = useState(false);
 
   const reload = useCallback(() => {
-    Promise.all([api.listAuthors(), api.listUnmatchedFiles()])
-      .then(([au, un]) => {
+    Promise.all([api.listAuthors(), api.listBooks(), api.listUnmatchedFiles()])
+      .then(([au, bk, un]) => {
         setAuthors(au);
+        setAllBooks(bk);
         setUnmatched(un);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
@@ -43,6 +54,35 @@ export default function LibraryView({
       .finally(() => setScanning(false));
   };
 
+  const previewRenames = () => {
+    setOrganizing(true);
+    api
+      .renamePreview()
+      .then((r) => {
+        setRenamePlan(r.moves);
+        if (r.moves.length === 0) {
+          setScanNotice("All files already match the naming templates.");
+          setRenamePlan(null);
+        }
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setOrganizing(false));
+  };
+
+  const applyRenames = () => {
+    setOrganizing(true);
+    api
+      .renameApply()
+      .then((r) => {
+        const skipped = r.skips.length ? `, ${r.skips.length} skipped` : "";
+        setScanNotice(`Moved ${r.moves.length} file(s)${skipped}.`);
+        setRenamePlan(null);
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setOrganizing(false));
+  };
+
   if (loading) return <p className="muted">Loading library…</p>;
 
   return (
@@ -51,12 +91,45 @@ export default function LibraryView({
         <div className="card-head">
           <h2>Authors ({authors.length})</h2>
           <span className="row-actions">
+            <button
+              disabled={organizing}
+              onClick={previewRenames}
+              title="Preview moving files into the naming-template layout"
+            >
+              Organize…
+            </button>
             <button disabled={scanning} onClick={scan} title="Scan root folders for ebook files">
               {scanning ? "Scanning…" : "Scan files"}
             </button>
           </span>
         </div>
         {scanNotice && <p className="muted">{scanNotice}</p>}
+        {renamePlan && (
+          <div className="rename-plan">
+            <p>
+              {renamePlan.length} file(s) would move to match the naming
+              templates:
+            </p>
+            <ul className="rows">
+              {renamePlan.map((m) => (
+                <li key={m.fileId}>
+                  <div className="move">
+                    <span className="file-path muted">{m.from}</span>
+                    <span className="file-path">→ {m.to}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="settings-actions">
+              <button disabled={organizing} onClick={applyRenames}>
+                Apply
+              </button>
+              <button className="toggle" onClick={() => setRenamePlan(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         {authors.length === 0 ? (
           <p className="muted">
             Nothing here yet — use <strong>Search</strong> to find an author or
@@ -82,22 +155,80 @@ export default function LibraryView({
         <section className="card">
           <h2>Unmatched files ({unmatched.length})</h2>
           <p className="muted">
-            Found on disk but not matched to any library book. Add the books
-            (Search tab) and re-scan, or wait for manual import to land.
+            Found on disk but not matched to any library book. Pick the right
+            book to import (the file is moved into place), or dismiss the
+            record (disk is never touched). Books not in the library yet can
+            be added from the Search tab first.
           </p>
           <ul className="rows">
             {unmatched.map((f) => (
-              <li key={f.id}>
-                <div className="row">
-                  <span className="file-path">{f.path}</span>
-                  <span className="muted">{f.format}</span>
-                </div>
-              </li>
+              <UnmatchedRow
+                key={f.id}
+                file={f}
+                books={allBooks}
+                onDone={reload}
+                onError={onError}
+              />
             ))}
           </ul>
         </section>
       )}
     </>
+  );
+}
+
+function UnmatchedRow({
+  file,
+  books,
+  onDone,
+  onError,
+}: {
+  file: BookFile;
+  books: Book[];
+  onDone: () => void;
+  onError: (message: string) => void;
+}) {
+  const [bookID, setBookID] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  const run = (action: () => Promise<unknown>) => {
+    setBusy(true);
+    action()
+      .then(onDone)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <li>
+      <div className="row">
+        <span className="file-path">{file.path}</span>
+        <span className="row-actions">
+          <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
+            <option value={0}>Match to book…</option>
+            {books.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.title}
+              </option>
+            ))}
+          </select>
+          <button
+            disabled={busy || bookID === 0}
+            onClick={() => run(() => api.matchFile(file.id, bookID))}
+          >
+            Import
+          </button>
+          <button
+            className="toggle"
+            disabled={busy}
+            onClick={() => run(() => api.dismissFile(file.id))}
+            title="Forget this file (nothing on disk is deleted)"
+          >
+            dismiss
+          </button>
+        </span>
+      </div>
+    </li>
   );
 }
 

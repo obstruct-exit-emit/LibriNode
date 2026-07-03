@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/quillarr/quillarr/internal/config"
 	"github.com/quillarr/quillarr/internal/metadata"
+	"github.com/quillarr/quillarr/internal/naming"
 )
 
 // metadataSettingsResponse is the settings UI's view of metadata config:
@@ -69,6 +71,56 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, s.metadataSettingsResponse())
+}
+
+// --- Naming settings ---
+
+// exampleTokenData renders template previews with a recognizable book.
+var exampleTokenData = naming.TokenData{
+	AuthorName:     "Terry Pratchett",
+	AuthorSortName: "Pratchett, Terry",
+	BookTitle:      "The Colour of Magic",
+	SeriesTitle:    "Discworld",
+	SeriesPosition: 1,
+	ReleaseYear:    "1983",
+}
+
+type namingSettingsResponse struct {
+	config.NamingSettings
+	Tokens  []string `json:"tokens"`
+	Example string   `json:"example"`
+}
+
+func namingResponse(ns config.NamingSettings) namingSettingsResponse {
+	return namingSettingsResponse{
+		NamingSettings: ns,
+		Tokens:         naming.Tokens,
+		Example: filepath.ToSlash(filepath.Join(
+			naming.Format(ns.EbookFolder, exampleTokenData),
+			naming.Format(ns.EbookFile, exampleTokenData)+".epub",
+		)),
+	}
+}
+
+func (s *server) handleGetNamingSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, namingResponse(s.cfg.NamingSettings()))
+}
+
+func (s *server) handlePutNamingSettings(w http.ResponseWriter, r *http.Request) {
+	var req config.NamingSettings
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.EbookFolder == "" || req.EbookFile == "" {
+		writeError(w, http.StatusBadRequest, "ebookFolder and ebookFile are required")
+		return
+	}
+	if err := s.cfg.SetNaming(req); err != nil {
+		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, namingResponse(req))
 }
 
 // handleTestMetadataProvider builds a provider from the submitted (unsaved)

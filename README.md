@@ -129,8 +129,8 @@ scriptable:
 | Authors | `GET/POST /author`, `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
-| Files | `POST /library/scan`, `GET /bookfile?bookId=N`, `GET /bookfile?unmatched=true` |
-| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test` |
+| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
+| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
 bibliography; `POST /book` takes `{"foreignBookId": "..."}` and pulls one
@@ -163,8 +163,8 @@ metadata endpoints return 503.
 - [x] Scheduled + manual metadata refresh
 - [x] Provider registry + metadata settings in the UI (token entry, Test button, hot-swap without restart)
 - [x] Library scanning: detect existing files, match to metadata (owned/wanted per book, unmatched-file list)
-- [ ] File naming templates + rename engine
-- [ ] Manual import with match correction
+- [x] File naming templates + rename engine (token templates, live example, preview-then-apply organize)
+- [x] Manual import with match correction (assign unmatched files to books, auto-move into place, dismiss)
 
 ### Phase 2 — Acquisition pipeline
 - [ ] Indexer framework: Newznab + Torznab clients
@@ -211,7 +211,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 1 nearly done.** The library core works end-to-end: configure a metadata provider in the settings UI, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh, and scan root folders to match files you already own (owned/wanted per book) — all from the embedded web UI or the REST API. The rename engine and manual import (in progress) close out Phase 1; then Phase 2 starts the acquisition pipeline.
+🚧 **Pre-alpha — Phase 1 feature-complete.** The library core works end-to-end from the embedded web UI or the REST API: configure a metadata provider, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh, scan root folders to match files you own, organize files with naming templates (preview, then apply), and manually import unmatched files. One asterisk: Hardcover calls are mock-tested pending a live API token. Phase 2 (indexers, download clients — the acquisition pipeline) is next.
 
 ## License
 

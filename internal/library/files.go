@@ -95,12 +95,46 @@ func (s *Store) listBookFiles(where string, args ...any) ([]BookFile, error) {
 	return files, rows.Err()
 }
 
+func (s *Store) GetBookFile(id int64) (*BookFile, error) {
+	return scanBookFile(s.db.QueryRow(`SELECT `+bookFileCols+` FROM book_files WHERE id = ?`, id))
+}
+
 func (s *Store) ListBookFiles(bookID int64) ([]BookFile, error) {
 	return s.listBookFiles(`WHERE book_id = ? ORDER BY path`, bookID)
 }
 
+func (s *Store) ListMatchedBookFiles() ([]BookFile, error) {
+	return s.listBookFiles(`WHERE book_id IS NOT NULL ORDER BY path`)
+}
+
 func (s *Store) ListUnmatchedBookFiles() ([]BookFile, error) {
 	return s.listBookFiles(`WHERE book_id IS NULL ORDER BY path`)
+}
+
+// SetBookFileBook assigns (or clears, with 0) a file's book — the manual
+// import action.
+func (s *Store) SetBookFileBook(id, bookID int64) error {
+	b := sql.NullInt64{Int64: bookID, Valid: bookID > 0}
+	res, err := s.db.Exec(`UPDATE book_files SET book_id = ? WHERE id = ?`, b, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetBookFilePath records a file's new location after a rename/move.
+func (s *Store) SetBookFilePath(id int64, path string) error {
+	res, err := s.db.Exec(`UPDATE book_files SET path = ? WHERE id = ?`, path, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // BookFilePathsUnderRoot returns path → id for every recorded file in a root
