@@ -116,6 +116,25 @@ API calls need the key from `config.yaml`:
 curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 ```
 
+### API overview (v1)
+
+Everything the UI does goes through `/api/v1` — same endpoints, fully
+scriptable:
+
+| Area | Endpoints |
+|---|---|
+| System | `GET /system/status`, `GET /ping` (no auth) |
+| Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
+| Search | `GET /search?term=&type=author\|book` (metadata provider proxy) |
+| Authors | `GET/POST /author`, `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
+| Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
+| Editions | `PUT /edition/{id}/monitor` |
+| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test` |
+
+`POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
+bibliography; `POST /book` takes `{"foreignBookId": "..."}` and pulls one
+book with its editions (creating an unmonitored author stub if needed).
+
 Metadata search and add require a [Hardcover](https://hardcover.app) API
 token: paste it under **Settings → Metadata Provider** in the web UI (it
 takes effect immediately — no restart) or set `QUILLARR_HARDCOVER_TOKEN`.
@@ -191,7 +210,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phase 1 in progress.** The library core works end-to-end: search Hardcover, add authors/books, monitor editions, scheduled metadata refresh — from the embedded web UI or the REST API. Library scanning and the rename engine are next.
+🚧 **Pre-alpha — Phase 1 in progress.** The library core works end-to-end: configure a metadata provider in the settings UI, search Hardcover, add authors/books, monitor editions, scheduled + manual refresh — all from the embedded web UI or the REST API, with providers pluggable behind a registry. Library scanning (matching files you already own) is in progress; the rename engine and manual import follow.
 
 ## License
 
