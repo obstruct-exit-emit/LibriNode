@@ -125,7 +125,10 @@ no key needed) or **Comics** (needs a free ComicVine API key, entered on
 the Metadata settings card), add the series, and every volume/issue lands
 in the **Series** tab with owned/wanted badges and per-volume Auto grab.
 "Monitor future volumes" is the series' monitor toggle — refreshes (manual
-or the daily sweep) discover new volumes and start monitoring them.
+or the daily sweep) discover new volumes and start monitoring them. One
+AniList quirk: *ongoing* manga often have no official volume count yet, so
+they add with zero volumes and fill in once AniList publishes totals —
+completed series (e.g. Death Note) arrive with all volumes immediately.
 Manga/comic searches use each indexer's **Comic categories** (default
 `7030`), scans understand `Series/Series v05.cbz` layouts, and imports
 write `ComicInfo.xml` into CBZ archives for Kavita/Komga.
