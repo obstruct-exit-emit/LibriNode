@@ -111,6 +111,14 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
    history, and format preferences live under **Settings → Quality
    Profiles**.
 
+**Audiobooks:** add an audiobook root folder, and scanning understands both
+`Author/Title.m4b` and multi-file `Author/Title/*.mp3` layouts (each book
+folder is one unit). To acquire a book as an audiobook, open the book,
+monitor one of its audiobook editions, and either wait for the automatic
+sweep or pick **audiobook** in the book's search controls. Audiobook
+searches use each indexer's **Audio categories** (default `3030`), and
+imports land as `Author/Book Title/` folders — Audiobookshelf-ready.
+
 **Indexers** can be added two ways: manually under **Settings → Indexers**
 (any Newznab/Torznab endpoint, including per-indexer feed URLs from
 Prowlarr or Jackett), or automatically via **Prowlarr application sync** —
@@ -234,10 +242,10 @@ metadata endpoints return 503.
 - [x] Interactive search UI: per-book release candidates with scores/rejections and Grab buttons in the Library
 
 ### Phase 3 — Audiobooks
-- [ ] Audiobook library type with its own root folders, formats, quality profile
-- [ ] Edition awareness: same book as ebook vs audiobook, monitored independently
-- [ ] Audio-specific parsing (narrator, bitrate, m4b vs mp3, chapterized)
-- [ ] Audiobookshelf-friendly folder layout + metadata
+- [x] Audiobook library type with its own root folders, formats (m4b/m4a/mp3/flac/opus), and quality profiles
+- [x] Edition awareness: a book's ebook and audiobook are owned and monitored independently (audiobook acquisition opts in via a monitored audiobook edition)
+- [x] Audio-specific parsing: narrator ("read by"), bitrate, abridged (rejected by default), audio formats; multi-file books scanned and imported as one unit
+- [x] Audiobookshelf-friendly folder layout (`Author/Book Title/` with tracks inside) *(sidecar metadata files come with Phase 5 polish)*
 
 ### Phase 4 — Manga & comics
 - [ ] Volume/chapter/issue data model (series-first instead of author-first)
@@ -267,7 +275,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phases 0–2 complete.** The full *arr loop works end-to-end for ebooks: add books from Hardcover, and LibriNode searches your Newznab/Torznab indexers (manual or Prowlarr-synced), scores releases against your quality profile, grabs the best via qBittorrent/SABnzbd, imports the finished download into your naming-template layout, and flips the book to *owned* — automatically on a schedule, or by hand at any step from the embedded web UI. Hardcover is verified against the live API; the Prowlarr and download-client integrations are tested against faithful API mocks and await a live confirmation. Phase 3 (audiobooks) is next; a full UI overhaul (settings pages as specced above, cover art, proper navigation) lands in Phase 5 before 1.0.
+🚧 **Pre-alpha — Phases 0–3 complete.** The full *arr loop works end-to-end for ebooks **and audiobooks**: add books from Hardcover, and LibriNode searches your Newznab/Torznab indexers (manual or Prowlarr-synced) with per-type categories, scores releases against your quality profiles (audiobooks prefer m4b, reject abridged), grabs the best via qBittorrent/SABnzbd, imports the finished download — Audiobookshelf-style `Author/Title/` folders for audio — and marks each format owned independently. Automatic on a schedule, or by hand at any step from the embedded web UI. Hardcover is verified against the live API; the Prowlarr and download-client integrations are tested against faithful API mocks and await a live confirmation. Phase 4 (manga & comics) is next; the full UI overhaul lands in Phase 5 before 1.0.
 
 ## License
 

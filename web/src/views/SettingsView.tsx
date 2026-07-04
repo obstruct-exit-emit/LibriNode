@@ -348,6 +348,7 @@ const emptyIndexer: Omit<Indexer, "id" | "addedAt"> = {
   baseUrl: "",
   apiKey: "",
   categories: "7000,7020",
+  audioCategories: "3030",
   enabled: true,
   priority: 25,
 };
@@ -497,6 +498,14 @@ function IndexersCard({
             onChange={(e) => set({ categories: e.target.value })}
           />
         </label>
+        <label>
+          Audio categories
+          <input
+            title="Newznab categories used for audiobook searches (3030 = Audio/Audiobook)"
+            value={draft.audioCategories}
+            onChange={(e) => set({ audioCategories: e.target.value })}
+          />
+        </label>
         <div className="settings-actions">
           <button disabled={busy || !draftValid} onClick={testDraft}>
             Test
@@ -523,6 +532,8 @@ function NamingCard({
   const [settings, setSettings] = useState<NamingSettings | null>(null);
   const [folder, setFolder] = useState("");
   const [file, setFile] = useState("");
+  const [abFolder, setAbFolder] = useState("");
+  const [abFile, setAbFile] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -533,6 +544,8 @@ function NamingCard({
         setSettings(s);
         setFolder(s.ebookFolder);
         setFile(s.ebookFile);
+        setAbFolder(s.audiobookFolder);
+        setAbFile(s.audiobookFile);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
@@ -543,7 +556,7 @@ function NamingCard({
     setBusy(true);
     setNotice("");
     api
-      .saveNamingSettings(folder.trim(), file.trim())
+      .saveNamingSettings(folder.trim(), file.trim(), abFolder.trim(), abFile.trim())
       .then((s) => {
         setSettings(s);
         setNotice("✓ Saved — use Organize in the Library tab to apply to existing files");
@@ -579,6 +592,21 @@ function NamingCard({
         </label>
         <p className="muted">
           Example: <code>{settings.example}</code>
+        </p>
+        <label>
+          Audiobook folder template
+          <input value={abFolder} onChange={(e) => setAbFolder(e.target.value)} />
+        </label>
+        <label>
+          Audiobook book-folder template
+          <input
+            title="Names the per-book folder (Audiobookshelf layout); multi-file books keep their track names inside it"
+            value={abFile}
+            onChange={(e) => setAbFile(e.target.value)}
+          />
+        </label>
+        <p className="muted">
+          Audiobook example: <code>{settings.audiobookExample}</code>
         </p>
         <div className="settings-actions">
           <button disabled={busy || !folder.trim() || !file.trim()} onClick={save}>

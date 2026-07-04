@@ -36,6 +36,8 @@ export interface Book {
   coverUrl: string;
   monitored: boolean;
   hasFile: boolean;
+  hasEbookFile: boolean;
+  hasAudiobookFile: boolean;
   editions?: Edition[];
   series?: SeriesLink[];
   files?: BookFile[];
@@ -96,6 +98,7 @@ export interface Indexer {
   baseUrl: string;
   apiKey: string;
   categories: string;
+  audioCategories: string;
   enabled: boolean;
   priority: number;
   addedAt?: string;
@@ -193,8 +196,11 @@ export interface QualityProfile {
 export interface NamingSettings {
   ebookFolder: string;
   ebookFile: string;
+  audiobookFolder: string;
+  audiobookFile: string;
   tokens: string[];
   example: string;
+  audiobookExample: string;
 }
 
 export interface RenameMove {
@@ -355,17 +361,26 @@ export const api = {
     request<void>(`/api/v1/downloadclient/${id}`, { method: "DELETE" }),
   testDownloadClient: (c: Omit<DownloadClient, "id">) =>
     request<{ ok: boolean }>("/api/v1/downloadclient/test", json(c)),
-  grabRelease: (title: string, downloadUrl: string, protocol: string, bookId?: number) =>
+  grabRelease: (
+    title: string,
+    downloadUrl: string,
+    protocol: string,
+    bookId?: number,
+    mediaType: string = "ebook",
+  ) =>
     request<{ client: string; id?: string; grabId: number }>(
       "/api/v1/release/grab",
-      json({ title, downloadUrl, protocol, bookId }),
+      json({ title, downloadUrl, protocol, bookId, mediaType }),
     ),
-  searchReleasesForBook: (bookId: number) =>
+  searchReleasesForBook: (bookId: number, mediaType: string = "ebook") =>
     request<{ releases: ReleaseCandidate[]; errors: string[] }>(
-      `/api/v1/release?bookId=${bookId}`,
+      `/api/v1/release?bookId=${bookId}&mediaType=${mediaType}`,
     ),
-  autoSearchBook: (bookId: number) =>
-    request<SearchOutcome>(`/api/v1/book/${bookId}/search`, { method: "POST" }),
+  autoSearchBook: (bookId: number, mediaType: string = "ebook") =>
+    request<SearchOutcome>(
+      `/api/v1/book/${bookId}/search?mediaType=${mediaType}`,
+      { method: "POST" },
+    ),
   searchWanted: () =>
     request<{ searched: number; grabbed: number; outcomes: SearchOutcome[] }>(
       "/api/v1/library/search",
@@ -405,9 +420,14 @@ export const api = {
     ),
 
   getNamingSettings: () => request<NamingSettings>("/api/v1/settings/naming"),
-  saveNamingSettings: (ebookFolder: string, ebookFile: string) =>
+  saveNamingSettings: (
+    ebookFolder: string,
+    ebookFile: string,
+    audiobookFolder: string,
+    audiobookFile: string,
+  ) =>
     request<NamingSettings>("/api/v1/settings/naming", {
-      ...json({ ebookFolder, ebookFile }),
+      ...json({ ebookFolder, ebookFile, audiobookFolder, audiobookFile }),
       method: "PUT",
     }),
 

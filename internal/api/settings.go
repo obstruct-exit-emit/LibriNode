@@ -87,17 +87,24 @@ var exampleTokenData = naming.TokenData{
 
 type namingSettingsResponse struct {
 	config.NamingSettings
-	Tokens  []string `json:"tokens"`
-	Example string   `json:"example"`
+	Tokens           []string `json:"tokens"`
+	Example          string   `json:"example"`
+	AudiobookExample string   `json:"audiobookExample"`
 }
 
 func namingResponse(ns config.NamingSettings) namingSettingsResponse {
+	audiobookDir := naming.Format(ns.AudiobookFile, exampleTokenData)
 	return namingSettingsResponse{
 		NamingSettings: ns,
 		Tokens:         naming.Tokens,
 		Example: filepath.ToSlash(filepath.Join(
 			naming.Format(ns.EbookFolder, exampleTokenData),
 			naming.Format(ns.EbookFile, exampleTokenData)+".epub",
+		)),
+		AudiobookExample: filepath.ToSlash(filepath.Join(
+			naming.Format(ns.AudiobookFolder, exampleTokenData),
+			audiobookDir,
+			audiobookDir+".m4b",
 		)),
 	}
 }
@@ -115,6 +122,13 @@ func (s *server) handlePutNamingSettings(w http.ResponseWriter, r *http.Request)
 	if req.EbookFolder == "" || req.EbookFile == "" {
 		writeError(w, http.StatusBadRequest, "ebookFolder and ebookFile are required")
 		return
+	}
+	// Audiobook templates keep their defaults when omitted (older clients).
+	if req.AudiobookFolder == "" {
+		req.AudiobookFolder = "{Author Name}"
+	}
+	if req.AudiobookFile == "" {
+		req.AudiobookFile = "{Book Title}"
 	}
 	if err := s.cfg.SetNaming(req); err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())

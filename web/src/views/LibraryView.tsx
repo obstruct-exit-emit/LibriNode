@@ -366,12 +366,13 @@ function BookRow({
   const [candidates, setCandidates] = useState<ReleaseCandidate[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
+  const [mediaType, setMediaType] = useState("ebook");
 
   const interactiveSearch = () => {
     setSearching(true);
     setGrabNotice("");
     api
-      .searchReleasesForBook(book.id)
+      .searchReleasesForBook(book.id, mediaType)
       .then((r) => {
         setCandidates(r.releases);
         if (r.errors.length) setGrabNotice(`Some indexers failed: ${r.errors.join("; ")}`);
@@ -384,7 +385,7 @@ function BookRow({
     setSearching(true);
     setGrabNotice("");
     api
-      .autoSearchBook(book.id)
+      .autoSearchBook(book.id, mediaType)
       .then((o) =>
         setGrabNotice(
           o.grabbed
@@ -398,7 +399,7 @@ function BookRow({
 
   const grab = (c: ReleaseCandidate) => {
     api
-      .grabRelease(c.title, c.downloadUrl, c.protocol, book.id)
+      .grabRelease(c.title, c.downloadUrl, c.protocol, book.id, mediaType)
       .then((r) => setGrabNotice(`✓ Sent "${c.title}" to ${r.client}`))
       .catch((err: unknown) =>
         setGrabNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
@@ -433,11 +434,16 @@ function BookRow({
         </button>
         <span className="row-actions">
           <span
-            className={book.hasFile ? "owned yes" : "owned no"}
-            title={book.hasFile ? "File on disk" : "No file yet"}
+            className={book.hasEbookFile ? "owned yes" : "owned no"}
+            title={book.hasEbookFile ? "Ebook on disk" : "No ebook yet"}
           >
-            {book.hasFile ? "owned" : "wanted"}
+            📖 {book.hasEbookFile ? "owned" : "wanted"}
           </span>
+          {book.hasAudiobookFile && (
+            <span className="owned yes" title="Audiobook on disk">
+              🎧 owned
+            </span>
+          )}
           {book.rating > 0 && <span className="muted">★ {book.rating.toFixed(1)}</span>}
           <button className={monitored ? "toggle on" : "toggle"} onClick={toggleMonitor}>
             {monitored ? "monitored" : "unmonitored"}
@@ -454,6 +460,17 @@ function BookRow({
             </p>
           )}
           <div className="settings-actions">
+            <select
+              value={mediaType}
+              onChange={(e) => {
+                setMediaType(e.target.value);
+                setCandidates(null);
+              }}
+              title="Which format to search for (audiobook grabbing also needs a monitored audiobook edition for automatic searches)"
+            >
+              <option value="ebook">ebook</option>
+              <option value="audiobook">audiobook</option>
+            </select>
             <button disabled={searching} onClick={autoGrab} title="Search indexers and grab the best release">
               {searching ? "Working…" : "Auto grab"}
             </button>
