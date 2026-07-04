@@ -22,6 +22,21 @@ func IsEbookPath(name string) bool {
 	return ebookExtensions[strings.ToLower(filepath.Ext(name))]
 }
 
+// audioExtensions are the audiobook file types (m4a covers m4b-style
+// containers that ship misnamed).
+var audioExtensions = map[string]bool{
+	".m4b":  true,
+	".m4a":  true,
+	".mp3":  true,
+	".flac": true,
+	".opus": true,
+}
+
+// IsAudioPath reports whether a filename is an audiobook audio file.
+func IsAudioPath(name string) bool {
+	return audioExtensions[strings.ToLower(filepath.Ext(name))]
+}
+
 // ParsedFile is the scanner's best guess at what a file is, derived purely
 // from its path. Zero fields mean "unknown".
 type ParsedFile struct {

@@ -14,11 +14,14 @@ type RootFolder struct {
 }
 
 // BookFile is a file found on disk by a library scan. BookID is nil-like (0)
-// when the scanner could not match it to a library book.
+// when the scanner could not match it to a library book. For multi-file
+// audiobooks, Path is the book's directory and Size the total of its audio
+// files.
 type BookFile struct {
 	ID           int64  `json:"id"`
 	RootFolderID int64  `json:"rootFolderId"`
 	BookID       int64  `json:"bookId,omitempty"`
+	MediaType    string `json:"mediaType"`
 	Path         string `json:"path"`
 	Size         int64  `json:"size"`
 	Format       string `json:"format"`
@@ -49,25 +52,29 @@ func (s *Store) ListRootFolders() ([]RootFolder, error) {
 // its book is added to the library).
 func (s *Store) UpsertBookFile(f *BookFile) error {
 	bookID := sql.NullInt64{Int64: f.BookID, Valid: f.BookID > 0}
+	if f.MediaType == "" {
+		f.MediaType = "ebook"
+	}
 	return s.db.QueryRow(`
-		INSERT INTO book_files (root_folder_id, book_id, path, size, format, modified_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO book_files (root_folder_id, book_id, media_type, path, size, format, modified_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
 			root_folder_id = excluded.root_folder_id,
 			book_id = excluded.book_id,
+			media_type = excluded.media_type,
 			size = excluded.size,
 			format = excluded.format,
 			modified_at = excluded.modified_at
 		RETURNING id`,
-		f.RootFolderID, bookID, f.Path, f.Size, f.Format, f.ModifiedAt,
+		f.RootFolderID, bookID, f.MediaType, f.Path, f.Size, f.Format, f.ModifiedAt,
 	).Scan(&f.ID)
 }
 
-const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), path, size, format, modified_at, added_at`
+const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), media_type, path, size, format, modified_at, added_at`
 
 func scanBookFile(row interface{ Scan(...any) error }) (*BookFile, error) {
 	var f BookFile
-	err := row.Scan(&f.ID, &f.RootFolderID, &f.BookID, &f.Path, &f.Size, &f.Format, &f.ModifiedAt, &f.AddedAt)
+	err := row.Scan(&f.ID, &f.RootFolderID, &f.BookID, &f.MediaType, &f.Path, &f.Size, &f.Format, &f.ModifiedAt, &f.AddedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -156,6 +163,17 @@ func (s *Store) BookFilePathsUnderRoot(rootFolderID int64) (map[string]int64, er
 		paths[path] = id
 	}
 	return paths, rows.Err()
+}
+
+// HasMonitoredEdition reports whether a book has at least one monitored
+// edition of the given format — the opt-in signal for acquiring that format
+// (e.g. audiobook wanting).
+func (s *Store) HasMonitoredEdition(bookID int64, format string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM editions WHERE book_id = ? AND format = ? AND monitored = 1`,
+		bookID, format).Scan(&n)
+	return n > 0, err
 }
 
 func (s *Store) DeleteBookFile(id int64) error {

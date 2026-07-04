@@ -28,20 +28,22 @@ type Author struct {
 }
 
 type Book struct {
-	ID          int64   `json:"id"`
-	AuthorID    int64   `json:"authorId"`
-	Source      string  `json:"metadataSource"`
-	ForeignID   string  `json:"foreignBookId"`
-	Title       string  `json:"title"`
-	SortTitle   string  `json:"sortTitle"`
-	Description string  `json:"description"`
-	ReleaseDate string  `json:"releaseDate"`
-	Rating      float64 `json:"rating"`
-	CoverURL    string  `json:"coverUrl"`
-	Monitored   bool    `json:"monitored"`
-	HasFile     bool    `json:"hasFile"`
-	AddedAt     string  `json:"addedAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID               int64   `json:"id"`
+	AuthorID         int64   `json:"authorId"`
+	Source           string  `json:"metadataSource"`
+	ForeignID        string  `json:"foreignBookId"`
+	Title            string  `json:"title"`
+	SortTitle        string  `json:"sortTitle"`
+	Description      string  `json:"description"`
+	ReleaseDate      string  `json:"releaseDate"`
+	Rating           float64 `json:"rating"`
+	CoverURL         string  `json:"coverUrl"`
+	Monitored        bool    `json:"monitored"`
+	HasFile          bool    `json:"hasFile"` // any media type
+	HasEbookFile     bool    `json:"hasEbookFile"`
+	HasAudiobookFile bool    `json:"hasAudiobookFile"`
+	AddedAt          string  `json:"addedAt"`
+	UpdatedAt        string  `json:"updatedAt"`
 	// Populated on detail endpoints.
 	Editions []Edition    `json:"editions,omitempty"`
 	Series   []SeriesLink `json:"series,omitempty"`

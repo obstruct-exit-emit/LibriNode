@@ -216,6 +216,100 @@ func TestScanUnmatchedGainsMatchAfterBookAdded(t *testing.T) {
 	}
 }
 
+func TestScanAudiobookRoot(t *testing.T) {
+	f := fixture(t)
+
+	// Audiobook root: one multi-file book dir, one single-file book, one
+	// unmatched dir, junk that must be ignored.
+	abRoot := t.TempDir()
+	write := func(rel string, size int) {
+		path := filepath.Join(abRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Terry Pratchett/Mort/Part 01.mp3", 100)
+	write("Terry Pratchett/Mort/Part 02.mp3", 200)
+	write("Terry Pratchett/Mort/cover.jpg", 10) // non-audio, excluded from size
+	write("Terry Pratchett/The Colour of Magic.m4b", 500)
+	write("Unknown Reader/Mystery Tape/track.mp3", 50)
+	write("notes.txt", 5)
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	// Ebook root: 4 scanned (fixture). Audiobook root: 3 units.
+	if result.Roots != 2 || result.Scanned != 7 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	// Multi-file book: dir path, summed audio size, matched to Mort.
+	books, _ := f.store.ListBooks(0)
+	var mort, tcom library.Book
+	for _, b := range books {
+		switch b.Title {
+		case "Mort":
+			mort = b
+		case "The Colour of Magic":
+			tcom = b
+		}
+	}
+	if !mort.HasAudiobookFile || !tcom.HasAudiobookFile {
+		t.Fatalf("audiobook flags: mort=%v tcom=%v", mort.HasAudiobookFile, tcom.HasAudiobookFile)
+	}
+	mortFiles, _ := f.store.ListBookFiles(mort.ID)
+	var ab *library.BookFile
+	for i := range mortFiles {
+		if mortFiles[i].MediaType == "audiobook" {
+			ab = &mortFiles[i]
+		}
+	}
+	if ab == nil {
+		t.Fatal("no audiobook file recorded for Mort")
+	}
+	if ab.Path != filepath.Join(abRoot, "Terry Pratchett", "Mort") {
+		t.Errorf("unit path = %q", ab.Path)
+	}
+	if ab.Size != 300 || ab.Format != "mp3" {
+		t.Errorf("unit = size %d format %s, want 300 mp3", ab.Size, ab.Format)
+	}
+
+	// Ebook ownership is independent: Mort's ebook flag comes from the ebook
+	// root fixture, and having an audiobook must not fake ebook ownership.
+	if !mort.HasEbookFile {
+		t.Error("mort should still have its ebook file")
+	}
+	unmatched, _ := f.store.ListUnmatchedBookFiles()
+	foundMystery := false
+	for _, u := range unmatched {
+		if filepath.Base(u.Path) == "Mystery Tape" && u.MediaType == "audiobook" {
+			foundMystery = true
+		}
+	}
+	if !foundMystery {
+		t.Errorf("mystery tape not in unmatched: %+v", unmatched)
+	}
+
+	// Re-scan is idempotent; deleting the book dir prunes the record.
+	if err := os.RemoveAll(filepath.Join(abRoot, "Terry Pratchett", "Mort")); err != nil {
+		t.Fatal(err)
+	}
+	result, err = f.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Removed != 1 {
+		t.Fatalf("post-delete result = %+v", result)
+	}
+}
+
 func TestScanSkipsMissingRoot(t *testing.T) {
 	f := fixture(t)
 

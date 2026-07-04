@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -47,12 +48,19 @@ func (s *Service) Scan(ctx context.Context) (*Result, error) {
 
 	result := &Result{Errors: []string{}}
 	for _, root := range roots {
-		if root.MediaType != "ebook" {
-			continue // other media types get their own scanners in later phases
+		var scanErr error
+		switch root.MediaType {
+		case "ebook":
+			result.Roots++
+			scanErr = s.scanRoot(ctx, root, index, result)
+		case "audiobook":
+			result.Roots++
+			scanErr = s.scanAudiobookRoot(ctx, root, index, result)
+		default:
+			continue // manga/comic scanners arrive in Phase 4
 		}
-		result.Roots++
-		if err := s.scanRoot(ctx, root, index, result); err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", root.Path, err))
+		if scanErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", root.Path, scanErr))
 		}
 	}
 	slog.Info("library scan complete",
@@ -97,6 +105,7 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 		file := &library.BookFile{
 			RootFolderID: root.ID,
 			BookID:       bookID,
+			MediaType:    "ebook",
 			Path:         path,
 			Format:       strings.TrimPrefix(ext, "."),
 		}
@@ -132,6 +141,146 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 		result.Removed++
 	}
 	return nil
+}
+
+// scanAudiobookRoot walks an audiobook root where the unit is either a
+// single audio file (Author/Title.m4b) or a directory whose direct children
+// include audio files (Author/Title/*.mp3 — recorded once, as the
+// directory, with the summed size).
+func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder, index *matchIndex, result *Result) error {
+	known, err := s.store.BookFilePathsUnderRoot(root.ID)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+
+	record := func(path string, size int64, format string, modified time.Time) error {
+		rel, err := filepath.Rel(root.Path, path)
+		if err != nil {
+			return err
+		}
+		bookID := index.match(ParsePath(rel))
+		file := &library.BookFile{
+			RootFolderID: root.ID,
+			BookID:       bookID,
+			MediaType:    "audiobook",
+			Path:         path,
+			Size:         size,
+			Format:       format,
+			ModifiedAt:   modified.UTC().Format(time.RFC3339),
+		}
+		if err := s.store.UpsertBookFile(file); err != nil {
+			return err
+		}
+		seen[path] = true
+		result.Scanned++
+		if bookID > 0 {
+			result.Matched++
+		} else {
+			result.Unmatched++
+		}
+		return nil
+	}
+
+	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if !d.IsDir() {
+			// Loose audio file (not inside a claimed book directory).
+			if !IsAudioPath(path) {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			return record(path, info.Size(), strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), "."), info.ModTime())
+		}
+		if strings.HasPrefix(d.Name(), ".") && path != root.Path {
+			return filepath.SkipDir
+		}
+		if path == root.Path {
+			return nil
+		}
+		// Audiobook roots follow the Author/Book convention (Audiobookshelf
+		// style): first-level dirs are authors, never book units — loose
+		// audio files there (Author/Title.m4b) are single-file units. Deeper
+		// leaf dirs (files only) with audio children are one audiobook each;
+		// dirs that still contain subdirectories are navigation levels.
+		rel, err := filepath.Rel(root.Path, path)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(filepath.ToSlash(rel), "/") {
+			return nil // author level
+		}
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return err
+		}
+		hasAudio := false
+		hasSubdir := false
+		for _, e := range entries {
+			if e.IsDir() {
+				hasSubdir = true
+			} else if IsAudioPath(e.Name()) {
+				hasAudio = true
+			}
+		}
+		if !hasAudio || hasSubdir {
+			return nil
+		}
+		size, format, modified := audiobookDirInfo(path)
+		if err := record(path, size, format, modified); err != nil {
+			return err
+		}
+		return filepath.SkipDir
+	})
+	if err != nil {
+		return err
+	}
+
+	for path, id := range known {
+		if seen[path] {
+			continue
+		}
+		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
+			return err
+		}
+		result.Removed++
+	}
+	return nil
+}
+
+// audiobookDirInfo sums a book directory's audio content: total size, the
+// format of its largest audio file, and the newest modification time.
+func audiobookDirInfo(dir string) (int64, string, time.Time) {
+	var total, largest int64
+	var format string
+	var modified time.Time
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !IsAudioPath(p) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		total += info.Size()
+		if info.Size() >= largest {
+			largest = info.Size()
+			format = strings.TrimPrefix(strings.ToLower(filepath.Ext(p)), ".")
+		}
+		if info.ModTime().After(modified) {
+			modified = info.ModTime()
+		}
+		return nil
+	})
+	return total, format, modified
 }
 
 // RematchUnmatched re-runs matching for unmatched file records against the

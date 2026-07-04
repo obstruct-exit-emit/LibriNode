@@ -27,7 +27,7 @@ type QualityProfile struct {
 // covers ebooks; other types activate with their phases).
 var formatsByMediaType = map[string][]string{
 	"ebook":     {"epub", "azw3", "mobi", "pdf"},
-	"audiobook": {"m4b", "mp3", "flac", "opus"},
+	"audiobook": {"m4b", "m4a", "mp3", "flac", "opus"},
 	"manga":     {"cbz", "cbr", "epub"},
 	"comic":     {"cbz", "cbr", "pdf"},
 }

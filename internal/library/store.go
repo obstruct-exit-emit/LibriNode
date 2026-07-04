@@ -155,12 +155,16 @@ func (s *Store) UpsertBook(b *Book) error {
 }
 
 const bookCols = `id, author_id, metadata_source, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
-	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id), added_at, updated_at`
+	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id),
+	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'ebook'),
+	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'audiobook'),
+	added_at, updated_at`
 
 func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	var b Book
 	err := row.Scan(&b.ID, &b.AuthorID, &b.Source, &b.ForeignID, &b.Title, &b.SortTitle,
-		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored, &b.HasFile, &b.AddedAt, &b.UpdatedAt)
+		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
+		&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.AddedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
