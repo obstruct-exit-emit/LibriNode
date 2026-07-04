@@ -61,6 +61,40 @@ type SeriesLink struct {
 	Position    float64 `json:"position"`
 }
 
+// SeriesProvider is a series-first metadata source (manga, comics): search
+// series, then fetch one with its volumes/issues. AniList and ComicVine are
+// the first implementations.
+type SeriesProvider interface {
+	// Name is stored in metadata_source columns.
+	Name() string
+	// MediaType is the library type this provider serves: manga or comic.
+	MediaType() string
+	// SearchSeries returns series matching a free-text query.
+	SearchSeries(ctx context.Context, query string) ([]SeriesResult, error)
+	// GetSeries returns one series with Issues populated.
+	GetSeries(ctx context.Context, foreignID string) (*SeriesResult, error)
+}
+
+// SeriesResult is a manga/comic series at the provider.
+type SeriesResult struct {
+	ForeignID   string  `json:"foreignSeriesId"`
+	Title       string  `json:"title"`
+	Description string  `json:"description,omitempty"`
+	AuthorName  string  `json:"authorName,omitempty"` // writer / mangaka
+	Year        int     `json:"year,omitempty"`
+	CoverURL    string  `json:"coverUrl,omitempty"`
+	IssueCount  int     `json:"issueCount"`
+	Issues      []Issue `json:"issues,omitempty"` // populated by GetSeries
+}
+
+// Issue is one volume (manga) or issue (comic) of a series.
+type Issue struct {
+	ForeignID   string  `json:"foreignIssueId"`
+	Number      float64 `json:"number"`
+	Title       string  `json:"title,omitempty"`
+	ReleaseDate string  `json:"releaseDate,omitempty"`
+}
+
 // Edition formats use the same strings as the library package:
 // ebook, audiobook, physical, unknown.
 type Edition struct {

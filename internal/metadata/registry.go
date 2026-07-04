@@ -62,6 +62,42 @@ func Build(name string, s Settings) (Provider, error) {
 	return f(s)
 }
 
+// SeriesFactory builds a series provider (manga/comic) from its settings.
+// ErrNotConfigured means "valid but disabled" (e.g. no API key yet).
+type SeriesFactory func(Settings) (SeriesProvider, error)
+
+var seriesFactories = map[string]SeriesFactory{}
+
+// RegisterSeries makes a series provider available under name.
+func RegisterSeries(name string, f SeriesFactory) {
+	regMu.Lock()
+	defer regMu.Unlock()
+	seriesFactories[name] = f
+}
+
+// SeriesAvailable lists registered series provider names, sorted.
+func SeriesAvailable() []string {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	names := make([]string, 0, len(seriesFactories))
+	for name := range seriesFactories {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// BuildSeries constructs a registered series provider from settings.
+func BuildSeries(name string, s Settings) (SeriesProvider, error) {
+	regMu.RLock()
+	f, ok := seriesFactories[name]
+	regMu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("unknown series provider %q", name)
+	}
+	return f(s)
+}
+
 // Manager holds the active provider and allows swapping it at runtime, so
 // saving a token in the settings UI takes effect without a restart. The
 // zero-ish state (no provider) makes metadata operations return
@@ -69,6 +105,7 @@ func Build(name string, s Settings) (Provider, error) {
 type Manager struct {
 	mu     sync.RWMutex
 	active Provider
+	series map[string]SeriesProvider // keyed by media type (manga, comic)
 }
 
 func NewManager() *Manager {
@@ -107,4 +144,38 @@ func (m *Manager) Configure(name string, settings map[string]Settings) error {
 	}
 	m.Set(p)
 	return nil
+}
+
+// ConfigureSeries (re)builds every registered series provider from settings;
+// providers reporting ErrNotConfigured are simply left inactive. The last
+// configured provider per media type wins.
+func (m *Manager) ConfigureSeries(settings map[string]Settings) {
+	built := map[string]SeriesProvider{}
+	for _, name := range SeriesAvailable() {
+		p, err := BuildSeries(name, settings[name])
+		if err != nil {
+			continue // not configured or misconfigured — inactive
+		}
+		built[p.MediaType()] = p
+	}
+	m.mu.Lock()
+	m.series = built
+	m.mu.Unlock()
+}
+
+// SeriesFor returns the active series provider for a media type, or nil.
+func (m *Manager) SeriesFor(mediaType string) SeriesProvider {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.series[mediaType]
+}
+
+// SetSeries injects a series provider directly (tests).
+func (m *Manager) SetSeries(p SeriesProvider) {
+	m.mu.Lock()
+	if m.series == nil {
+		m.series = map[string]SeriesProvider{}
+	}
+	m.series[p.MediaType()] = p
+	m.mu.Unlock()
 }
