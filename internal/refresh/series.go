@@ -1,0 +1,129 @@
+package refresh
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/scanner"
+)
+
+// SyncSeries fetches a manga/comic series from its media type's provider and
+// persists it with volume/issue books. Existing volumes keep their monitored
+// flags (upsert semantics); newly discovered ones get newVolumesMonitored —
+// the caller passes the add-time choice or, on refresh, the series'
+// monitor_new flag ("monitor future volumes").
+func (s *Service) SyncSeries(ctx context.Context, mediaType, foreignID string, monitored, monitorNew, newVolumesMonitored bool) (*library.Series, error) {
+	p := s.providers.SeriesFor(mediaType)
+	if p == nil {
+		return nil, metadata.ErrNotConfigured
+	}
+	remote, err := p.GetSeries(ctx, foreignID)
+	if err != nil {
+		return nil, err
+	}
+	source := p.Name()
+
+	// The creator gets an author stub (volumes need an author row); keyed by
+	// name so one mangaka's series share it.
+	authorName := remote.AuthorName
+	if authorName == "" {
+		authorName = "Unknown Creator"
+	}
+	author, err := s.store.GetAuthorByForeignID(source, "creator:"+scanner.Normalize(authorName))
+	if err != nil {
+		author = &library.Author{
+			Source:    source,
+			ForeignID: "creator:" + scanner.Normalize(authorName),
+			Name:      authorName,
+			Monitored: false,
+		}
+		if err := s.store.UpsertAuthor(author); err != nil {
+			return nil, err
+		}
+	}
+
+	series := &library.Series{
+		Source:      source,
+		ForeignID:   remote.ForeignID,
+		Title:       remote.Title,
+		Description: remote.Description,
+		MediaType:   mediaType,
+		Monitored:   monitored,
+		MonitorNew:  monitorNew,
+		CoverURL:    remote.CoverURL,
+	}
+	if err := s.store.UpsertSeries(series); err != nil {
+		return nil, err
+	}
+
+	numberPrefix := "Vol. "
+	if mediaType == "comic" {
+		numberPrefix = "#"
+	}
+	for _, issue := range remote.Issues {
+		volMonitored := newVolumesMonitored
+		if existing, err := s.store.GetBookByForeignID(source, issue.ForeignID); err == nil {
+			volMonitored = existing.Monitored // preserved by upsert anyway
+		}
+		book := &library.Book{
+			AuthorID:    author.ID,
+			Source:      source,
+			MediaType:   mediaType,
+			ForeignID:   issue.ForeignID,
+			Title:       fmt.Sprintf("%s %s%v", remote.Title, numberPrefix, trimFloat(issue.Number)),
+			Description: issue.Title,
+			ReleaseDate: issue.ReleaseDate,
+			CoverURL:    remote.CoverURL,
+			Monitored:   volMonitored,
+		}
+		if err := s.store.UpsertBook(book); err != nil {
+			return nil, err
+		}
+		if err := s.store.LinkBookSeries(book.ID, series.ID, issue.Number); err != nil {
+			return nil, err
+		}
+	}
+	return series, nil
+}
+
+// trimFloat renders 5 as "5" and 5.5 as "5.5".
+func trimFloat(f float64) string {
+	if f == float64(int64(f)) {
+		return fmt.Sprintf("%d", int64(f))
+	}
+	return fmt.Sprintf("%g", f)
+}
+
+// RefreshSeries re-syncs an existing series; new volumes follow monitor_new.
+func (s *Service) RefreshSeries(ctx context.Context, id int64) error {
+	series, err := s.store.GetSeries(id)
+	if err != nil {
+		return err
+	}
+	_, err = s.SyncSeries(ctx, series.MediaType, series.ForeignID,
+		series.Monitored, series.MonitorNew, series.MonitorNew)
+	return err
+}
+
+// refreshAllSeries re-syncs every manga/comic series (called from RefreshAll).
+func (s *Service) refreshAllSeries(ctx context.Context) {
+	for _, mediaType := range []string{"manga", "comic"} {
+		if s.providers.SeriesFor(mediaType) == nil {
+			continue
+		}
+		seriesList, err := s.store.ListSeries(mediaType)
+		if err != nil {
+			continue
+		}
+		for _, sr := range seriesList {
+			if ctx.Err() != nil {
+				return
+			}
+			if err := s.RefreshSeries(ctx, sr.ID); err != nil {
+				continue // one dead record can't stall the rest
+			}
+		}
+	}
+}

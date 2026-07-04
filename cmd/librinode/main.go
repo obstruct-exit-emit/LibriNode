@@ -21,6 +21,8 @@ import (
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/metadata/anilist"
+	"github.com/librinode/librinode/internal/metadata/comicvine"
 	"github.com/librinode/librinode/internal/metadata/hardcover"
 	"github.com/librinode/librinode/internal/organize"
 	"github.com/librinode/librinode/internal/refresh"
@@ -86,11 +88,14 @@ func run(dataDir string) error {
 	// one. New providers are one Register call away; the settings UI and API
 	// pick them up automatically.
 	metadata.Register("hardcover", hardcover.Factory)
+	metadata.RegisterSeries("anilist", anilist.Factory)
+	metadata.RegisterSeries("comicvine", comicvine.Factory)
 
 	providers := metadata.NewManager()
 	if err := providers.Configure(cfg.Metadata.Active, cfg.Metadata.Providers); err != nil {
 		logger.Warn("activating metadata provider failed", "provider", cfg.Metadata.Active, "error", err)
 	}
+	providers.ConfigureSeries(cfg.Metadata.Providers)
 	if p := providers.Current(); p != nil {
 		logger.Info("metadata provider active", "provider", p.Name())
 	} else {

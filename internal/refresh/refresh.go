@@ -186,10 +186,11 @@ func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, author
 	return nil
 }
 
-// RefreshAll re-syncs every author in the library. It is a no-op without a
-// configured provider; individual failures are logged and skipped so one
-// dead provider record can't stall the rest.
+// RefreshAll re-syncs every author and manga/comic series in the library.
+// Individual failures are logged and skipped so one dead provider record
+// can't stall the rest.
 func (s *Service) RefreshAll(ctx context.Context) {
+	s.refreshAllSeries(ctx)
 	if _, err := s.provider(); err != nil {
 		return
 	}
@@ -198,9 +199,15 @@ func (s *Service) RefreshAll(ctx context.Context) {
 		slog.Error("metadata refresh: listing authors", "error", err)
 		return
 	}
+	bookProvider, _ := s.provider()
 	for _, a := range authors {
 		if ctx.Err() != nil {
 			return
+		}
+		// Creator stubs from series providers aren't the book provider's to
+		// refresh.
+		if a.Source != bookProvider.Name() {
+			continue
 		}
 		if _, err := s.SyncAuthor(ctx, a.ForeignID, a.Monitored); err != nil {
 			slog.Warn("metadata refresh failed", "author", a.Name, "error", err)

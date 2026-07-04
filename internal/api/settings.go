@@ -17,20 +17,22 @@ import (
 // metadataSettingsResponse is the settings UI's view of metadata config:
 // which providers exist, which one is active, and their stored settings.
 type metadataSettingsResponse struct {
-	Active    string                       `json:"active"`
-	Available []string                     `json:"available"`
-	Providers map[string]metadata.Settings `json:"providers"`
+	Active          string                       `json:"active"`
+	Available       []string                     `json:"available"`
+	SeriesAvailable []string                     `json:"seriesAvailable"`
+	Providers       map[string]metadata.Settings `json:"providers"`
 }
 
 func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 	ms := s.cfg.MetadataSettings()
 	resp := metadataSettingsResponse{
-		Active:    ms.Active,
-		Available: metadata.Available(),
-		Providers: ms.Providers,
+		Active:          ms.Active,
+		Available:       metadata.Available(),
+		SeriesAvailable: metadata.SeriesAvailable(),
+		Providers:       ms.Providers,
 	}
 	// Every registered provider shows up in the form, configured or not.
-	for _, name := range resp.Available {
+	for _, name := range append(append([]string{}, resp.Available...), resp.SeriesAvailable...) {
 		if _, ok := resp.Providers[name]; !ok {
 			resp.Providers[name] = metadata.Settings{}
 		}
@@ -66,6 +68,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.metadata.ConfigureSeries(ms.Providers)
 	if err := s.cfg.SetMetadata(ms); err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return

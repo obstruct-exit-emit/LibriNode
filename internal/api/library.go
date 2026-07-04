@@ -52,11 +52,6 @@ func writeSyncError(w http.ResponseWriter, err error) {
 // --- Search (metadata provider proxy) ---
 
 func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	provider := s.metadata.Current()
-	if provider == nil {
-		writeError(w, http.StatusServiceUnavailable, notConfiguredMsg)
-		return
-	}
 	term := r.URL.Query().Get("term")
 	if term == "" {
 		writeError(w, http.StatusBadRequest, "term is required")
@@ -65,6 +60,18 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("type")
 	if kind == "" {
 		kind = "book"
+	}
+
+	// Series-first types go to their own providers.
+	if mediaType, ok := seriesMediaType(kind); ok {
+		s.handleSearchSeries(w, r, mediaType, term)
+		return
+	}
+
+	provider := s.metadata.Current()
+	if provider == nil {
+		writeError(w, http.StatusServiceUnavailable, notConfiguredMsg)
+		return
 	}
 
 	ctx, cancel := s.metadataCtx(r)
@@ -86,7 +93,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, results)
 	default:
-		writeError(w, http.StatusBadRequest, "type must be author or book")
+		writeError(w, http.StatusBadRequest, "type must be author, book, manga, or comic")
 	}
 }
 

@@ -83,6 +83,7 @@ func (fakeProvider) GetBook(_ context.Context, foreignID string) (*metadata.Book
 type testAPI struct {
 	srv    *httptest.Server
 	apiKey string
+	mgr    *metadata.Manager
 	t      *testing.T
 }
 
@@ -105,7 +106,7 @@ func newTestAPI(t *testing.T, provider metadata.Provider) *testAPI {
 	}
 	srv := httptest.NewServer(NewRouter(cfg, db, mgr, "test"))
 	t.Cleanup(srv.Close)
-	return &testAPI{srv: srv, apiKey: cfg.APIKey, t: t}
+	return &testAPI{srv: srv, apiKey: cfg.APIKey, mgr: mgr, t: t}
 }
 
 // call makes an authenticated request and decodes the JSON response into out
@@ -230,6 +231,104 @@ func TestMetadataSettingsHotSwap(t *testing.T) {
 		"providers": map[string]any{"fake": map[string]string{"token": ""}},
 	}, nil), http.StatusOK)
 	a.want(a.call("GET", "/api/v1/search?term=magic", nil, nil), http.StatusServiceUnavailable)
+}
+
+// fakeSeriesProvider serves one manga series whose volume count can grow.
+type fakeSeriesProvider struct {
+	volumes *int
+}
+
+func (fakeSeriesProvider) Name() string      { return "fakemanga" }
+func (fakeSeriesProvider) MediaType() string { return "manga" }
+
+func (p fakeSeriesProvider) SearchSeries(context.Context, string) ([]metadata.SeriesResult, error) {
+	return []metadata.SeriesResult{{ForeignID: "500", Title: "Berserk", AuthorName: "Kentarou Miura", IssueCount: *p.volumes}}, nil
+}
+
+func (p fakeSeriesProvider) GetSeries(_ context.Context, id string) (*metadata.SeriesResult, error) {
+	if id != "500" {
+		return nil, metadata.ErrNotFound
+	}
+	result := &metadata.SeriesResult{
+		ForeignID: "500", Title: "Berserk", AuthorName: "Kentarou Miura",
+		Description: "Guts.", CoverURL: "https://img/berserk.jpg", IssueCount: *p.volumes,
+	}
+	for i := 1; i <= *p.volumes; i++ {
+		result.Issues = append(result.Issues, metadata.Issue{
+			ForeignID: fmt.Sprintf("500-v%d", i), Number: float64(i), Title: fmt.Sprintf("Vol. %d", i),
+		})
+	}
+	return result, nil
+}
+
+func TestSeriesFlow(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 3
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	// Search via the shared search endpoint.
+	var results []metadata.SeriesResult
+	a.want(a.call("GET", "/api/v1/search?term=berserk&type=manga", nil, &results), http.StatusOK)
+	if len(results) != 1 || results[0].ForeignID != "500" {
+		t.Fatalf("search = %+v", results)
+	}
+	// Comic search has no provider configured.
+	a.want(a.call("GET", "/api/v1/search?term=x&type=comic", nil, nil), http.StatusServiceUnavailable)
+
+	// Add the series: volumes become monitored manga books.
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500", "monitorNew": true}, &series), http.StatusCreated)
+	if series.Title != "Berserk" || !series.Monitored || !series.MonitorNew || series.MediaType != "manga" {
+		t.Fatalf("series = %+v", series)
+	}
+	if len(series.Volumes) != 3 {
+		t.Fatalf("volumes = %+v", series.Volumes)
+	}
+	v1 := series.Volumes[0]
+	if v1.Title != "Berserk Vol. 1" || v1.MediaType != "manga" || !v1.Monitored {
+		t.Fatalf("volume 1 = %+v", v1)
+	}
+
+	// List filters by media type.
+	var list []library.Series
+	a.want(a.call("GET", "/api/v1/series?mediaType=manga", nil, &list), http.StatusOK)
+	if len(list) != 1 {
+		t.Fatalf("list = %+v", list)
+	}
+	a.want(a.call("GET", "/api/v1/series?mediaType=comic", nil, &list), http.StatusOK)
+	if len(list) != 0 {
+		t.Fatalf("comic list = %+v", list)
+	}
+
+	// Refresh discovers a new volume; monitor_new makes it monitored.
+	volumes = 4
+	var refreshed library.Series
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/refresh", series.ID), nil, &refreshed), http.StatusOK)
+	if len(refreshed.Volumes) != 4 || !refreshed.Volumes[3].Monitored {
+		t.Fatalf("after refresh = %+v", refreshed.Volumes)
+	}
+
+	// Unmonitor the series: volumes follow.
+	var updated library.Series
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/monitor", series.ID),
+		map[string]bool{"monitored": false, "monitorNew": false}, &updated), http.StatusOK)
+	for _, v := range updated.Volumes {
+		if v.Monitored {
+			t.Fatalf("volume still monitored: %+v", v)
+		}
+	}
+
+	// Delete removes the series and its volumes.
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/series/%d", series.ID), nil, nil), http.StatusNoContent)
+	var books []library.Book
+	a.want(a.call("GET", "/api/v1/book", nil, &books), http.StatusOK)
+	if len(books) != 0 {
+		t.Fatalf("volumes survived series delete: %+v", books)
+	}
+
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "999"}, nil), http.StatusNotFound)
 }
 
 func TestScanFlow(t *testing.T) {
