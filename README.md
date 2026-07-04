@@ -48,9 +48,9 @@ An author/series can exist in multiple libraries at once (e.g. own the ebook *an
 
 ### 🏷️ Metadata via Hardcover
 - **Hardcover.app** as the primary metadata provider for books and audiobooks (authors, series, editions, covers, descriptions, release dates)
-- Pluggable provider architecture so manga/comic sources (e.g. AniList, ComicVine, Metron) slot in behind the same interface
+- Pluggable provider architecture: **AniList** (manga, no key needed) and **ComicVine** (comics) already slot in behind the series-provider interface; more sources can follow
 - Metadata refresh on schedule + manual refresh
-- Writes sidecar metadata (OPF / ComicInfo.xml) for readers like Kavita, Komga, Calibre, and Audiobookshelf
+- Writes sidecar metadata for readers: `ComicInfo.xml` into imported CBZs today (Kavita/Komga); OPF for Calibre/Audiobookshelf comes with Phase 5
 
 ### ⚙️ Clean, organized settings
 Settings are grouped by concern, not dumped on one page:
@@ -89,8 +89,8 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 2. **Settings → Metadata Provider:** paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
    then **Save** — search goes live immediately, no restart.
-3. **Settings → Root Folders:** add the folder(s) where your ebooks — and,
-   if you use them, audiobooks — live (one root folder per media type).
+3. **Settings → Root Folders:** add the folder(s) where your media lives —
+   one root per media type (ebook, audiobook, manga, comic).
 4. **Search:** find authors or books on Hardcover and add them to the
    library (adding an author pulls the full bibliography; adding a book
    pulls its editions).
@@ -202,7 +202,7 @@ scriptable:
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
-| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook`) — parsed + scored candidates from all enabled indexers |
+| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
