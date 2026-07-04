@@ -65,10 +65,14 @@ func VolumeFromName(name string) float64 {
 }
 
 // ParsedFile is the scanner's best guess at what a file is, derived purely
-// from its path. Zero fields mean "unknown".
+// from its path. Zero fields mean "unknown". AltTitle holds the segment
+// after the last " - " when the primary title contains one — how
+// "Discworld 8 - Guards! Guards!.epub" (our own naming template's output)
+// still matches the book "Guards! Guards!".
 type ParsedFile struct {
-	Author string
-	Title  string
+	Author   string
+	Title    string
+	AltTitle string
 }
 
 // leadingIndex matches "01 - " / "1.5 - " series-position prefixes.
@@ -98,6 +102,7 @@ func ParsePath(relPath string) ParsedFile {
 		if prefix, rest, ok := strings.Cut(base, " - "); ok && strings.EqualFold(strings.TrimSpace(prefix), p.Author) {
 			p.Title = strings.TrimSpace(rest)
 		}
+		p.AltTitle = lastDashSegment(p.Title)
 		return p
 	}
 
@@ -105,10 +110,22 @@ func ParsePath(relPath string) ParsedFile {
 	if author, title, ok := strings.Cut(base, " - "); ok {
 		p.Author = strings.TrimSpace(author)
 		p.Title = strings.TrimSpace(title)
+		p.AltTitle = lastDashSegment(p.Title)
 		return p
 	}
 	p.Title = base
 	return p
+}
+
+// lastDashSegment returns the text after the last " - ", when different from
+// the whole ("Discworld 8 - Guards! Guards!" → "Guards! Guards!").
+func lastDashSegment(s string) string {
+	if i := strings.LastIndex(s, " - "); i >= 0 {
+		if seg := strings.TrimSpace(s[i+3:]); seg != "" && seg != s {
+			return seg
+		}
+	}
+	return ""
 }
 
 var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)

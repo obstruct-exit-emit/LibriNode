@@ -25,6 +25,8 @@ func TestParsePath(t *testing.T) {
 		author, title string
 	}{
 		{"Terry Pratchett/Mort.epub", "Terry Pratchett", "Mort"},
+		// Our own naming template's output must re-match its book.
+		{"Terry Pratchett/Discworld 8 - Guards! Guards!.epub", "Terry Pratchett", "Discworld 8 - Guards! Guards!"},
 		{"Terry Pratchett/Discworld/01 - The Colour of Magic.epub", "Terry Pratchett", "The Colour of Magic"},
 		{"Terry Pratchett/Terry Pratchett - Mort.epub", "Terry Pratchett", "Mort"},
 		{"Terry Pratchett - Mort.epub", "Terry Pratchett", "Mort"},
@@ -368,6 +370,31 @@ func TestScanComicRoot(t *testing.T) {
 	files, _ := f.store.ListBookFiles(volumes[0].ID)
 	if len(files) != 1 || files[0].MediaType != "manga" || files[0].Format != "cbz" {
 		t.Fatalf("files = %+v", files)
+	}
+}
+
+func TestScanMatchesOwnTemplateOutput(t *testing.T) {
+	// Files organized by the default naming template
+	// ("{Series Title} {Series Position} - {Book Title}") must re-match
+	// their book on subsequent scans.
+	f := fixture(t)
+
+	guards := &library.Book{AuthorID: 1, Source: "hardcover", ForeignID: "g8",
+		Title: "Guards! Guards!", Monitored: true}
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(f.rootDir, "Terry Pratchett", "Discworld 8 - Guards! Guards!.epub")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.store.GetBook(guards.ID)
+	if !got.HasEbookFile {
+		t.Fatal("template-named file did not re-match its book")
 	}
 }
 

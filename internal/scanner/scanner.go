@@ -497,12 +497,16 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 
 // match resolves a parsed file to a book id, or 0 when there is no confident
 // match. Author+title wins; a title-only match is accepted only when it is
-// unambiguous across the whole library.
+// unambiguous across the whole library. The alt title (after the last dash,
+// e.g. our own "Series N - Title" template output) is a fallback candidate.
 func (idx *matchIndex) match(p ParsedFile) int64 {
 	if p.Title == "" {
 		return 0
 	}
 	keys := TitleKeys(p.Title)
+	if p.AltTitle != "" {
+		keys = append(keys, TitleKeys(p.AltTitle)...)
+	}
 
 	if p.Author != "" {
 		if authorID, ok := idx.authorsByName[Normalize(p.Author)]; ok {
