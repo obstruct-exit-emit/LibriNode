@@ -159,7 +159,7 @@ func TestSearchBookNoApprovedCandidates(t *testing.T) {
 	    <link>https://idx/get/it.nzb</link><newznab:attr name="size" value="1048576"/></item>
 	</channel></rss>`)
 
-	outcome, err := f.svc.SearchBook(context.Background(), f.book.ID)
+	outcome, err := f.svc.SearchBook(context.Background(), f.book.ID, "ebook")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,13 +171,58 @@ func TestSearchBookNoApprovedCandidates(t *testing.T) {
 	}
 }
 
+func TestSearchWantedAudiobook(t *testing.T) {
+	// Indexer serves an m4b for Mort; Mort has a monitored audiobook edition
+	// and already owns the ebook, so only the audiobook should be searched.
+	f := fixture(t, `<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel>
+	  <item><title>Terry Pratchett - Mort Unabridged M4B</title><guid>a1</guid>
+	    <link>https://idx/get/mort.m4b.nzb</link><newznab:attr name="size" value="209715200"/></item>
+	</channel></rss>`)
+
+	// Mort owns its ebook already.
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 1, BookID: f.book.ID, MediaType: "ebook", Path: "/x/mort.epub", Format: "epub",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Opt in to the audiobook via a monitored audiobook edition.
+	ed := &library.Edition{BookID: f.book.ID, Source: "hardcover", ForeignID: "ed-a1",
+		Format: library.FormatAudiobook, Monitored: true}
+	if err := f.store.UpsertEdition(ed); err != nil {
+		t.Fatal(err)
+	}
+
+	outcomes, err := f.svc.SearchWanted(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("outcomes = %+v", outcomes)
+	}
+	o := outcomes[0]
+	if !o.Grabbed || o.MediaType != "audiobook" || o.Release != "Terry Pratchett - Mort Unabridged M4B" {
+		t.Fatalf("outcome = %+v", o)
+	}
+	grabs, _ := f.grabs.ListGrabs(download.GrabStatusGrabbed)
+	if len(grabs) != 1 || grabs[0].MediaType != "audiobook" {
+		t.Fatalf("grabs = %+v", grabs)
+	}
+
+	// Without the monitored audiobook edition (Sourcery), nothing else runs.
+	for _, x := range outcomes {
+		if x.BookID == f.owned.ID {
+			t.Error("book without audiobook opt-in was searched")
+		}
+	}
+}
+
 func TestSearchBookPendingGrabShortCircuits(t *testing.T) {
 	f := fixture(t, goodSearchXML)
 
-	if _, err := f.svc.SearchBook(context.Background(), f.book.ID); err != nil {
+	if _, err := f.svc.SearchBook(context.Background(), f.book.ID, "ebook"); err != nil {
 		t.Fatal(err)
 	}
-	outcome, err := f.svc.SearchBook(context.Background(), f.book.ID)
+	outcome, err := f.svc.SearchBook(context.Background(), f.book.ID, "ebook")
 	if err != nil {
 		t.Fatal(err)
 	}

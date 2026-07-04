@@ -36,12 +36,19 @@ type MetadataSettings struct {
 type NamingSettings struct {
 	EbookFolder string `yaml:"ebook_folder" json:"ebookFolder"`
 	EbookFile   string `yaml:"ebook_file" json:"ebookFile"`
+	// Audiobooks use Audiobookshelf's Author/Book-folder layout: the "file"
+	// template names the per-book folder (and the audio file inside, for
+	// single-file books).
+	AudiobookFolder string `yaml:"audiobook_folder" json:"audiobookFolder"`
+	AudiobookFile   string `yaml:"audiobook_file" json:"audiobookFile"`
 }
 
 func defaultNaming() NamingSettings {
 	return NamingSettings{
-		EbookFolder: "{Author Name}",
-		EbookFile:   "{Series Title} {Series Position} - {Book Title}",
+		EbookFolder:     "{Author Name}",
+		EbookFile:       "{Series Title} {Series Position} - {Book Title}",
+		AudiobookFolder: "{Author Name}",
+		AudiobookFile:   "{Book Title}",
 	}
 }
 
@@ -141,6 +148,12 @@ func Load(dataDir string) (*Config, error) {
 	}
 	if cfg.Naming.EbookFile == "" {
 		cfg.Naming.EbookFile = defaultNaming().EbookFile
+	}
+	if cfg.Naming.AudiobookFolder == "" {
+		cfg.Naming.AudiobookFolder = defaultNaming().AudiobookFolder
+	}
+	if cfg.Naming.AudiobookFile == "" {
+		cfg.Naming.AudiobookFile = defaultNaming().AudiobookFile
 	}
 
 	if cfg.APIKey == "" {

@@ -22,15 +22,42 @@ type Preferences struct {
 	Language string
 	MinSize  int64
 	MaxSize  int64
+	// RejectAbridged drops releases that state they are abridged
+	// (audiobook profiles default to true).
+	RejectAbridged bool
 }
 
-// PreferencesForEbook resolves the active scoring rules: the default ebook
-// quality profile when one exists, built-in defaults otherwise.
-func PreferencesForEbook(store *library.Store) Preferences {
-	if p, err := store.DefaultProfile("ebook"); err == nil {
-		return PreferencesFromProfile(*p)
+// PreferencesFor resolves the active scoring rules for a media type: its
+// default quality profile when one exists, built-in defaults otherwise.
+func PreferencesFor(store *library.Store, mediaType string) Preferences {
+	if p, err := store.DefaultProfile(mediaType); err == nil {
+		prefs := PreferencesFromProfile(*p)
+		prefs.RejectAbridged = mediaType == "audiobook"
+		return prefs
+	}
+	if mediaType == "audiobook" {
+		return DefaultAudiobookPreferences()
 	}
 	return DefaultEbookPreferences()
+}
+
+// PreferencesForEbook resolves the ebook rules (kept for callers without a
+// media-type dimension).
+func PreferencesForEbook(store *library.Store) Preferences {
+	return PreferencesFor(store, "ebook")
+}
+
+// DefaultAudiobookPreferences prefers single-file m4b (Audiobookshelf's
+// favorite), then space-efficient formats; abridged versions are rejected.
+func DefaultAudiobookPreferences() Preferences {
+	return Preferences{
+		FormatScores:   map[string]int{"m4b": 100, "m4a": 85, "opus": 75, "mp3": 70, "flac": 55},
+		RetailBonus:    10,
+		Language:       "english",
+		MinSize:        5 << 20, // 5 MiB — shorter than a short story
+		MaxSize:        4 << 30, // 4 GiB — beyond even long unabridged epics
+		RejectAbridged: true,
+	}
 }
 
 func DefaultEbookPreferences() Preferences {
@@ -102,6 +129,10 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 
 	if prefs.Language != "" && c.Parsed.Language != "" && c.Parsed.Language != prefs.Language {
 		c.reject("language " + c.Parsed.Language + " not wanted")
+	}
+
+	if prefs.RejectAbridged && c.Parsed.Abridged {
+		c.reject("abridged")
 	}
 
 	if rel.Size > 0 {

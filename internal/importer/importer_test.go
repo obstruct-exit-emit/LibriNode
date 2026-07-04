@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ type fx struct {
 	svc     *Service
 	store   *library.Store
 	grabs   *download.Store
+	db      *sql.DB
 	rootDir string
 	book    *library.Book
 	history []map[string]any // mutable mock SAB history
@@ -40,7 +42,7 @@ func fixture(t *testing.T) *fx {
 	t.Cleanup(func() { db.Close() })
 
 	store := library.NewStore(db)
-	f := &fx{store: store, history: []map[string]any{}}
+	f := &fx{store: store, db: db, history: []map[string]any{}}
 
 	// Mock SABnzbd: empty queue, mutable history, delete tracking.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +112,58 @@ func (f *fx) completedDownload(t *testing.T, nzoID, title string, files ...strin
 		"nzo_id": nzoID, "name": title, "status": "Completed", "storage": dir, "category": "librinode",
 	})
 	return dir
+}
+
+func TestImportAudiobookGrab(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	// Audiobook root folder alongside the ebook one.
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	// Multi-file audiobook download, tracked as an audiobook grab.
+	f.completedDownload(t, "nzo_ab", "Terry Pratchett - Mort Unabridged M4B",
+		"Mort - 01.mp3", "Mort - 02.mp3", "cover.jpg")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_ab",
+		Title: "Terry Pratchett - Mort Unabridged M4B", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	// Tracks landed inside the Audiobookshelf-style book folder.
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	for _, name := range []string{"Mort - 01.mp3", "Mort - 02.mp3"} {
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
+			t.Fatalf("track missing: %v", err)
+		}
+	}
+	// Non-audio junk excluded.
+	if _, err := os.Stat(filepath.Join(bookDir, "cover.jpg")); !os.IsNotExist(err) {
+		t.Error("non-audio file should not be imported")
+	}
+
+	// Recorded as an audiobook unit on the book (ebook side untouched).
+	book, _ := f.store.GetBook(f.book.ID)
+	if !book.HasAudiobookFile || book.HasEbookFile {
+		t.Fatalf("book flags = ebook %v audio %v", book.HasEbookFile, book.HasAudiobookFile)
+	}
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 || files[0].MediaType != "audiobook" || files[0].Path != bookDir {
+		t.Fatalf("files = %+v", files)
+	}
 }
 
 func TestImportTrackedGrab(t *testing.T) {

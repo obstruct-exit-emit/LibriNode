@@ -41,6 +41,16 @@ func TestParse(t *testing.T) {
 			"Some Linux ISO x264-GRP",
 			Parsed{Title: "Some Linux ISO x264-GRP"},
 		},
+		{
+			"Terry Pratchett - Mort (Unabridged) M4B 64kbps read by Nigel Planer",
+			Parsed{Author: "Terry Pratchett", Title: "Mort", Formats: []string{"m4b"},
+				Bitrate: 64, Narrator: "Nigel Planer"},
+		},
+		{
+			"Mort [Abridged] [MP3 128k] narrated by Tony Robinson",
+			Parsed{Title: "Mort", Formats: []string{"mp3"}, Bitrate: 128,
+				Abridged: true, Narrator: "Tony Robinson"},
+		},
 	}
 	for _, c := range cases {
 		got := Parse(c.in)
@@ -167,6 +177,32 @@ func TestPreferencesFromProfile(t *testing.T) {
 	})
 	if many.FormatScores["cbz"] != 20 || many.FormatScores["cbr"] != 20 {
 		t.Errorf("floored scores = %v", many.FormatScores)
+	}
+}
+
+func TestScoreAudiobook(t *testing.T) {
+	prefs := DefaultAudiobookPreferences()
+
+	m4b := Score(rel("Mort Unabridged M4B", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	if !m4b.Approved {
+		t.Fatalf("m4b rejected: %v", m4b.Rejections)
+	}
+	mp3 := Score(rel("Mort MP3 64kbps", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	if !mp3.Approved || mp3.Score >= m4b.Score {
+		t.Errorf("mp3 should approve below m4b: %+v vs %+v", mp3, m4b)
+	}
+	abridged := Score(rel("Mort Abridged M4B", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	if abridged.Approved {
+		t.Error("abridged should be rejected for audiobooks")
+	}
+	epub := Score(rel("Mort EPUB", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	if epub.Approved {
+		t.Error("ebook format should be rejected under audiobook prefs")
+	}
+	// Ebook-sized files are suspicious for audio.
+	tiny := Score(rel("Mort M4B", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil)
+	if tiny.Approved {
+		t.Error("1 MiB audiobook should be rejected")
 	}
 }
 

@@ -70,6 +70,9 @@ func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 	if in.Categories == "" {
 		in.Categories = "7000,7020"
 	}
+	if in.AudioCategories == "" {
+		in.AudioCategories = "3030"
+	}
 	if in.Priority <= 0 || in.Priority > 50 {
 		in.Priority = 25
 	}
@@ -203,17 +206,25 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "term or bookId is required")
 		return
 	}
+	mediaType := r.URL.Query().Get("mediaType")
+	if mediaType == "" {
+		mediaType = "ebook"
+	}
+	if mediaType != "ebook" && mediaType != "audiobook" {
+		writeError(w, http.StatusBadRequest, "mediaType must be ebook or audiobook")
+		return
+	}
 
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	found, errs, err := s.indexers.SearchAll(ctx, term)
+	found, errs, err := s.indexers.SearchAll(ctx, term, mediaType)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	prefs := release.PreferencesForEbook(s.store)
+	prefs := release.PreferencesFor(s.store, mediaType)
 	candidates := make([]release.Candidate, 0, len(found))
 	for _, rel := range found {
 		candidates = append(candidates, release.Score(rel, prefs, book, author))

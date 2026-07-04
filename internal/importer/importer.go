@@ -106,10 +106,15 @@ func matchGrab(pending []download.GrabRecord, item *download.Item) *download.Gra
 
 func (s *Service) importItem(ctx context.Context, item *download.Item, grab *download.GrabRecord, result *Result) {
 	// Which book is this? Grab record first, title parse as fallback for
-	// downloads added outside LibriNode's grab flow.
+	// downloads added outside LibriNode's grab flow (ebook-only fallback:
+	// audiobook imports always come from tracked grabs).
+	mediaType := "ebook"
 	var book *library.Book
 	var err error
 	if grab != nil && grab.BookID > 0 {
+		if grab.MediaType != "" {
+			mediaType = grab.MediaType
+		}
 		book, err = s.store.GetBook(grab.BookID)
 		if err != nil {
 			s.resolve(grab, download.GrabStatusFailed, "book no longer in library")
@@ -123,15 +128,28 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		result.Skipped++
 		return // not ours to import (yet); stays in the client
 	}
-	if book.HasFile {
+	owned := book.HasEbookFile
+	if mediaType == "audiobook" {
+		owned = book.HasAudiobookFile
+	}
+	if owned {
 		if grab != nil {
-			s.resolve(grab, download.GrabStatusImported, "book already has a file")
+			s.resolve(grab, download.GrabStatusImported, "book already has a "+mediaType+" file")
 		}
 		result.Skipped++
 		return
 	}
 
-	source, err := pickEbookFile(item.Path)
+	var sources []string
+	var format string
+	if mediaType == "audiobook" {
+		sources, format, err = pickAudioFiles(item.Path)
+	} else {
+		var source string
+		source, err = pickEbookFile(item.Path)
+		sources = []string{source}
+		format = strings.TrimPrefix(strings.ToLower(filepath.Ext(source)), ".")
+	}
 	if err != nil {
 		if grab != nil {
 			s.resolve(grab, download.GrabStatusFailed, err.Error())
@@ -142,28 +160,51 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		return
 	}
 
-	format := strings.TrimPrefix(strings.ToLower(filepath.Ext(source)), ".")
-	rootID, target, err := s.organize.PlaceFile(book, format)
-	if err != nil {
-		result.note("%s: %v", item.Title, err)
-		result.Skipped++
-		return
-	}
-	if _, err := os.Stat(target); err == nil {
-		result.note("%s: target already exists: %s", item.Title, target)
-		result.Skipped++
-		return
-	}
-	size, err := copyFile(source, target)
+	place, err := s.organize.PlaceFile(book, format, mediaType)
 	if err != nil {
 		result.note("%s: %v", item.Title, err)
 		result.Skipped++
 		return
 	}
 
+	var target string
+	var size int64
+	if mediaType == "audiobook" && len(sources) > 1 {
+		// Multi-file audiobook: the per-book folder is the unit; original
+		// track names are preserved inside it.
+		target = place.Dir
+		if _, err := os.Stat(target); err == nil {
+			result.note("%s: target already exists: %s", item.Title, target)
+			result.Skipped++
+			return
+		}
+		for _, src := range sources {
+			n, err := copyFile(src, filepath.Join(target, filepath.Base(src)))
+			if err != nil {
+				result.note("%s: %v", item.Title, err)
+				result.Skipped++
+				return
+			}
+			size += n
+		}
+	} else {
+		target = filepath.Join(place.Dir, place.FileName)
+		if _, err := os.Stat(target); err == nil {
+			result.note("%s: target already exists: %s", item.Title, target)
+			result.Skipped++
+			return
+		}
+		if size, err = copyFile(sources[0], target); err != nil {
+			result.note("%s: %v", item.Title, err)
+			result.Skipped++
+			return
+		}
+	}
+
 	file := &library.BookFile{
-		RootFolderID: rootID,
+		RootFolderID: place.RootFolderID,
 		BookID:       book.ID,
+		MediaType:    mediaType,
 		Path:         target,
 		Size:         size,
 		Format:       format,
@@ -206,7 +247,7 @@ func (s *Service) matchByTitle(title string) *library.Book {
 	var match *library.Book
 	for i := range books {
 		b := &books[i]
-		if b.HasFile || !b.Monitored {
+		if b.HasEbookFile || !b.Monitored {
 			continue
 		}
 		for _, key := range scanner.TitleKeys(b.Title) {
@@ -256,6 +297,47 @@ func pickEbookFile(path string) (string, error) {
 		return "", fmt.Errorf("no ebook file found in download")
 	}
 	return best, nil
+}
+
+// pickAudioFiles returns the audio content at path: all audio files under a
+// directory (multi-file audiobook), or the single audio file itself. The
+// format is the largest file's extension.
+func pickAudioFiles(path string) ([]string, string, error) {
+	if path == "" {
+		return nil, "", fmt.Errorf("client reported no path")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("download path missing: %w", err)
+	}
+	if !info.IsDir() {
+		if !scanner.IsAudioPath(path) {
+			return nil, "", fmt.Errorf("%s is not an audiobook file", filepath.Base(path))
+		}
+		return []string{path}, strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), "."), nil
+	}
+
+	var files []string
+	var largest int64
+	var format string
+	err = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !scanner.IsAudioPath(p) {
+			return err
+		}
+		files = append(files, p)
+		if fi, err := d.Info(); err == nil && fi.Size() > largest {
+			largest = fi.Size()
+			format = strings.TrimPrefix(strings.ToLower(filepath.Ext(p)), ".")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	if len(files) == 0 {
+		return nil, "", fmt.Errorf("no audio files found in download")
+	}
+	return files, format, nil
 }
 
 // copyFile copies (never moves — torrents keep seeding) source into place.

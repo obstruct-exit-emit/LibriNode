@@ -24,10 +24,12 @@ type Indexer struct {
 	Type       string `json:"type"`
 	BaseURL    string `json:"baseUrl"`
 	APIKey     string `json:"apiKey"`
-	Categories string `json:"categories"` // comma-separated Newznab category ids
-	Enabled    bool   `json:"enabled"`
-	Priority   int    `json:"priority"` // 1-50, lower wins ties
-	AddedAt    string `json:"addedAt"`
+	Categories string `json:"categories"` // comma-separated Newznab category ids (book searches)
+	// AudioCategories are used for audiobook searches (3030 = Audio/Audiobook).
+	AudioCategories string `json:"audioCategories"`
+	Enabled         bool   `json:"enabled"`
+	Priority        int    `json:"priority"` // 1-50, lower wins ties
+	AddedAt         string `json:"addedAt"`
 }
 
 // Protocol reports how releases from this indexer are downloaded.
@@ -36,6 +38,14 @@ func (i *Indexer) Protocol() string {
 		return ProtocolTorrent
 	}
 	return ProtocolUsenet
+}
+
+// CategoriesFor picks the category list for a media type's searches.
+func (i *Indexer) CategoriesFor(mediaType string) string {
+	if mediaType == "audiobook" {
+		return i.AudioCategories
+	}
+	return i.Categories
 }
 
 // Release is one search result from an indexer — a candidate file for a

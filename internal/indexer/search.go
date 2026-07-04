@@ -20,10 +20,11 @@ func NewService(store *Store) *Service {
 func (s *Service) Store() *Store   { return s.store }
 func (s *Service) Client() *Client { return s.client }
 
-// SearchAll queries every enabled indexer concurrently and merges the
-// results, sorted by seeders (torrents first by health) then size. Indexers
-// that fail are reported in errs without sinking the whole search.
-func (s *Service) SearchAll(ctx context.Context, query string) (releases []Release, errs []string, err error) {
+// SearchAll queries every enabled indexer concurrently — using each
+// indexer's category list for the media type — and merges the results,
+// sorted by seeders (torrents first by health) then size. Indexers that
+// fail are reported in errs without sinking the whole search.
+func (s *Service) SearchAll(ctx context.Context, query, mediaType string) (releases []Release, errs []string, err error) {
 	indexers, err := s.store.ListEnabled()
 	if err != nil {
 		return nil, nil, err
@@ -41,7 +42,7 @@ func (s *Service) SearchAll(ctx context.Context, query string) (releases []Relea
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			found, err := s.client.Search(ctx, &ind, query)
+			found, err := s.client.Search(ctx, &ind, query, ind.CategoriesFor(mediaType))
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

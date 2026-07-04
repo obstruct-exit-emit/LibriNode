@@ -141,6 +141,7 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 		DownloadURL string `json:"downloadUrl"`
 		Protocol    string `json:"protocol"`
 		BookID      int64  `json:"bookId"`
+		MediaType   string `json:"mediaType"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DownloadURL == "" {
 		writeError(w, http.StatusBadRequest, "downloadUrl is required")
@@ -149,6 +150,9 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 	if req.Protocol != download.ProtocolTorrent && req.Protocol != download.ProtocolUsenet {
 		writeError(w, http.StatusBadRequest, "protocol must be torrent or usenet")
 		return
+	}
+	if req.MediaType == "" {
+		req.MediaType = "ebook"
 	}
 	if req.BookID > 0 {
 		if _, err := s.store.GetBook(req.BookID); err != nil {
@@ -159,7 +163,7 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
 	defer cancel()
 
-	result, grab, err := s.downloads.GrabRelease(ctx, req.Protocol, req.DownloadURL, req.Title, req.BookID)
+	result, grab, err := s.downloads.GrabRelease(ctx, req.Protocol, req.DownloadURL, req.Title, req.BookID, req.MediaType)
 	if errors.Is(err, download.ErrNoClient) {
 		writeError(w, http.StatusServiceUnavailable,
 			"no enabled "+req.Protocol+" download client — add one under Settings")
@@ -185,7 +189,7 @@ func (s *server) handleAutoSearchBook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	outcome, err := s.search.SearchBook(ctx, id)
+	outcome, err := s.search.SearchBook(ctx, id, r.URL.Query().Get("mediaType"))
 	if err != nil {
 		writeStoreError(w, err)
 		return

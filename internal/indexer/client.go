@@ -116,13 +116,13 @@ type rssItem struct {
 	} `xml:"attr"`
 }
 
-// Search runs a free-text query limited to the indexer's configured
-// categories.
-func (c *Client) Search(ctx context.Context, ind *Indexer, query string) ([]Release, error) {
+// Search runs a free-text query limited to the given categories (pass the
+// media type's list via Indexer.CategoriesFor).
+func (c *Client) Search(ctx context.Context, ind *Indexer, query, categories string) ([]Release, error) {
 	params := url.Values{}
 	params.Set("q", query)
 	params.Set("limit", "100")
-	if cats := strings.TrimSpace(ind.Categories); cats != "" {
+	if cats := strings.TrimSpace(categories); cats != "" {
 		params.Set("cat", cats)
 	}
 

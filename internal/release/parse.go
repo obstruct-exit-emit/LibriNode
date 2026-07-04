@@ -15,13 +15,22 @@ type Parsed struct {
 	Author   string   `json:"author,omitempty"`
 	Title    string   `json:"title,omitempty"`
 	Year     int      `json:"year,omitempty"`
-	Formats  []string `json:"formats,omitempty"` // epub, mobi, azw3, pdf
+	Formats  []string `json:"formats,omitempty"` // ebook and audio format tokens
 	Language string   `json:"language,omitempty"`
 	Retail   bool     `json:"retail"`
 	Group    string   `json:"group,omitempty"`
+	// Audio-specific fields.
+	Narrator string `json:"narrator,omitempty"`
+	Bitrate  int    `json:"bitrate,omitempty"` // kbps
+	Abridged bool   `json:"abridged"`
 }
 
-var ebookFormats = map[string]bool{"epub": true, "mobi": true, "azw3": true, "pdf": true}
+var mediaFormats = map[string]bool{
+	// ebook
+	"epub": true, "mobi": true, "azw3": true, "pdf": true,
+	// audiobook
+	"m4b": true, "m4a": true, "mp3": true, "flac": true, "opus": true,
+}
 
 // languages maps release-title tokens to a normalized language name.
 var languages = map[string]string{
@@ -38,10 +47,12 @@ var languages = map[string]string{
 }
 
 var (
-	bracketTags = regexp.MustCompile(`[\[({]([^\][(){}]*)[\])}]`)
-	yearToken   = regexp.MustCompile(`^(19|20)\d{2}$`)
-	sceneGroup  = regexp.MustCompile(`-([A-Za-z0-9][A-Za-z0-9_]{1,15})$`)
-	byPattern   = regexp.MustCompile(`(?i)^(.+?)\s+by\s+(.+)$`)
+	bracketTags     = regexp.MustCompile(`[\[({]([^\][(){}]*)[\])}]`)
+	yearToken       = regexp.MustCompile(`^(19|20)\d{2}$`)
+	sceneGroup      = regexp.MustCompile(`-([A-Za-z0-9][A-Za-z0-9_]{1,15})$`)
+	byPattern       = regexp.MustCompile(`(?i)^(.+?)\s+by\s+(.+)$`)
+	narratorPattern = regexp.MustCompile(`(?i)\b(read|narrated)\s+by\s+([A-Za-z][A-Za-z .'’-]*)`)
+	bitrateToken    = regexp.MustCompile(`^(\d{2,3})\s?(k|kbps)$`)
 )
 
 // Parse extracts structured info from one release title.
@@ -56,6 +67,13 @@ func Parse(title string) Parsed {
 			working = strings.TrimSuffix(working, m[0])
 		}
 		working = strings.ReplaceAll(working, ".", " ")
+	}
+
+	// Narrator credit ("read by X" / "narrated by X") — extract before
+	// tokenizing so the name doesn't pollute the title.
+	if m := narratorPattern.FindStringSubmatch(working); m != nil {
+		p.Narrator = strings.TrimSpace(m[2])
+		working = strings.Replace(working, m[0], " ", 1)
 	}
 
 	// Pull bracketed tags out: they hold formats, language, year, retail.
@@ -100,7 +118,7 @@ func (p *Parsed) absorbToken(tok string) bool {
 	switch {
 	case t == "":
 		return true
-	case ebookFormats[t]:
+	case mediaFormats[t]:
 		for _, f := range p.Formats {
 			if f == t {
 				return true
@@ -111,9 +129,20 @@ func (p *Parsed) absorbToken(tok string) bool {
 	case t == "retail":
 		p.Retail = true
 		return true
+	case t == "abridged":
+		p.Abridged = true
+		return true
+	case t == "unabridged":
+		return true // stated but it's the default assumption
 	case yearToken.MatchString(t):
 		if p.Year == 0 {
 			p.Year, _ = strconv.Atoi(t)
+		}
+		return true
+	}
+	if m := bitrateToken.FindStringSubmatch(t); m != nil {
+		if p.Bitrate == 0 {
+			p.Bitrate, _ = strconv.Atoi(m[1])
 		}
 		return true
 	}

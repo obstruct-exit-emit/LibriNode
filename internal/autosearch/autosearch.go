@@ -31,42 +31,53 @@ func New(store *library.Store, indexers *indexer.Service, downloads *download.Se
 type BookOutcome struct {
 	BookID    int64  `json:"bookId"`
 	BookTitle string `json:"bookTitle"`
+	MediaType string `json:"mediaType"`
 	Grabbed   bool   `json:"grabbed"`
 	Release   string `json:"release,omitempty"`
 	Client    string `json:"client,omitempty"`
 	Message   string `json:"message,omitempty"`
 }
 
-// SearchBook searches for one book and grabs the best approved release.
-// Never returns an error for "nothing found" — that's an outcome.
-func (s *Service) SearchBook(ctx context.Context, bookID int64) (*BookOutcome, error) {
+// SearchBook searches for one book as the given media type and grabs the
+// best approved release. Never returns an error for "nothing found" —
+// that's an outcome.
+func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string) (*BookOutcome, error) {
+	if mediaType == "" {
+		mediaType = "ebook"
+	}
 	book, err := s.store.GetBook(bookID)
 	if err != nil {
 		return nil, err
 	}
 	if pending, err := s.pendingBookIDs(); err != nil {
 		return nil, err
-	} else if pending[bookID] {
-		return &BookOutcome{BookID: bookID, BookTitle: book.Title,
+	} else if pending[pendingKey(bookID, mediaType)] {
+		return &BookOutcome{BookID: bookID, BookTitle: book.Title, MediaType: mediaType,
 			Message: "a grab is already pending for this book"}, nil
 	}
-	return s.searchOne(ctx, book)
+	return s.searchOne(ctx, book, mediaType)
 }
 
-func (s *Service) searchOne(ctx context.Context, book *library.Book) (*BookOutcome, error) {
-	outcome := &BookOutcome{BookID: book.ID, BookTitle: book.Title}
+func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType string) (*BookOutcome, error) {
+	outcome := &BookOutcome{BookID: book.ID, BookTitle: book.Title, MediaType: mediaType}
 
 	author, err := s.store.GetAuthor(book.AuthorID)
 	if err != nil {
 		return nil, err
 	}
 
-	found, indexerErrs, err := s.indexers.SearchAll(ctx, author.Name+" "+book.Title)
+	query := author.Name + " " + book.Title
+	if mediaType == "audiobook" {
+		// Categories do most of the filtering; the keyword helps indexers
+		// with sloppy category mapping.
+		query += " audiobook"
+	}
+	found, indexerErrs, err := s.indexers.SearchAll(ctx, query, mediaType)
 	if err != nil {
 		return nil, err
 	}
 
-	prefs := release.PreferencesForEbook(s.store)
+	prefs := release.PreferencesFor(s.store, mediaType)
 	candidates := make([]release.Candidate, 0, len(found))
 	for _, rel := range found {
 		candidates = append(candidates, release.Score(rel, prefs, book, author))
@@ -88,7 +99,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book) (*BookOutco
 		return outcome, nil
 	}
 
-	result, _, err := s.downloads.GrabRelease(ctx, best.Protocol, best.DownloadURL, best.Title, book.ID)
+	result, _, err := s.downloads.GrabRelease(ctx, best.Protocol, best.DownloadURL, best.Title, book.ID, mediaType)
 	if err != nil {
 		outcome.Message = "grab failed: " + err.Error()
 		return outcome, nil
@@ -96,28 +107,52 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book) (*BookOutco
 	outcome.Grabbed = true
 	outcome.Release = best.Title
 	outcome.Client = result.Client
-	slog.Info("auto-grabbed release", "book", book.Title, "release", best.Title, "client", result.Client)
+	slog.Info("auto-grabbed release",
+		"book", book.Title, "mediaType", mediaType, "release", best.Title, "client", result.Client)
 	return outcome, nil
 }
 
-// pendingBookIDs is the set of books that already have an unresolved grab —
-// searching those again would double-download.
-func (s *Service) pendingBookIDs() (map[int64]bool, error) {
+func pendingKey(bookID int64, mediaType string) string {
+	return fmt.Sprintf("%d/%s", bookID, mediaType)
+}
+
+// pendingBookIDs is the set of book/media-type pairs that already have an
+// unresolved grab — searching those again would double-download.
+func (s *Service) pendingBookIDs() (map[string]bool, error) {
 	grabs, err := s.downloads.Store().ListGrabs(download.GrabStatusGrabbed)
 	if err != nil {
 		return nil, err
 	}
-	pending := map[int64]bool{}
+	pending := map[string]bool{}
 	for _, g := range grabs {
 		if g.BookID > 0 {
-			pending[g.BookID] = true
+			pending[pendingKey(g.BookID, g.MediaType)] = true
 		}
 	}
 	return pending, nil
 }
 
-// SearchWanted searches every monitored book without a file, politely pacing
-// indexer traffic. Books with pending grabs are skipped.
+// wants lists the media types a book should be searched as: ebooks whenever
+// monitored and fileless; audiobooks additionally require a monitored
+// audiobook edition (the per-book opt-in).
+func (s *Service) wants(book *library.Book) []string {
+	if !book.Monitored {
+		return nil
+	}
+	types := []string{}
+	if !book.HasEbookFile {
+		types = append(types, "ebook")
+	}
+	if !book.HasAudiobookFile {
+		if ok, err := s.store.HasMonitoredEdition(book.ID, "audiobook"); err == nil && ok {
+			types = append(types, "audiobook")
+		}
+	}
+	return types
+}
+
+// SearchWanted searches every monitored book missing a wanted format,
+// politely pacing indexer traffic. Pending grabs are skipped per media type.
 func (s *Service) SearchWanted(ctx context.Context) ([]BookOutcome, error) {
 	books, err := s.store.ListBooks(0)
 	if err != nil {
@@ -131,26 +166,28 @@ func (s *Service) SearchWanted(ctx context.Context) ([]BookOutcome, error) {
 	outcomes := []BookOutcome{}
 	for i := range books {
 		book := &books[i]
-		if !book.Monitored || book.HasFile || pending[book.ID] {
-			continue
-		}
-		if ctx.Err() != nil {
-			return outcomes, ctx.Err()
-		}
-		outcome, err := s.searchOne(ctx, book)
-		if err != nil {
-			outcomes = append(outcomes, BookOutcome{
-				BookID: book.ID, BookTitle: book.Title, Message: err.Error(),
-			})
-			continue
-		}
-		outcomes = append(outcomes, *outcome)
+		for _, mediaType := range s.wants(book) {
+			if pending[pendingKey(book.ID, mediaType)] {
+				continue
+			}
+			if ctx.Err() != nil {
+				return outcomes, ctx.Err()
+			}
+			outcome, err := s.searchOne(ctx, book, mediaType)
+			if err != nil {
+				outcomes = append(outcomes, BookOutcome{
+					BookID: book.ID, BookTitle: book.Title, MediaType: mediaType, Message: err.Error(),
+				})
+				continue
+			}
+			outcomes = append(outcomes, *outcome)
 
-		// Pace between books so a big wanted list doesn't hammer indexers.
-		select {
-		case <-ctx.Done():
-			return outcomes, ctx.Err()
-		case <-time.After(500 * time.Millisecond):
+			// Pace between searches so a big wanted list doesn't hammer indexers.
+			select {
+			case <-ctx.Done():
+				return outcomes, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
 		}
 	}
 

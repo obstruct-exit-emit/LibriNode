@@ -62,6 +62,9 @@ func (s *Service) Plan(bookID int64) ([]Move, []string, error) {
 	moves := []Move{}
 	skips := []string{}
 	for _, f := range files {
+		if f.MediaType != "ebook" {
+			continue // the rename engine covers ebooks; audiobooks are placed on import
+		}
 		target, title, err := s.targetPath(&f, rootByID)
 		if err != nil {
 			skips = append(skips, fmt.Sprintf("%s: %v", f.Path, err))
@@ -140,15 +143,15 @@ func (s *Service) targetPath(f *library.BookFile, rootByID map[int64]string) (st
 	return target, book.Title, nil
 }
 
-// renderPath renders <root>/<folder template>/<file template>.<ext> for a book.
-func (s *Service) renderPath(root string, book *library.Book, format string) (string, error) {
+// tokenData gathers everything the naming templates can reference for a book.
+func (s *Service) tokenData(book *library.Book) (naming.TokenData, error) {
 	author, err := s.store.GetAuthor(book.AuthorID)
 	if err != nil {
-		return "", fmt.Errorf("author %d: %w", book.AuthorID, err)
+		return naming.TokenData{}, fmt.Errorf("author %d: %w", book.AuthorID, err)
 	}
 	series, err := s.store.ListSeriesForBook(book.ID)
 	if err != nil {
-		return "", err
+		return naming.TokenData{}, err
 	}
 
 	data := naming.TokenData{
@@ -163,32 +166,64 @@ func (s *Service) renderPath(root string, book *library.Book, format string) (st
 	if len(book.ReleaseDate) >= 4 {
 		data.ReleaseYear = book.ReleaseDate[:4]
 	}
+	return data, nil
+}
 
+// renderPath renders <root>/<folder template>/<file template>.<ext> for a book.
+func (s *Service) renderPath(root string, book *library.Book, format string) (string, error) {
+	data, err := s.tokenData(book)
+	if err != nil {
+		return "", err
+	}
 	ns := s.cfg.NamingSettings()
 	folder := naming.Format(ns.EbookFolder, data)
 	file := naming.Format(ns.EbookFile, data)
 	return filepath.Join(root, folder, file+"."+format), nil
 }
 
-// PlaceFile computes where a newly imported file for book belongs: the first
-// ebook root folder plus the naming templates. Returns the root folder id
-// and the absolute target path.
-func (s *Service) PlaceFile(book *library.Book, format string) (int64, string, error) {
+// Placement says where an imported item belongs. For ebooks, Dir/FileName
+// point at the single file; for audiobooks, Dir is the per-book folder
+// (Audiobookshelf layout) and FileName names single-file books inside it.
+type Placement struct {
+	RootFolderID int64
+	Dir          string
+	FileName     string // includes extension
+}
+
+// PlaceFile computes where a newly imported item for book belongs: the
+// first root folder of the media type plus that type's naming templates.
+func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Placement, error) {
 	roots, err := s.store.ListRootFolders()
 	if err != nil {
-		return 0, "", err
+		return nil, err
 	}
 	for _, root := range roots {
-		if root.MediaType != "ebook" {
+		if root.MediaType != mediaType {
 			continue
 		}
-		target, err := s.renderPath(root.Path, book, format)
+		data, err := s.tokenData(book)
 		if err != nil {
-			return 0, "", err
+			return nil, err
 		}
-		return root.ID, target, nil
+		ns := s.cfg.NamingSettings()
+		switch mediaType {
+		case "audiobook":
+			bookDir := naming.Format(ns.AudiobookFile, data)
+			return &Placement{
+				RootFolderID: root.ID,
+				Dir:          filepath.Join(root.Path, naming.Format(ns.AudiobookFolder, data), bookDir),
+				FileName:     bookDir + "." + format,
+			}, nil
+		default:
+			file := naming.Format(ns.EbookFile, data) + "." + format
+			return &Placement{
+				RootFolderID: root.ID,
+				Dir:          filepath.Join(root.Path, naming.Format(ns.EbookFolder, data)),
+				FileName:     file,
+			}, nil
+		}
 	}
-	return 0, "", fmt.Errorf("no ebook root folder configured")
+	return nil, fmt.Errorf("no %s root folder configured", mediaType)
 }
 
 // sameFile compares paths the way the target filesystem does (Windows and

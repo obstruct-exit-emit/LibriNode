@@ -118,7 +118,7 @@ func TestClientSearchNewznab(t *testing.T) {
 	srv := mockIndexer(t, newznabSearchXML, "s3cret")
 	defer srv.Close()
 
-	releases, err := NewClient().Search(context.Background(), testIndexer(srv, TypeNewznab), "mort")
+	releases, err := NewClient().Search(context.Background(), testIndexer(srv, TypeNewznab), "mort", "7000,7020")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestClientSearchTorznab(t *testing.T) {
 	srv := mockIndexer(t, torznabSearchXML, "s3cret")
 	defer srv.Close()
 
-	releases, err := NewClient().Search(context.Background(), testIndexer(srv, TypeTorznab), "mort")
+	releases, err := NewClient().Search(context.Background(), testIndexer(srv, TypeTorznab), "mort", "7000,7020")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestSearchAllMergesAndReportsFailures(t *testing.T) {
 		}
 	}
 
-	releases, errs, err := svc.SearchAll(context.Background(), "mort")
+	releases, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
 	if err != nil {
 		t.Fatalf("SearchAll: %v", err)
 	}
