@@ -99,6 +99,7 @@ export interface Indexer {
   apiKey: string;
   categories: string;
   audioCategories: string;
+  comicCategories: string;
   enabled: boolean;
   priority: number;
   addedAt?: string;
@@ -138,6 +139,29 @@ export interface QueueItem {
   status: string;
   progress: number;
   path?: string;
+}
+
+export interface SeriesResult {
+  foreignSeriesId: string;
+  title: string;
+  description?: string;
+  authorName?: string;
+  year?: number;
+  coverUrl?: string;
+  issueCount: number;
+}
+
+export interface Series {
+  id: number;
+  metadataSource: string;
+  foreignSeriesId: string;
+  title: string;
+  description: string;
+  mediaType: string;
+  monitored: boolean;
+  monitorNew: boolean;
+  coverUrl: string;
+  volumes?: Book[];
 }
 
 export interface ReleaseCandidate extends Release {
@@ -430,6 +454,24 @@ export const api = {
       ...json({ ebookFolder, ebookFile, audiobookFolder, audiobookFile }),
       method: "PUT",
     }),
+
+  searchSeries: (term: string, mediaType: string) =>
+    request<SeriesResult[]>(
+      `/api/v1/search?term=${encodeURIComponent(term)}&type=${mediaType}`,
+    ),
+  listSeries: () => request<Series[]>("/api/v1/series"),
+  addSeries: (mediaType: string, foreignSeriesId: string) =>
+    request<Series>("/api/v1/series", json({ mediaType, foreignSeriesId })),
+  getSeries: (id: number) => request<Series>(`/api/v1/series/${id}`),
+  monitorSeries: (id: number, monitored: boolean, monitorNew: boolean) =>
+    request<Series>(`/api/v1/series/${id}/monitor`, {
+      ...json({ monitored, monitorNew }),
+      method: "PUT",
+    }),
+  refreshSeries: (id: number) =>
+    request<Series>(`/api/v1/series/${id}/refresh`, { method: "POST" }),
+  deleteSeries: (id: number) =>
+    request<void>(`/api/v1/series/${id}`, { method: "DELETE" }),
 
   listRootFolders: () => request<RootFolder[]>("/api/v1/rootfolder"),
   addRootFolder: (mediaType: string, path: string) =>

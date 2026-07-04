@@ -3,11 +3,12 @@ import { api, ApiError, getApiKey, setApiKey } from "./api";
 import ActivityView from "./views/ActivityView";
 import LibraryView from "./views/LibraryView";
 import SearchView from "./views/SearchView";
+import SeriesView from "./views/SeriesView";
 import SettingsView from "./views/SettingsView";
 import SystemView from "./views/SystemView";
 import "./App.css";
 
-type Tab = "library" | "search" | "activity" | "settings" | "system";
+type Tab = "library" | "series" | "search" | "activity" | "settings" | "system";
 
 export default function App() {
   const [key, setKey] = useState(getApiKey());
@@ -33,7 +34,7 @@ export default function App() {
         <h1>🖋️ LibriNode</h1>
         {connected && (
           <nav>
-            {(["library", "search", "activity", "settings", "system"] as const).map((t) => (
+            {(["library", "series", "search", "activity", "settings", "system"] as const).map((t) => (
               <button
                 key={t}
                 className={tab === t ? "tab active" : "tab"}
@@ -78,6 +79,7 @@ export default function App() {
       )}
 
       {connected && tab === "library" && <LibraryView onError={setError} />}
+      {connected && tab === "series" && <SeriesView onError={setError} />}
       {connected && tab === "search" && <SearchView onError={setError} />}
       {connected && tab === "activity" && <ActivityView onError={setError} />}
       {connected && tab === "settings" && <SettingsView onError={setError} />}

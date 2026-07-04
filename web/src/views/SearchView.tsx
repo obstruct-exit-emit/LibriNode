@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { api, type SearchAuthor, type SearchBook } from "../api";
+import { api, type SearchAuthor, type SearchBook, type SeriesResult } from "../api";
 
-type SearchType = "book" | "author";
+type SearchType = "book" | "author" | "manga" | "comic";
 
 export default function SearchView({
   onError,
@@ -12,6 +12,7 @@ export default function SearchView({
   const [type, setType] = useState<SearchType>("book");
   const [authors, setAuthors] = useState<SearchAuthor[]>([]);
   const [books, setBooks] = useState<SearchBook[]>([]);
+  const [seriesResults, setSeriesResults] = useState<SeriesResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [added, setAdded] = useState<Record<string, boolean>>({});
@@ -32,6 +33,17 @@ export default function SearchView({
         .then((r) => {
           setAuthors(r);
           setBooks([]);
+          setSeriesResults([]);
+        })
+        .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+        .finally(done);
+    } else if (type === "manga" || type === "comic") {
+      api
+        .searchSeries(q, type)
+        .then((r) => {
+          setSeriesResults(r);
+          setAuthors([]);
+          setBooks([]);
         })
         .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
         .finally(done);
@@ -41,6 +53,7 @@ export default function SearchView({
         .then((r) => {
           setBooks(r);
           setAuthors([]);
+          setSeriesResults([]);
         })
         .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
         .finally(done);
@@ -53,7 +66,12 @@ export default function SearchView({
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   };
 
-  const results = type === "author" ? authors.length : books.length;
+  const results =
+    type === "author"
+      ? authors.length
+      : type === "manga" || type === "comic"
+        ? seriesResults.length
+        : books.length;
 
   return (
     <section className="card">
@@ -65,9 +83,11 @@ export default function SearchView({
         >
           <option value="book">Books</option>
           <option value="author">Authors</option>
+          <option value="manga">Manga</option>
+          <option value="comic">Comics</option>
         </select>
         <input
-          placeholder={type === "book" ? "Title…" : "Author name…"}
+          placeholder={type === "author" ? "Author name…" : "Title…"}
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           autoFocus
@@ -99,6 +119,35 @@ export default function SearchView({
                   added={!!added[`a${a.foreignAuthorId}`]}
                   onAdd={() =>
                     add(`a${a.foreignAuthorId}`, () => api.addAuthor(a.foreignAuthorId))
+                  }
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {seriesResults.length > 0 && (
+        <ul className="rows results">
+          {seriesResults.map((s) => (
+            <li key={s.foreignSeriesId}>
+              <div className="row">
+                <span className="result">
+                  {s.coverUrl && <img src={s.coverUrl} alt="" />}
+                  <span>
+                    {s.title}
+                    <span className="muted">
+                      {s.authorName && ` — ${s.authorName}`}
+                      {s.year ? ` (${s.year})` : ""}
+                      {s.issueCount > 0 &&
+                        ` · ${s.issueCount} ${type === "manga" ? "volumes" : "issues"}`}
+                    </span>
+                  </span>
+                </span>
+                <AddButton
+                  added={!!added[`s${s.foreignSeriesId}`]}
+                  onAdd={() =>
+                    add(`s${s.foreignSeriesId}`, () => api.addSeries(type, s.foreignSeriesId))
                   }
                 />
               </div>

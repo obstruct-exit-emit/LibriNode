@@ -120,6 +120,16 @@ sweep or pick **audiobook** in the book's search controls. Audiobook
 searches use each indexer's **Audio categories** (default `3030`), and
 imports land as `Author/Book Title/` folders — Audiobookshelf-ready.
 
+**Manga & comics** are series-first: search with type **Manga** (AniList,
+no key needed) or **Comics** (needs a free ComicVine API key, entered on
+the Metadata settings card), add the series, and every volume/issue lands
+in the **Series** tab with owned/wanted badges and per-volume Auto grab.
+"Monitor future volumes" is the series' monitor toggle — refreshes (manual
+or the daily sweep) discover new volumes and start monitoring them.
+Manga/comic searches use each indexer's **Comic categories** (default
+`7030`), scans understand `Series/Series v05.cbz` layouts, and imports
+write `ComicInfo.xml` into CBZ archives for Kavita/Komga.
+
 **Indexers** can be added two ways: manually under **Settings → Indexers**
 (any Newznab/Torznab endpoint, including per-indexer feed URLs from
 Prowlarr or Jackett), or automatically via **Prowlarr application sync** —
@@ -186,7 +196,8 @@ scriptable:
 |---|---|
 | System | `GET /system/status`, `GET /ping` (no auth) |
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
-| Search | `GET /search?term=&type=author\|book` (metadata provider proxy) |
+| Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
+| Series | `GET/POST /series`, `GET/DELETE /series/{id}`, `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
 | Authors | `GET/POST /author`, `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
@@ -249,12 +260,12 @@ metadata endpoints return 503.
 - [x] Audiobookshelf-friendly folder layout (`Author/Book Title/` with tracks inside) *(sidecar metadata files come with Phase 5 polish)*
 
 ### Phase 4 — Manga & comics
-- [ ] Volume/chapter/issue data model (series-first instead of author-first)
-- [ ] Manga metadata provider (AniList/MangaUpdates) behind the provider interface
-- [ ] Comic metadata provider (ComicVine/Metron)
-- [ ] CBZ/CBR handling + `ComicInfo.xml` sidecars
-- [ ] Issue/volume monitoring ("monitor future volumes")
-- [ ] Kavita/Komga-friendly folder layouts
+- [x] Volume/issue data model: series-first — monitored series own their volumes/issues, browsable in the Series tab
+- [x] Manga metadata provider: **AniList** (public API, no key; verified live) behind the series-provider registry
+- [x] Comic metadata provider: **ComicVine** (free API key, entered in Settings) *(mock-tested; live verification pending a key)*
+- [x] CBZ/CBR handling + `ComicInfo.xml` written into imported CBZ archives (CBR is read-only — pure Go can't write RAR)
+- [x] Issue/volume monitoring: per-series "monitor future volumes" — refresh discovers new volumes and monitors them automatically
+- [x] Kavita/Komga-friendly folder layouts (`Series/Series Vol. N.cbz`, templates editable)
 
 ### Phase 5 — Polish & 1.0
 - [ ] Full settings UI as specced above, with Test buttons everywhere
@@ -276,7 +287,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phases 0–3 complete.** The full *arr loop works end-to-end for ebooks **and audiobooks**: add books from Hardcover, and LibriNode searches your Newznab/Torznab indexers (manual or Prowlarr-synced) with per-type categories, scores releases against your quality profiles (audiobooks prefer m4b, reject abridged), grabs the best via qBittorrent/SABnzbd, imports the finished download — Audiobookshelf-style `Author/Title/` folders for audio — and marks each format owned independently. Automatic on a schedule, or by hand at any step from the embedded web UI. Hardcover is verified against the live API; the Prowlarr and download-client integrations are tested against faithful API mocks and await a live confirmation. Phase 4 (manga & comics) is next; the full UI overhaul lands in Phase 5 before 1.0.
+🚧 **Pre-alpha — Phases 0–4 complete: all four media types work end-to-end.** Ebooks and audiobooks flow author-first from Hardcover; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included). One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, and volume numbers, quality profiles, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Phase 5 (polish & 1.0 — full UI overhaul, notifications, packaging) is next.
 
 ## License
 

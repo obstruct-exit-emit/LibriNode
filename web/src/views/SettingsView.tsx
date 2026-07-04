@@ -349,6 +349,7 @@ const emptyIndexer: Omit<Indexer, "id" | "addedAt"> = {
   apiKey: "",
   categories: "7000,7020",
   audioCategories: "3030",
+  comicCategories: "7030",
   enabled: true,
   priority: 25,
 };
@@ -504,6 +505,14 @@ function IndexersCard({
             title="Newznab categories used for audiobook searches (3030 = Audio/Audiobook)"
             value={draft.audioCategories}
             onChange={(e) => set({ audioCategories: e.target.value })}
+          />
+        </label>
+        <label>
+          Comic categories
+          <input
+            title="Newznab categories used for manga and comic searches (7030 = Books/Comics)"
+            value={draft.comicCategories}
+            onChange={(e) => set({ comicCategories: e.target.value })}
           />
         </label>
         <div className="settings-actions">
@@ -741,6 +750,26 @@ function MetadataCard({
             </span>
           </label>
         )}
+
+        <p className="muted">
+          Manga metadata comes from AniList (no key needed). Comics need a
+          free <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noreferrer">ComicVine API key</a>:
+        </p>
+        <label>
+          ComicVine API key
+          <input
+            type="password"
+            placeholder="Required for comic search"
+            value={providers["comicvine"]?.token ?? ""}
+            onChange={(e) => {
+              setProviders({
+                ...providers,
+                comicvine: { ...(providers["comicvine"] ?? {}), token: e.target.value },
+              });
+              setNotice("");
+            }}
+          />
+        </label>
 
         <div className="settings-actions">
           {active && (

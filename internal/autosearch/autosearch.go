@@ -49,6 +49,10 @@ func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string
 	if err != nil {
 		return nil, err
 	}
+	// Volumes dictate their own media type.
+	if book.MediaType == "manga" || book.MediaType == "comic" {
+		mediaType = book.MediaType
+	}
 	if pending, err := s.pendingBookIDs(); err != nil {
 		return nil, err
 	} else if pending[pendingKey(bookID, mediaType)] {
