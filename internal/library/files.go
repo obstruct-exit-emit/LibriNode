@@ -165,6 +165,38 @@ func (s *Store) BookFilePathsUnderRoot(rootFolderID int64) (map[string]int64, er
 	return paths, rows.Err()
 }
 
+// VolumeRef locates one manga volume / comic issue for scan matching.
+type VolumeRef struct {
+	BookID      int64
+	Position    float64
+	SeriesTitle string
+	MediaType   string
+}
+
+// ListVolumeRefs returns every manga/comic volume with its series title and
+// number — the scanner's matching index for comic-style roots.
+func (s *Store) ListVolumeRefs() ([]VolumeRef, error) {
+	rows, err := s.db.Query(`
+		SELECT sb.book_id, sb.position, s.title, s.media_type
+		FROM series_books sb
+		JOIN series s ON s.id = sb.series_id
+		WHERE s.media_type != 'book'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	refs := []VolumeRef{}
+	for rows.Next() {
+		var r VolumeRef
+		if err := rows.Scan(&r.BookID, &r.Position, &r.SeriesTitle, &r.MediaType); err != nil {
+			return nil, err
+		}
+		refs = append(refs, r)
+	}
+	return refs, rows.Err()
+}
+
 // HasMonitoredEdition reports whether a book has at least one monitored
 // edition of the given format — the opt-in signal for acquiring that format
 // (e.g. audiobook wanting).

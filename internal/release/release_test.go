@@ -31,7 +31,8 @@ func TestParse(t *testing.T) {
 		},
 		{
 			"Guards! Guards! (Discworld #8) [epub/mobi/azw3]",
-			Parsed{Title: "Guards! Guards!", Formats: []string{"epub", "mobi", "azw3"}},
+			// The #8 series marker parses as Volume; ebook scoring ignores it.
+			Parsed{Title: "Guards! Guards!", Formats: []string{"epub", "mobi", "azw3"}, Volume: 8},
 		},
 		{
 			"Der Mort (German) PDF",
@@ -50,6 +51,18 @@ func TestParse(t *testing.T) {
 			"Mort [Abridged] [MP3 128k] narrated by Tony Robinson",
 			Parsed{Title: "Mort", Formats: []string{"mp3"}, Bitrate: 128,
 				Abridged: true, Narrator: "Tony Robinson"},
+		},
+		{
+			"Berserk v05 (2021) (Digital) [CBZ]",
+			Parsed{Title: "Berserk", Year: 2021, Formats: []string{"cbz"}, Volume: 5},
+		},
+		{
+			"The Walking Dead #12 CBR",
+			Parsed{Title: "The Walking Dead", Formats: []string{"cbr"}, Volume: 12},
+		},
+		{
+			"Berserk Volume 41 (Dark Horse) cbz",
+			Parsed{Title: "Berserk", Formats: []string{"cbz"}, Volume: 41},
 		},
 	}
 	for _, c := range cases {
@@ -203,6 +216,31 @@ func TestScoreAudiobook(t *testing.T) {
 	tiny := Score(rel("Mort M4B", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil)
 	if tiny.Approved {
 		t.Error("1 MiB audiobook should be rejected")
+	}
+}
+
+func TestScoreVolume(t *testing.T) {
+	prefs := DefaultMangaPreferences()
+
+	right := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if !right.Approved {
+		t.Fatalf("right volume rejected: %v", right.Rejections)
+	}
+	wrongVol := ScoreVolume(rel("Berserk v06 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if wrongVol.Approved {
+		t.Error("wrong volume approved")
+	}
+	noVol := ScoreVolume(rel("Berserk Complete CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if noVol.Approved {
+		t.Error("volume-less release approved")
+	}
+	wrongSeries := ScoreVolume(rel("One Piece v05 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if wrongSeries.Approved {
+		t.Error("wrong series approved")
+	}
+	epubUnderComic := ScoreVolume(rel("Berserk v05 EPUB", indexer.ProtocolUsenet, 50<<20, -1), DefaultComicPreferences(), "Berserk", 5)
+	if epubUnderComic.Approved {
+		t.Error("epub approved under comic prefs")
 	}
 }
 

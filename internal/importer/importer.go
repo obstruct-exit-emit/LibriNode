@@ -12,9 +12,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/librinode/librinode/internal/comicinfo"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/organize"
@@ -142,9 +144,15 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 
 	var sources []string
 	var format string
-	if mediaType == "audiobook" {
+	switch mediaType {
+	case "audiobook":
 		sources, format, err = pickAudioFiles(item.Path)
-	} else {
+	case "manga", "comic":
+		var source string
+		source, err = pickLargestFile(item.Path, scanner.IsComicPath, "comic archive")
+		sources = []string{source}
+		format = strings.TrimPrefix(strings.ToLower(filepath.Ext(source)), ".")
+	default:
 		var source string
 		source, err = pickEbookFile(item.Path)
 		sources = []string{source}
@@ -198,6 +206,14 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 			result.note("%s: %v", item.Title, err)
 			result.Skipped++
 			return
+		}
+	}
+
+	// Comic archives get a ComicInfo.xml sidecar inside the CBZ so Kavita/
+	// Komga pick up series metadata; failures aren't fatal to the import.
+	if (mediaType == "manga" || mediaType == "comic") && format == "cbz" {
+		if err := s.writeComicInfo(target, book); err != nil {
+			result.note("%s: writing ComicInfo.xml: %v", item.Title, err)
 		}
 	}
 
@@ -295,6 +311,65 @@ func pickEbookFile(path string) (string, error) {
 	}
 	if best == "" {
 		return "", fmt.Errorf("no ebook file found in download")
+	}
+	return best, nil
+}
+
+// writeComicInfo injects a ComicInfo.xml built from the volume's library
+// metadata into an imported CBZ.
+func (s *Service) writeComicInfo(cbzPath string, book *library.Book) error {
+	info := comicinfo.Info{
+		Title:   book.Description, // issue title lives in the description
+		Summary: "",
+		Writer:  "",
+	}
+	if author, err := s.store.GetAuthor(book.AuthorID); err == nil {
+		info.Writer = author.Name
+	}
+	if links, err := s.store.ListSeriesForBook(book.ID); err == nil && len(links) > 0 {
+		info.Series = links[0].Title
+		info.Number = strconv.FormatFloat(links[0].Position, 'f', -1, 64)
+	}
+	if len(book.ReleaseDate) >= 4 {
+		if y, err := strconv.Atoi(book.ReleaseDate[:4]); err == nil {
+			info.Year = y
+		}
+	}
+	return comicinfo.Inject(cbzPath, info)
+}
+
+// pickLargestFile returns the largest file at path (a file or directory)
+// accepted by the matcher.
+func pickLargestFile(path string, accept func(string) bool, kind string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("client reported no path")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("download path missing: %w", err)
+	}
+	if !info.IsDir() {
+		if !accept(path) {
+			return "", fmt.Errorf("%s is not a %s", filepath.Base(path), kind)
+		}
+		return path, nil
+	}
+	var best string
+	var bestSize int64
+	err = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !accept(p) {
+			return err
+		}
+		if fi, err := d.Info(); err == nil && fi.Size() > bestSize {
+			best, bestSize = p, fi.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if best == "" {
+		return "", fmt.Errorf("no %s found in download", kind)
 	}
 	return best, nil
 }

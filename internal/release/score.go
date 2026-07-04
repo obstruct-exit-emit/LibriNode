@@ -35,10 +35,36 @@ func PreferencesFor(store *library.Store, mediaType string) Preferences {
 		prefs.RejectAbridged = mediaType == "audiobook"
 		return prefs
 	}
-	if mediaType == "audiobook" {
+	switch mediaType {
+	case "audiobook":
 		return DefaultAudiobookPreferences()
+	case "manga":
+		return DefaultMangaPreferences()
+	case "comic":
+		return DefaultComicPreferences()
 	}
 	return DefaultEbookPreferences()
+}
+
+// DefaultMangaPreferences prefer lossless archives; scanlation sizes run
+// from a few MB per volume to a GB+ for omnibus scans.
+func DefaultMangaPreferences() Preferences {
+	return Preferences{
+		FormatScores: map[string]int{"cbz": 100, "cbr": 80, "epub": 60, "pdf": 40},
+		Language:     "english",
+		MinSize:      2 << 20,
+		MaxSize:      2 << 30,
+	}
+}
+
+// DefaultComicPreferences mirror manga but drop epub (comics don't ship it).
+func DefaultComicPreferences() Preferences {
+	return Preferences{
+		FormatScores: map[string]int{"cbz": 100, "cbr": 80, "pdf": 40},
+		Language:     "english",
+		MinSize:      2 << 20,
+		MaxSize:      2 << 30,
+	}
 }
 
 // PreferencesForEbook resolves the ebook rules (kept for callers without a
@@ -158,6 +184,34 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 
 	if book != nil {
 		c.matchBook(book, author)
+	}
+
+	c.Approved = len(c.Rejections) == 0
+	return c
+}
+
+// ScoreVolume evaluates a release against a wanted manga volume / comic
+// issue: generic checks plus the series title and the exact volume number.
+func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, number float64) Candidate {
+	c := Score(rel, prefs, nil, nil)
+
+	relNorm := scanner.Normalize(rel.Title)
+	matched := false
+	for _, key := range scanner.TitleKeys(seriesTitle) {
+		if key != "" && strings.Contains(relNorm, key) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		c.reject("does not contain the series title")
+	}
+
+	switch {
+	case c.Parsed.Volume == 0:
+		c.reject("no volume/issue number in release name")
+	case c.Parsed.Volume != number:
+		c.reject(fmt.Sprintf("volume %v, wanted %v", c.Parsed.Volume, number))
 	}
 
 	c.Approved = len(c.Rejections) == 0

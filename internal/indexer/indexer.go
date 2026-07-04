@@ -27,6 +27,8 @@ type Indexer struct {
 	Categories string `json:"categories"` // comma-separated Newznab category ids (book searches)
 	// AudioCategories are used for audiobook searches (3030 = Audio/Audiobook).
 	AudioCategories string `json:"audioCategories"`
+	// ComicCategories are used for manga and comic searches (7030 = Books/Comics).
+	ComicCategories string `json:"comicCategories"`
 	Enabled         bool   `json:"enabled"`
 	Priority        int    `json:"priority"` // 1-50, lower wins ties
 	AddedAt         string `json:"addedAt"`
@@ -42,8 +44,11 @@ func (i *Indexer) Protocol() string {
 
 // CategoriesFor picks the category list for a media type's searches.
 func (i *Indexer) CategoriesFor(mediaType string) string {
-	if mediaType == "audiobook" {
+	switch mediaType {
+	case "audiobook":
 		return i.AudioCategories
+	case "manga", "comic":
+		return i.ComicCategories
 	}
 	return i.Categories
 }

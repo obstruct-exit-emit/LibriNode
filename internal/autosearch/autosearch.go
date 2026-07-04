@@ -60,27 +60,51 @@ func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string
 
 func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType string) (*BookOutcome, error) {
 	outcome := &BookOutcome{BookID: book.ID, BookTitle: book.Title, MediaType: mediaType}
+	prefs := release.PreferencesFor(s.store, mediaType)
 
-	author, err := s.store.GetAuthor(book.AuthorID)
-	if err != nil {
-		return nil, err
+	var query string
+	var score func(indexer.Release) release.Candidate
+
+	if mediaType == "manga" || mediaType == "comic" {
+		// Volumes are searched by series title; the volume number filters
+		// candidates during scoring.
+		links, err := s.store.ListSeriesForBook(book.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(links) == 0 {
+			outcome.Message = "volume has no series link"
+			return outcome, nil
+		}
+		seriesTitle, number := links[0].Title, links[0].Position
+		query = seriesTitle
+		score = func(rel indexer.Release) release.Candidate {
+			return release.ScoreVolume(rel, prefs, seriesTitle, number)
+		}
+	} else {
+		author, err := s.store.GetAuthor(book.AuthorID)
+		if err != nil {
+			return nil, err
+		}
+		query = author.Name + " " + book.Title
+		if mediaType == "audiobook" {
+			// Categories do most of the filtering; the keyword helps
+			// indexers with sloppy category mapping.
+			query += " audiobook"
+		}
+		score = func(rel indexer.Release) release.Candidate {
+			return release.Score(rel, prefs, book, author)
+		}
 	}
 
-	query := author.Name + " " + book.Title
-	if mediaType == "audiobook" {
-		// Categories do most of the filtering; the keyword helps indexers
-		// with sloppy category mapping.
-		query += " audiobook"
-	}
 	found, indexerErrs, err := s.indexers.SearchAll(ctx, query, mediaType)
 	if err != nil {
 		return nil, err
 	}
 
-	prefs := release.PreferencesFor(s.store, mediaType)
 	candidates := make([]release.Candidate, 0, len(found))
 	for _, rel := range found {
-		candidates = append(candidates, release.Score(rel, prefs, book, author))
+		candidates = append(candidates, score(rel))
 	}
 	release.Rank(candidates)
 
@@ -138,6 +162,13 @@ func (s *Service) pendingBookIDs() (map[string]bool, error) {
 func (s *Service) wants(book *library.Book) []string {
 	if !book.Monitored {
 		return nil
+	}
+	// Manga volumes / comic issues want exactly their own type.
+	if book.MediaType == "manga" || book.MediaType == "comic" {
+		if book.HasFile {
+			return nil
+		}
+		return []string{book.MediaType}
 	}
 	types := []string{}
 	if !book.HasEbookFile {

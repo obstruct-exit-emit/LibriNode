@@ -56,8 +56,11 @@ func (s *Service) Scan(ctx context.Context) (*Result, error) {
 		case "audiobook":
 			result.Roots++
 			scanErr = s.scanAudiobookRoot(ctx, root, index, result)
+		case "manga", "comic":
+			result.Roots++
+			scanErr = s.scanComicRoot(ctx, root, index, result)
 		default:
-			continue // manga/comic scanners arrive in Phase 4
+			continue
 		}
 		if scanErr != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", root.Path, scanErr))
@@ -283,6 +286,80 @@ func audiobookDirInfo(dir string) (int64, string, time.Time) {
 	return total, format, modified
 }
 
+// scanComicRoot walks a manga/comic root where each archive file is one
+// volume/issue: Series/Series v05.cbz (series from the directory) or loose
+// Series v05.cbz (series from the filename prefix).
+func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, index *matchIndex, result *Result) error {
+	known, err := s.store.BookFilePathsUnderRoot(root.ID)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+
+	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), ".") && path != root.Path {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if !comicExtensions[ext] {
+			return nil
+		}
+
+		rel, err := filepath.Rel(root.Path, path)
+		if err != nil {
+			return err
+		}
+		seriesGuess, number := comicGuess(rel)
+		bookID := index.matchVolume(root.MediaType, seriesGuess, number)
+
+		file := &library.BookFile{
+			RootFolderID: root.ID,
+			BookID:       bookID,
+			MediaType:    root.MediaType,
+			Path:         path,
+			Format:       strings.TrimPrefix(ext, "."),
+		}
+		if info, err := d.Info(); err == nil {
+			file.Size = info.Size()
+			file.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
+		}
+		if err := s.store.UpsertBookFile(file); err != nil {
+			return err
+		}
+		seen[path] = true
+		result.Scanned++
+		if bookID > 0 {
+			result.Matched++
+		} else {
+			result.Unmatched++
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for path, id := range known {
+		if seen[path] {
+			continue
+		}
+		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
+			return err
+		}
+		result.Removed++
+	}
+	return nil
+}
+
 // RematchUnmatched re-runs matching for unmatched file records against the
 // current library — no disk walk, pure DB. Called after books are added so
 // files found by an earlier scan attach the moment their book exists.
@@ -295,9 +372,9 @@ func (s *Service) RematchUnmatched() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	rootByID := map[int64]string{}
+	rootByID := map[int64]library.RootFolder{}
 	for _, r := range roots {
-		rootByID[r.ID] = r.Path
+		rootByID[r.ID] = r
 	}
 	index, err := s.buildIndex()
 	if err != nil {
@@ -310,11 +387,17 @@ func (s *Service) RematchUnmatched() (int, error) {
 		if !ok {
 			continue
 		}
-		rel, err := filepath.Rel(root, f.Path)
+		rel, err := filepath.Rel(root.Path, f.Path)
 		if err != nil {
 			continue
 		}
-		bookID := index.match(ParsePath(rel))
+		var bookID int64
+		if root.MediaType == "manga" || root.MediaType == "comic" {
+			seriesGuess, number := comicGuess(rel)
+			bookID = index.matchVolume(root.MediaType, seriesGuess, number)
+		} else {
+			bookID = index.match(ParsePath(rel))
+		}
 		if bookID == 0 {
 			continue
 		}
@@ -329,12 +412,37 @@ func (s *Service) RematchUnmatched() (int, error) {
 	return matched, nil
 }
 
+// comicGuess extracts the series name and volume number from a relative
+// archive path: the parent directory names the series when present,
+// otherwise the filename prefix before the volume marker.
+func comicGuess(rel string) (string, float64) {
+	name := filepath.Base(rel)
+	number := VolumeFromName(name)
+	if dir := filepath.Dir(rel); dir != "." {
+		return filepath.Base(dir), number
+	}
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	if m := volumeMarker.FindStringIndex(base); m != nil {
+		return strings.TrimSpace(strings.Trim(base[:m[0]], "-–")), number
+	}
+	return base, number
+}
+
 // matchIndex holds normalized lookups over the whole library, built once per
 // scan run.
 type matchIndex struct {
-	authorsByName map[string]int64           // Normalize(author name) → author id
-	byAuthorTitle map[int64]map[string]int64 // author id → title key → book id
-	byTitle       map[string]map[int64]bool  // title key → set of book ids
+	authorsByName map[string]int64             // Normalize(author name) → author id
+	byAuthorTitle map[int64]map[string]int64   // author id → title key → book id
+	byTitle       map[string]map[int64]bool    // title key → set of book ids
+	volumes       map[string]map[float64]int64 // mediaType/series key → number → book id
+}
+
+// matchVolume resolves a manga/comic archive to a volume book id, or 0.
+func (idx *matchIndex) matchVolume(mediaType, seriesGuess string, number float64) int64 {
+	if number == 0 || seriesGuess == "" {
+		return 0
+	}
+	return idx.volumes[mediaType+"/"+Normalize(seriesGuess)][number]
 }
 
 func (s *Service) buildIndex() (*matchIndex, error) {
@@ -342,6 +450,19 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 		authorsByName: map[string]int64{},
 		byAuthorTitle: map[int64]map[string]int64{},
 		byTitle:       map[string]map[int64]bool{},
+		volumes:       map[string]map[float64]int64{},
+	}
+
+	refs, err := s.store.ListVolumeRefs()
+	if err != nil {
+		return nil, err
+	}
+	for _, ref := range refs {
+		key := ref.MediaType + "/" + Normalize(ref.SeriesTitle)
+		if idx.volumes[key] == nil {
+			idx.volumes[key] = map[float64]int64{}
+		}
+		idx.volumes[key][ref.Position] = ref.BookID
 	}
 
 	authors, err := s.store.ListAuthors()

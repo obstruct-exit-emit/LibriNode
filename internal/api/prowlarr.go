@@ -97,8 +97,9 @@ func (r *arrIndexerResource) toIndexer() (*indexer.Indexer, error) {
 	if ind.Categories == "" {
 		ind.Categories = "7000,7020"
 	}
-	// Prowlarr's Readarr dialect has no audio category field; keep the default.
+	// Prowlarr's Readarr dialect has no audio/comic category fields; defaults.
 	ind.AudioCategories = "3030"
+	ind.ComicCategories = "7030"
 	if ind.Priority <= 0 || ind.Priority > 50 {
 		ind.Priority = 25
 	}

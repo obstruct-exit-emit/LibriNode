@@ -23,6 +23,9 @@ type Parsed struct {
 	Narrator string `json:"narrator,omitempty"`
 	Bitrate  int    `json:"bitrate,omitempty"` // kbps
 	Abridged bool   `json:"abridged"`
+	// Manga/comic volume or issue number ("v05", "Vol. 5", "#12"); 0 when
+	// not stated.
+	Volume float64 `json:"volume,omitempty"`
 }
 
 var mediaFormats = map[string]bool{
@@ -30,6 +33,8 @@ var mediaFormats = map[string]bool{
 	"epub": true, "mobi": true, "azw3": true, "pdf": true,
 	// audiobook
 	"m4b": true, "m4a": true, "mp3": true, "flac": true, "opus": true,
+	// manga/comic
+	"cbz": true, "cbr": true,
 }
 
 // languages maps release-title tokens to a normalized language name.
@@ -53,6 +58,8 @@ var (
 	byPattern       = regexp.MustCompile(`(?i)^(.+?)\s+by\s+(.+)$`)
 	narratorPattern = regexp.MustCompile(`(?i)\b(read|narrated)\s+by\s+([A-Za-z][A-Za-z .'’-]*)`)
 	bitrateToken    = regexp.MustCompile(`^(\d{2,3})\s?(k|kbps)$`)
+	volumeWords     = regexp.MustCompile(`(?i)\b(?:vol|volume)\.?\s*(\d+(?:\.\d+)?)`)
+	volumeToken     = regexp.MustCompile(`^(?:v(\d{1,3}(?:\.\d+)?)|#(\d{1,4}(?:\.\d+)?))$`)
 )
 
 // Parse extracts structured info from one release title.
@@ -73,6 +80,13 @@ func Parse(title string) Parsed {
 	// tokenizing so the name doesn't pollute the title.
 	if m := narratorPattern.FindStringSubmatch(working); m != nil {
 		p.Narrator = strings.TrimSpace(m[2])
+		working = strings.Replace(working, m[0], " ", 1)
+	}
+
+	// Worded volume markers ("Vol. 5", "Volume 12"); single-token forms
+	// (v05, #12) are handled during token scanning.
+	if m := volumeWords.FindStringSubmatch(working); m != nil {
+		p.Volume, _ = strconv.ParseFloat(m[1], 64)
 		working = strings.Replace(working, m[0], " ", 1)
 	}
 
@@ -143,6 +157,16 @@ func (p *Parsed) absorbToken(tok string) bool {
 	if m := bitrateToken.FindStringSubmatch(t); m != nil {
 		if p.Bitrate == 0 {
 			p.Bitrate, _ = strconv.Atoi(m[1])
+		}
+		return true
+	}
+	if m := volumeToken.FindStringSubmatch(t); m != nil {
+		if p.Volume == 0 {
+			num := m[1]
+			if num == "" {
+				num = m[2]
+			}
+			p.Volume, _ = strconv.ParseFloat(num, 64)
 		}
 		return true
 	}

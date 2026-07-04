@@ -41,6 +41,11 @@ type NamingSettings struct {
 	// single-file books).
 	AudiobookFolder string `yaml:"audiobook_folder" json:"audiobookFolder"`
 	AudiobookFile   string `yaml:"audiobook_file" json:"audiobookFile"`
+	// Manga/comics use Kavita/Komga's Series/File layout.
+	MangaFolder string `yaml:"manga_folder" json:"mangaFolder"`
+	MangaFile   string `yaml:"manga_file" json:"mangaFile"`
+	ComicFolder string `yaml:"comic_folder" json:"comicFolder"`
+	ComicFile   string `yaml:"comic_file" json:"comicFile"`
 }
 
 func defaultNaming() NamingSettings {
@@ -49,6 +54,10 @@ func defaultNaming() NamingSettings {
 		EbookFile:       "{Series Title} {Series Position} - {Book Title}",
 		AudiobookFolder: "{Author Name}",
 		AudiobookFile:   "{Book Title}",
+		MangaFolder:     "{Series Title}",
+		MangaFile:       "{Series Title} Vol. {Series Position}",
+		ComicFolder:     "{Series Title}",
+		ComicFile:       "{Series Title} #{Series Position}",
 	}
 }
 
@@ -154,6 +163,18 @@ func Load(dataDir string) (*Config, error) {
 	}
 	if cfg.Naming.AudiobookFile == "" {
 		cfg.Naming.AudiobookFile = defaultNaming().AudiobookFile
+	}
+	if cfg.Naming.MangaFolder == "" {
+		cfg.Naming.MangaFolder = defaultNaming().MangaFolder
+	}
+	if cfg.Naming.MangaFile == "" {
+		cfg.Naming.MangaFile = defaultNaming().MangaFile
+	}
+	if cfg.Naming.ComicFolder == "" {
+		cfg.Naming.ComicFolder = defaultNaming().ComicFolder
+	}
+	if cfg.Naming.ComicFile == "" {
+		cfg.Naming.ComicFile = defaultNaming().ComicFile
 	}
 
 	if cfg.APIKey == "" {

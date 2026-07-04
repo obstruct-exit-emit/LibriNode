@@ -310,6 +310,83 @@ func TestScanAudiobookRoot(t *testing.T) {
 	}
 }
 
+func TestScanComicRoot(t *testing.T) {
+	f := fixture(t)
+
+	// Manga series with two volumes in the library.
+	series := &library.Series{Source: "anilist", ForeignID: "500", Title: "Berserk",
+		MediaType: "manga", Monitored: true}
+	if err := f.store.UpsertSeries(series); err != nil {
+		t.Fatal(err)
+	}
+	author := &library.Author{Source: "anilist", ForeignID: "creator:miura", Name: "Kentarou Miura"}
+	if err := f.store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 2; i++ {
+		vol := &library.Book{AuthorID: author.ID, Source: "anilist", MediaType: "manga",
+			ForeignID: filepath.Join("500-v", string(rune('0'+i))), Title: "Berserk Vol. " + string(rune('0'+i)), Monitored: true}
+		if err := f.store.UpsertBook(vol); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.LinkBookSeries(vol.ID, series.ID, float64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mangaRoot := t.TempDir()
+	write := func(rel string) {
+		path := filepath.Join(mangaRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("pages"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Berserk/Berserk v01.cbz")     // dir-named series
+	write("Berserk v02 (Digital).cbz")   // loose, series from filename
+	write("One Piece/One Piece v01.cbz") // unknown series → unmatched
+	write("Berserk/notes.txt")           // ignored
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('manga', ?)`, mangaRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	// Ebook fixture root scans 4; manga root scans 3 archives, 2 matched.
+	if result.Scanned != 7 || result.Unmatched != 2 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	volumes, _ := f.store.ListVolumes(series.ID)
+	if len(volumes) != 2 || !volumes[0].HasFile || !volumes[1].HasFile {
+		t.Fatalf("volumes = %+v", volumes)
+	}
+	files, _ := f.store.ListBookFiles(volumes[0].ID)
+	if len(files) != 1 || files[0].MediaType != "manga" || files[0].Format != "cbz" {
+		t.Fatalf("files = %+v", files)
+	}
+}
+
+func TestVolumeFromName(t *testing.T) {
+	cases := map[string]float64{
+		"Berserk v05.cbz":            5,
+		"Berserk Vol. 12.cbz":        12,
+		"Berserk Volume 3.cbz":       3,
+		"The Walking Dead #112.cbr":  112,
+		"Berserk v5.5.cbz":           5.5,
+		"Berserk Deluxe Edition.cbz": 0,
+	}
+	for in, want := range cases {
+		if got := VolumeFromName(in); got != want {
+			t.Errorf("VolumeFromName(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
 func TestScanSkipsMissingRoot(t *testing.T) {
 	f := fixture(t)
 

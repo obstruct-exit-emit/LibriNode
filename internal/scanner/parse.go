@@ -3,6 +3,7 @@ package scanner
 import (
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,32 @@ var audioExtensions = map[string]bool{
 // IsAudioPath reports whether a filename is an audiobook audio file.
 func IsAudioPath(name string) bool {
 	return audioExtensions[strings.ToLower(filepath.Ext(name))]
+}
+
+// comicExtensions are the archive types manga/comic roots scan for.
+var comicExtensions = map[string]bool{
+	".cbz":  true,
+	".cbr":  true,
+	".pdf":  true,
+	".epub": true,
+}
+
+// IsComicPath reports whether a filename is a comic/manga archive.
+func IsComicPath(name string) bool {
+	return comicExtensions[strings.ToLower(filepath.Ext(name))]
+}
+
+var volumeMarker = regexp.MustCompile(`(?i)(?:\bv|\bvol\.?\s*|\bvolume\s+|#)(\d{1,4}(?:\.\d+)?)`)
+
+// VolumeFromName extracts a volume/issue number from a filename ("Berserk
+// v05", "Berserk Vol. 5", "The Walking Dead #12"); 0 means none found.
+func VolumeFromName(name string) float64 {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	if m := volumeMarker.FindStringSubmatch(base); m != nil {
+		v, _ := strconv.ParseFloat(m[1], 64)
+		return v
+	}
+	return 0
 }
 
 // ParsedFile is the scanner's best guess at what a file is, derived purely

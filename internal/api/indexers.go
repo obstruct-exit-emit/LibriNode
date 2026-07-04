@@ -73,6 +73,9 @@ func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 	if in.AudioCategories == "" {
 		in.AudioCategories = "3030"
 	}
+	if in.ComicCategories == "" {
+		in.ComicCategories = "7030"
+	}
 	if in.Priority <= 0 || in.Priority > 50 {
 		in.Priority = 25
 	}
@@ -182,8 +185,15 @@ func (s *server) handleTestIndexer(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	term := r.URL.Query().Get("term")
 
+	mediaType := r.URL.Query().Get("mediaType")
+	if mediaType == "" {
+		mediaType = "ebook"
+	}
+
 	var book *library.Book
 	var author *library.Author
+	var seriesTitle string
+	var volumeNumber float64
 	if v := r.URL.Query().Get("bookId"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -194,24 +204,36 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 			writeStoreError(w, err)
 			return
 		}
-		if author, err = s.store.GetAuthor(book.AuthorID); err != nil {
-			writeStoreError(w, err)
-			return
-		}
-		if term == "" {
-			term = author.Name + " " + book.Title
+		if book.MediaType == "manga" || book.MediaType == "comic" {
+			// Volumes dictate their own media type and search by series.
+			mediaType = book.MediaType
+			links, err := s.store.ListSeriesForBook(book.ID)
+			if err != nil || len(links) == 0 {
+				writeError(w, http.StatusInternalServerError, "volume has no series link")
+				return
+			}
+			seriesTitle, volumeNumber = links[0].Title, links[0].Position
+			if term == "" {
+				term = seriesTitle
+			}
+		} else {
+			if author, err = s.store.GetAuthor(book.AuthorID); err != nil {
+				writeStoreError(w, err)
+				return
+			}
+			if term == "" {
+				term = author.Name + " " + book.Title
+			}
 		}
 	}
 	if term == "" {
 		writeError(w, http.StatusBadRequest, "term or bookId is required")
 		return
 	}
-	mediaType := r.URL.Query().Get("mediaType")
-	if mediaType == "" {
-		mediaType = "ebook"
-	}
-	if mediaType != "ebook" && mediaType != "audiobook" {
-		writeError(w, http.StatusBadRequest, "mediaType must be ebook or audiobook")
+	switch mediaType {
+	case "ebook", "audiobook", "manga", "comic":
+	default:
+		writeError(w, http.StatusBadRequest, "mediaType must be ebook, audiobook, manga, or comic")
 		return
 	}
 
@@ -227,7 +249,11 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	prefs := release.PreferencesFor(s.store, mediaType)
 	candidates := make([]release.Candidate, 0, len(found))
 	for _, rel := range found {
-		candidates = append(candidates, release.Score(rel, prefs, book, author))
+		if seriesTitle != "" {
+			candidates = append(candidates, release.ScoreVolume(rel, prefs, seriesTitle, volumeNumber))
+		} else {
+			candidates = append(candidates, release.Score(rel, prefs, book, author))
+		}
 	}
 	release.Rank(candidates)
 	writeJSON(w, http.StatusOK, map[string]any{"releases": candidates, "errors": errs})
