@@ -28,7 +28,7 @@ Each media type is a fully independent library with its **own root folder(s)**, 
 | Type | Root folder (example) | Formats |
 |---|---|---|
 | Ebooks | `D:\Media\Ebooks` / `/data/ebooks` | epub, mobi, azw3, pdf |
-| Audiobooks | `D:\Media\Audiobooks` / `/data/audiobooks` | m4b, mp3, flac, opus |
+| Audiobooks | `D:\Media\Audiobooks` / `/data/audiobooks` | m4b, m4a, mp3, flac, opus |
 | Manga | `D:\Media\Manga` / `/data/manga` | cbz, cbr, epub |
 | Comics | `D:\Media\Comics` / `/data/comics` | cbz, cbr, pdf |
 
@@ -89,7 +89,8 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 2. **Settings → Metadata Provider:** paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
    then **Save** — search goes live immediately, no restart.
-3. **Settings → Root Folders:** add the folder(s) where your ebooks live.
+3. **Settings → Root Folders:** add the folder(s) where your ebooks — and,
+   if you use them, audiobooks — live (one root folder per media type).
 4. **Search:** find authors or books on Hardcover and add them to the
    library (adding an author pulls the full bibliography; adding a book
    pulls its editions).
@@ -190,10 +191,10 @@ scriptable:
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
-| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (parsed + scored candidates from all enabled indexers) |
+| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook`) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history` |
-| Auto search | `POST /book/{id}/search` (grab best release for one book), `POST /library/search` (sweep all wanted books) |
+| Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
