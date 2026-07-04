@@ -28,9 +28,12 @@ type Author struct {
 }
 
 type Book struct {
-	ID               int64   `json:"id"`
-	AuthorID         int64   `json:"authorId"`
-	Source           string  `json:"metadataSource"`
+	ID       int64  `json:"id"`
+	AuthorID int64  `json:"authorId"`
+	Source   string `json:"metadataSource"`
+	// MediaType is "book" for prose (owned as ebook/audiobook), or
+	// "manga"/"comic" for a series volume/issue.
+	MediaType        string  `json:"mediaType"`
 	ForeignID        string  `json:"foreignBookId"`
 	Title            string  `json:"title"`
 	SortTitle        string  `json:"sortTitle"`
@@ -72,6 +75,12 @@ type Series struct {
 	ForeignID   string `json:"foreignSeriesId"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	MediaType   string `json:"mediaType"` // book (prose series), manga, comic
+	Monitored   bool   `json:"monitored"`
+	MonitorNew  bool   `json:"monitorNew"` // future volumes start monitored
+	CoverURL    string `json:"coverUrl"`
+	// Populated on detail endpoints.
+	Volumes []Book `json:"volumes,omitempty"`
 }
 
 // SeriesLink is a book's membership in a series ("book 3 of Discworld").

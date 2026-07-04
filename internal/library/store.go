@@ -136,11 +136,15 @@ func (s *Store) UpsertBook(b *Book) error {
 	if b.SortTitle == "" {
 		b.SortTitle = SortTitle(b.Title)
 	}
+	if b.MediaType == "" {
+		b.MediaType = "book"
+	}
 	return s.db.QueryRow(`
-		INSERT INTO books (author_id, metadata_source, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO books (author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (metadata_source, foreign_id) DO UPDATE SET
 			author_id = excluded.author_id,
+			media_type = excluded.media_type,
 			title = excluded.title,
 			sort_title = excluded.sort_title,
 			description = excluded.description,
@@ -149,12 +153,12 @@ func (s *Store) UpsertBook(b *Book) error {
 			cover_url = excluded.cover_url,
 			updated_at = datetime('now')
 		RETURNING id`,
-		b.AuthorID, b.Source, b.ForeignID, b.Title, b.SortTitle,
+		b.AuthorID, b.Source, b.MediaType, b.ForeignID, b.Title, b.SortTitle,
 		b.Description, b.ReleaseDate, b.Rating, b.CoverURL, b.Monitored,
 	).Scan(&b.ID)
 }
 
-const bookCols = `id, author_id, metadata_source, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
+const bookCols = `id, author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id),
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'ebook'),
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'audiobook'),
@@ -162,7 +166,7 @@ const bookCols = `id, author_id, metadata_source, foreign_id, title, sort_title,
 
 func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	var b Book
-	err := row.Scan(&b.ID, &b.AuthorID, &b.Source, &b.ForeignID, &b.Title, &b.SortTitle,
+	err := row.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
 		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
 		&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.AddedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -312,18 +316,126 @@ func (s *Store) SetEditionMonitored(id int64, monitored bool) error {
 
 // --- Series ---
 
-// UpsertSeries inserts or refreshes a series by (source, foreign_id).
-// The series' ID is set on return.
+// UpsertSeries inserts or refreshes a series by (source, foreign_id),
+// preserving the user-owned monitoring flags on update. The series' ID is
+// set on return.
 func (s *Store) UpsertSeries(sr *Series) error {
+	if sr.MediaType == "" {
+		sr.MediaType = "book"
+	}
 	return s.db.QueryRow(`
-		INSERT INTO series (metadata_source, foreign_id, title, description)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO series (metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (metadata_source, foreign_id) DO UPDATE SET
 			title = excluded.title,
-			description = excluded.description
+			description = excluded.description,
+			cover_url = excluded.cover_url
 		RETURNING id`,
 		sr.Source, sr.ForeignID, sr.Title, sr.Description,
+		sr.MediaType, sr.Monitored, sr.MonitorNew, sr.CoverURL,
 	).Scan(&sr.ID)
+}
+
+const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url`
+
+func scanSeries(row interface{ Scan(...any) error }) (*Series, error) {
+	var sr Series
+	err := row.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
+		&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.CoverURL)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &sr, nil
+}
+
+func (s *Store) GetSeries(id int64) (*Series, error) {
+	return scanSeries(s.db.QueryRow(`SELECT `+seriesCols+` FROM series WHERE id = ?`, id))
+}
+
+// ListSeries returns series of a media type ("" = all).
+func (s *Store) ListSeries(mediaType string) ([]Series, error) {
+	query := `SELECT ` + seriesCols + ` FROM series`
+	args := []any{}
+	if mediaType != "" {
+		query += ` WHERE media_type = ?`
+		args = append(args, mediaType)
+	}
+	query += ` ORDER BY title`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Series{}
+	for rows.Next() {
+		sr, err := scanSeries(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *sr)
+	}
+	return out, rows.Err()
+}
+
+// SetSeriesMonitored updates a series' monitoring flags and mirrors the
+// monitored flag onto its volumes (per-volume overrides can follow after).
+func (s *Store) SetSeriesMonitored(id int64, monitored, monitorNew bool) error {
+	res, err := s.db.Exec(`UPDATE series SET monitored = ?, monitor_new = ? WHERE id = ?`,
+		monitored, monitorNew, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	_, err = s.db.Exec(`
+		UPDATE books SET monitored = ?, updated_at = datetime('now')
+		WHERE media_type != 'book'
+		  AND id IN (SELECT book_id FROM series_books WHERE series_id = ?)`,
+		monitored, id)
+	return err
+}
+
+// ListVolumes returns a series' volume/issue books ordered by position.
+func (s *Store) ListVolumes(seriesID int64) ([]Book, error) {
+	rows, err := s.db.Query(`
+		SELECT `+bookCols+` FROM books
+		JOIN series_books sb ON sb.book_id = books.id
+		WHERE sb.series_id = ?
+		ORDER BY sb.position`, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	volumes := []Book{}
+	for rows.Next() {
+		b, err := scanBook(rows)
+		if err != nil {
+			return nil, err
+		}
+		volumes = append(volumes, *b)
+	}
+	return volumes, rows.Err()
+}
+
+// DeleteSeries removes a series and its volume/issue books (prose books in
+// a series are never deleted this way — they belong to their author).
+func (s *Store) DeleteSeries(id int64) error {
+	if _, err := s.GetSeries(id); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`
+		DELETE FROM books WHERE media_type != 'book'
+		  AND id IN (SELECT book_id FROM series_books WHERE series_id = ?)`, id); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM series WHERE id = ?`, id)
+	return err
 }
 
 func (s *Store) LinkBookSeries(bookID, seriesID int64, position float64) error {
