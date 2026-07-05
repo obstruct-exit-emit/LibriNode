@@ -25,7 +25,7 @@ Nothing today automates **all five** written-media types in one app with modern 
 ## Core Features
 
 ### 📚 Five media types, five libraries
-Each media type is a fully independent library with its **own root folder(s)**, naming scheme, quality profile, and monitoring rules:
+Each media type is a fully independent library with its **own root folder(s)**, naming scheme, quality profile, and monitoring rules — and, Plex-style, a library only appears in the UI once you set it up:
 
 | Type | Root folder (example) | Formats |
 |---|---|---|
@@ -284,6 +284,7 @@ metadata endpoints return 503.
 - [x] Magazine scanning materializes owned issues; automatic search grabs new issues (capped per pass); `Magazine/Magazine - date.pdf` layout; indexer categories 7010
 
 ### Phase 5 — Polish & 1.0
+- [ ] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own area — sidebar entry, scoped browsing (author-first for books, series-first for manga/comics/magazines), scoped search-and-add and wanted list; the Home page is the only place types meet, as stacked per-library sections ("Recently added — Ebooks", "Wanted — Manga") that never interleave types within a row; type-specific settings render only for active libraries
 - [ ] Full settings UI as specced above, with Test buttons everywhere
 - [ ] Calendar view (upcoming releases across all libraries)
 - [ ] Upgrade handling (replace when a better-quality release appears)
