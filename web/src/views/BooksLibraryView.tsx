@@ -597,56 +597,57 @@ function BookRow({
                 ))}
             </ul>
           )}
-          {detail.editions && detail.editions.length > 0 && (
-            <ul className="rows nested">
-              {detail.editions
-                .filter((e) => library === "audiobook" ? e.format === "audiobook" : e.format !== "audiobook")
-                .map((e) => (
-                  <EditionRow key={e.id} edition={e} onError={onError} />
-                ))}
-            </ul>
-          )}
+          <EditionsSummary editions={detail.editions ?? []} library={library} />
         </div>
       )}
     </li>
   );
 }
 
-function EditionRow({
-  edition,
-  onError,
+// EditionsSummary shows only this library's format as compact metadata —
+// editions are reference info, not controls (library membership, not
+// edition monitoring, decides what gets acquired).
+function EditionsSummary({
+  editions,
+  library,
 }: {
-  edition: Edition;
-  onError: (message: string) => void;
+  editions: Edition[];
+  library: "ebook" | "audiobook";
 }) {
-  const [monitored, setMonitored] = useState(edition.monitored);
+  const relevant = editions.filter(
+    (e) => e.format === library && (e.isbn13 || e.asin || e.publisher),
+  );
+  const others = editions.length - relevant.length;
+  if (relevant.length === 0) {
+    return editions.length > 0 ? (
+      <p className="muted">No {library} editions with identifiers ({editions.length} other editions known).</p>
+    ) : null;
+  }
 
-  const label = [
-    edition.format,
-    edition.isbn13 && `ISBN ${edition.isbn13}`,
-    edition.asin && `ASIN ${edition.asin}`,
-    edition.publisher,
-    edition.language,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
+  const shown = relevant.slice(0, 5);
   return (
-    <li>
-      <div className="row">
-        <span>{label || "edition"}</span>
-        <button
-          className={monitored ? "toggle on" : "toggle"}
-          onClick={() =>
-            api
-              .monitorEdition(edition.id, !monitored)
-              .then(() => setMonitored(!monitored))
-              .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-          }
-        >
-          {monitored ? "monitored" : "unmonitored"}
-        </button>
-      </div>
-    </li>
+    <div className="editions-summary">
+      <p className="muted">
+        {relevant.length} {library} edition{relevant.length === 1 ? "" : "s"}
+        {others > 0 && ` (+${others} other formats)`}:
+      </p>
+      <ul className="rows nested">
+        {shown.map((e) => (
+          <li key={e.id} className="muted">
+            {[
+              e.isbn13 && `ISBN ${e.isbn13}`,
+              e.asin && `ASIN ${e.asin}`,
+              e.publisher,
+              e.language,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </li>
+        ))}
+        {relevant.length > shown.length && (
+          <li className="muted">…and {relevant.length - shown.length} more</li>
+        )}
+      </ul>
+    </div>
   );
 }
