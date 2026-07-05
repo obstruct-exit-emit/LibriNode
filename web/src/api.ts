@@ -100,6 +100,7 @@ export interface Indexer {
   categories: string;
   audioCategories: string;
   comicCategories: string;
+  magazineCategories: string;
   enabled: boolean;
   priority: number;
   addedAt?: string;
@@ -462,6 +463,8 @@ export const api = {
   listSeries: () => request<Series[]>("/api/v1/series"),
   addSeries: (mediaType: string, foreignSeriesId: string) =>
     request<Series>("/api/v1/series", json({ mediaType, foreignSeriesId })),
+  addMagazine: (title: string) =>
+    request<Series>("/api/v1/series", json({ mediaType: "magazine", title })),
   getSeries: (id: number) => request<Series>(`/api/v1/series/${id}`),
   monitorSeries: (id: number, monitored: boolean, monitorNew: boolean) =>
     request<Series>(`/api/v1/series/${id}/monitor`, {

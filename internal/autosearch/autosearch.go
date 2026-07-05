@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -52,6 +53,10 @@ func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string
 	// Volumes dictate their own media type.
 	if book.MediaType == "manga" || book.MediaType == "comic" {
 		mediaType = book.MediaType
+	}
+	if book.MediaType == "magazine" {
+		return &BookOutcome{BookID: bookID, BookTitle: book.Title, MediaType: "magazine",
+			Message: "magazine issues are searched at the series level"}, nil
 	}
 	if pending, err := s.pendingBookIDs(); err != nil {
 		return nil, err
@@ -167,6 +172,11 @@ func (s *Service) wants(book *library.Book) []string {
 	if !book.Monitored {
 		return nil
 	}
+	// Magazine issues are acquired at the series level (searchMagazine),
+	// never through per-book search.
+	if book.MediaType == "magazine" {
+		return nil
+	}
 	// Manga volumes / comic issues want exactly their own type.
 	if book.MediaType == "manga" || book.MediaType == "comic" {
 		if book.HasFile {
@@ -186,8 +196,77 @@ func (s *Service) wants(book *library.Book) []string {
 	return types
 }
 
-// SearchWanted searches every monitored book missing a wanted format,
-// politely pacing indexer traffic. Pending grabs are skipped per media type.
+// searchMagazine looks for new issues of a monitored magazine: any release
+// matching the title whose issue date/number isn't in the library yet. Found
+// issues are materialized as books and grabbed (capped per pass so a fresh
+// magazine doesn't flood the download client).
+func (s *Service) searchMagazine(ctx context.Context, series *library.Series) ([]BookOutcome, error) {
+	prefs := release.PreferencesFor(s.store, "magazine")
+
+	// Everything already in the library — by identifier — is not wanted.
+	volumes, err := s.store.ListVolumes(series.ID)
+	if err != nil {
+		return nil, err
+	}
+	owned := map[string]bool{}
+	for _, v := range volumes {
+		if id := strings.TrimPrefix(v.ForeignID, series.ForeignID+":"); id != v.ForeignID {
+			owned[id] = true
+		}
+	}
+
+	found, _, err := s.indexers.SearchAll(ctx, series.Title, "magazine")
+	if err != nil {
+		return nil, err
+	}
+
+	// Best approved candidate per unowned issue identifier.
+	best := map[string]release.Candidate{}
+	for _, rel := range found {
+		cand, identifier := release.ScoreMagazine(rel, prefs, series.Title, owned)
+		if !cand.Approved || identifier == "" {
+			continue
+		}
+		if cur, ok := best[identifier]; !ok || cand.Score > cur.Score {
+			best[identifier] = cand
+		}
+	}
+
+	identifiers := make([]string, 0, len(best))
+	for id := range best {
+		identifiers = append(identifiers, id)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(identifiers))) // newest dates first
+	const maxGrabsPerPass = 3
+	if len(identifiers) > maxGrabsPerPass {
+		identifiers = identifiers[:maxGrabsPerPass]
+	}
+
+	outcomes := []BookOutcome{}
+	for _, identifier := range identifiers {
+		cand := best[identifier]
+		book, err := s.store.CreateMagazineIssue(series, identifier, true)
+		if err != nil {
+			return outcomes, err
+		}
+		outcome := BookOutcome{BookID: book.ID, BookTitle: book.Title, MediaType: "magazine"}
+		result, _, err := s.downloads.GrabRelease(ctx, cand.Protocol, cand.DownloadURL, cand.Title, book.ID, "magazine")
+		if err != nil {
+			outcome.Message = "grab failed: " + err.Error()
+		} else {
+			outcome.Grabbed = true
+			outcome.Release = cand.Title
+			outcome.Client = result.Client
+			slog.Info("auto-grabbed magazine issue", "magazine", series.Title, "issue", identifier, "client", result.Client)
+		}
+		outcomes = append(outcomes, outcome)
+	}
+	return outcomes, nil
+}
+
+// SearchWanted searches every monitored book missing a wanted format and
+// every monitored magazine for new issues, politely pacing indexer traffic.
+// Pending grabs are skipped per media type.
 func (s *Service) SearchWanted(ctx context.Context) ([]BookOutcome, error) {
 	books, err := s.store.ListBooks(0)
 	if err != nil {
@@ -199,6 +278,27 @@ func (s *Service) SearchWanted(ctx context.Context) ([]BookOutcome, error) {
 	}
 
 	outcomes := []BookOutcome{}
+
+	magazines, err := s.store.ListSeries("magazine")
+	if err != nil {
+		return nil, err
+	}
+	for i := range magazines {
+		if !magazines[i].Monitored {
+			continue
+		}
+		if ctx.Err() != nil {
+			return outcomes, ctx.Err()
+		}
+		found, err := s.searchMagazine(ctx, &magazines[i])
+		if err != nil {
+			outcomes = append(outcomes, BookOutcome{
+				BookTitle: magazines[i].Title, MediaType: "magazine", Message: err.Error(),
+			})
+			continue
+		}
+		outcomes = append(outcomes, found...)
+	}
 	for i := range books {
 		book := &books[i]
 		for _, mediaType := range s.wants(book) {

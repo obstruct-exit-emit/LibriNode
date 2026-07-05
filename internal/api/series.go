@@ -4,18 +4,25 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 func seriesMediaType(v string) (string, bool) {
-	return v, v == "manga" || v == "comic"
+	return v, v == "manga" || v == "comic" || v == "magazine"
 }
 
 // handleSearchSeries proxies series search to the media type's provider
 // (reached through GET /api/v1/search?type=manga|comic).
 func (s *server) handleSearchSeries(w http.ResponseWriter, r *http.Request, mediaType, term string) {
+	if mediaType == "magazine" {
+		writeError(w, http.StatusBadRequest,
+			"magazines have no metadata provider — add them by name under Series")
+		return
+	}
 	p := s.metadata.SeriesFor(mediaType)
 	if p == nil {
 		writeError(w, http.StatusServiceUnavailable,
@@ -37,12 +44,12 @@ func (s *server) handleListSeries(w http.ResponseWriter, r *http.Request) {
 	mediaType := r.URL.Query().Get("mediaType")
 	if mediaType != "" {
 		if _, ok := seriesMediaType(mediaType); !ok {
-			writeError(w, http.StatusBadRequest, "mediaType must be manga or comic")
+			writeError(w, http.StatusBadRequest, "mediaType must be manga, comic, or magazine")
 			return
 		}
 	}
 	out := []library.Series{}
-	for _, mt := range []string{"manga", "comic"} {
+	for _, mt := range []string{"manga", "comic", "magazine"} {
 		if mediaType != "" && mt != mediaType {
 			continue
 		}
@@ -57,21 +64,23 @@ func (s *server) handleListSeries(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAddSeries syncs a manga/comic series (with all volumes) from its
-// provider.
+// provider — or creates a magazine by name (magazines have no provider;
+// issues materialize from grabs and scans).
 func (s *server) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		MediaType       string `json:"mediaType"`
 		ForeignSeriesID string `json:"foreignSeriesId"`
+		Title           string `json:"title"`
 		Monitored       *bool  `json:"monitored"`
 		MonitorNew      *bool  `json:"monitorNew"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ForeignSeriesID == "" {
-		writeError(w, http.StatusBadRequest, "foreignSeriesId is required")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	mediaType, ok := seriesMediaType(req.MediaType)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "mediaType must be manga or comic")
+		writeError(w, http.StatusBadRequest, "mediaType must be manga, comic, or magazine")
 		return
 	}
 	monitored := true
@@ -81,6 +90,34 @@ func (s *server) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 	monitorNew := monitored
 	if req.MonitorNew != nil {
 		monitorNew = *req.MonitorNew
+	}
+
+	if mediaType == "magazine" {
+		title := strings.TrimSpace(req.Title)
+		if title == "" {
+			writeError(w, http.StatusBadRequest, "title is required for magazines")
+			return
+		}
+		series := &library.Series{
+			Source:     "manual",
+			ForeignID:  "magazine:" + scanner.Normalize(title),
+			Title:      title,
+			MediaType:  "magazine",
+			Monitored:  monitored,
+			MonitorNew: monitorNew,
+		}
+		if err := s.store.UpsertSeries(series); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		s.rematchFiles()
+		s.writeSeriesDetail(w, http.StatusCreated, series.ID)
+		return
+	}
+
+	if req.ForeignSeriesID == "" {
+		writeError(w, http.StatusBadRequest, "foreignSeriesId is required")
+		return
 	}
 
 	ctx, cancel := s.metadataCtx(r)

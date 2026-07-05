@@ -398,6 +398,83 @@ func TestScanMatchesOwnTemplateOutput(t *testing.T) {
 	}
 }
 
+func TestIssueIdentifier(t *testing.T) {
+	cases := map[string]string{
+		"The Economist - 2026-07-04.pdf":    "2026-07-04",
+		"The Economist 2026.07.04 (retail)": "2026-07-04",
+		"National Geographic - July 2026":   "2026-07",
+		"Wired - Sept 2025 Retail EPUB":     "2025-09",
+		"Retro Gamer Issue 261 pdf":         "issue-261",
+		"MagPi No. 143":                     "issue-143",
+		"Some Book Without A Date":          "",
+		"The Economist - January 15, 2026":  "2026-01-15",
+	}
+	for in, want := range cases {
+		if got := IssueIdentifier(in); got != want {
+			t.Errorf("IssueIdentifier(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestScanMagazineRoot(t *testing.T) {
+	f := fixture(t)
+
+	// A monitored magazine in the library, no issues yet.
+	mag := &library.Series{Source: "manual", ForeignID: "magazine:economist",
+		Title: "The Economist", MediaType: "magazine", Monitored: true, MonitorNew: true}
+	if err := f.store.UpsertSeries(mag); err != nil {
+		t.Fatal(err)
+	}
+
+	magRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('magazine', ?)`, magRoot); err != nil {
+		t.Fatal(err)
+	}
+	write := func(rel string) {
+		path := filepath.Join(magRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("The Economist/The Economist - 2026-07-04.pdf") // known magazine → issue created
+	write("The Economist/The Economist - 2026-06-27.pdf") // second issue
+	write("Unknown Weekly/Unknown Weekly - 2026-01.pdf")  // no series → unmatched
+
+	result, err := f.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Matched < 2 || result.Unmatched < 1 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	// Issues were materialized, owned (file attached), and unmonitored.
+	volumes, err := f.store.ListVolumes(mag.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(volumes) != 2 {
+		t.Fatalf("volumes = %+v", volumes)
+	}
+	for _, v := range volumes {
+		if !v.HasFile || v.Monitored || v.MediaType != "magazine" {
+			t.Errorf("issue = title %q hasFile %v monitored %v", v.Title, v.HasFile, v.Monitored)
+		}
+	}
+
+	// Re-scan is idempotent — no duplicate issues.
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	volumes, _ = f.store.ListVolumes(mag.ID)
+	if len(volumes) != 2 {
+		t.Fatalf("re-scan duplicated issues: %+v", volumes)
+	}
+}
+
 func TestVolumeFromName(t *testing.T) {
 	cases := map[string]float64{
 		"Berserk v05.cbz":            5,

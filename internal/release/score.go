@@ -42,8 +42,20 @@ func PreferencesFor(store *library.Store, mediaType string) Preferences {
 		return DefaultMangaPreferences()
 	case "comic":
 		return DefaultComicPreferences()
+	case "magazine":
+		return DefaultMagazinePreferences()
 	}
 	return DefaultEbookPreferences()
+}
+
+// DefaultMagazinePreferences: periodicals ship as pdf first.
+func DefaultMagazinePreferences() Preferences {
+	return Preferences{
+		FormatScores: map[string]int{"pdf": 100, "epub": 70, "cbz": 50},
+		Language:     "english",
+		MinSize:      1 << 20,
+		MaxSize:      1 << 30,
+	}
 }
 
 // DefaultMangaPreferences prefer lossless archives; scanlation sizes run
@@ -216,6 +228,36 @@ func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, num
 
 	c.Approved = len(c.Rejections) == 0
 	return c
+}
+
+// ScoreMagazine evaluates a release for a magazine: generic checks, the
+// magazine's title, and an issue identifier (date or number) that isn't
+// already owned. The identifier is returned so the caller can materialize
+// the issue on grab.
+func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned map[string]bool) (Candidate, string) {
+	c := Score(rel, prefs, nil, nil)
+
+	relNorm := scanner.Normalize(rel.Title)
+	matched := false
+	for _, key := range scanner.TitleKeys(title) {
+		if key != "" && strings.Contains(relNorm, key) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		c.reject("does not contain the magazine title")
+	}
+
+	identifier := scanner.IssueIdentifier(rel.Title)
+	if identifier == "" {
+		c.reject("no issue date or number in release name")
+	} else if owned[identifier] {
+		c.reject("issue " + identifier + " already owned")
+	}
+
+	c.Approved = len(c.Rejections) == 0
+	return c, identifier
 }
 
 // matchBook rejects releases that don't look like the wanted book.

@@ -64,6 +64,14 @@ func migrate(db *sql.DB) error {
 	}
 	sort.Strings(names)
 
+	// Schema migrations may rebuild tables (SQLite can't alter CHECK
+	// constraints); foreign keys stay off while they run so parent-table
+	// rebuilds don't trip child references.
+	if _, err := db.Exec(`PRAGMA foreign_keys=OFF`); err != nil {
+		return err
+	}
+	defer db.Exec(`PRAGMA foreign_keys=ON`)
+
 	for _, name := range names {
 		if applied[name] {
 			continue

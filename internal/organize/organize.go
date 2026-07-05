@@ -226,6 +226,12 @@ func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Plac
 				Dir:          filepath.Join(root.Path, naming.Format(ns.ComicFolder, data)),
 				FileName:     naming.Format(ns.ComicFile, data) + "." + format,
 			}, nil
+		case "magazine":
+			return &Placement{
+				RootFolderID: root.ID,
+				Dir:          filepath.Join(root.Path, naming.Format(ns.MagazineFolder, data)),
+				FileName:     naming.Format(ns.MagazineFile, data) + "." + format,
+			}, nil
 		default:
 			file := naming.Format(ns.EbookFile, data) + "." + format
 			return &Placement{

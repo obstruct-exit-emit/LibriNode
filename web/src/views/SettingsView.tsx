@@ -350,6 +350,7 @@ const emptyIndexer: Omit<Indexer, "id" | "addedAt"> = {
   categories: "7000,7020",
   audioCategories: "3030",
   comicCategories: "7030",
+  magazineCategories: "7010",
   enabled: true,
   priority: 25,
 };
@@ -513,6 +514,14 @@ function IndexersCard({
             title="Newznab categories used for manga and comic searches (7030 = Books/Comics)"
             value={draft.comicCategories}
             onChange={(e) => set({ comicCategories: e.target.value })}
+          />
+        </label>
+        <label>
+          Magazine categories
+          <input
+            title="Newznab categories used for magazine searches (7010 = Books/Mags)"
+            value={draft.magazineCategories}
+            onChange={(e) => set({ magazineCategories: e.target.value })}
           />
         </label>
         <div className="settings-actions">
@@ -791,7 +800,7 @@ function MetadataCard({
   );
 }
 
-const mediaTypes = ["ebook", "audiobook", "manga", "comic"] as const;
+const mediaTypes = ["ebook", "audiobook", "manga", "comic", "magazine"] as const;
 
 function RootFoldersCard({
   onError,

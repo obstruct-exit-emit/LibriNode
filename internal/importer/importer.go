@@ -152,6 +152,11 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		source, err = pickLargestFile(item.Path, scanner.IsComicPath, "comic archive")
 		sources = []string{source}
 		format = strings.TrimPrefix(strings.ToLower(filepath.Ext(source)), ".")
+	case "magazine":
+		var source string
+		source, err = pickLargestFile(item.Path, scanner.IsMagazinePath, "magazine file")
+		sources = []string{source}
+		format = strings.TrimPrefix(strings.ToLower(filepath.Ext(source)), ".")
 	default:
 		var source string
 		source, err = pickEbookFile(item.Path)

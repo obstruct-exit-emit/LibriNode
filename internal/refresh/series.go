@@ -97,10 +97,15 @@ func trimFloat(f float64) string {
 }
 
 // RefreshSeries re-syncs an existing series; new volumes follow monitor_new.
+// Manual series (magazines) have no provider to refresh — their issues come
+// from grabs and scans — so they're a quiet no-op.
 func (s *Service) RefreshSeries(ctx context.Context, id int64) error {
 	series, err := s.store.GetSeries(id)
 	if err != nil {
 		return err
+	}
+	if series.Source == "manual" {
+		return nil
 	}
 	_, err = s.SyncSeries(ctx, series.MediaType, series.ForeignID,
 		series.Monitored, series.MonitorNew, series.MonitorNew)

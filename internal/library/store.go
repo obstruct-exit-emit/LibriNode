@@ -423,6 +423,51 @@ func (s *Store) ListVolumes(seriesID int64) ([]Book, error) {
 	return volumes, rows.Err()
 }
 
+// EnsureAuthorStub finds or creates a minimal author row (creator stubs for
+// series, magazine publishers).
+func (s *Store) EnsureAuthorStub(source, foreignID, name string) (*Author, error) {
+	author, err := s.GetAuthorByForeignID(source, foreignID)
+	if err == nil {
+		return author, nil
+	}
+	author = &Author{Source: source, ForeignID: foreignID, Name: name, Monitored: false}
+	if err := s.UpsertAuthor(author); err != nil {
+		return nil, err
+	}
+	return author, nil
+}
+
+// CreateMagazineIssue materializes one magazine issue as a book row linked
+// to its series. identifier is a date ("2026-07-04", "2026-07") or
+// "issue-N"; releaseDate is set when the identifier is a date. Issues are
+// created on grab (wanted) or on scan (owned, unmonitored).
+func (s *Store) CreateMagazineIssue(series *Series, identifier string, monitored bool) (*Book, error) {
+	author, err := s.EnsureAuthorStub(series.Source, "magazine:"+series.ForeignID, series.Title)
+	if err != nil {
+		return nil, err
+	}
+	releaseDate := ""
+	if len(identifier) >= 7 && identifier[4] == '-' {
+		releaseDate = identifier
+	}
+	book := &Book{
+		AuthorID:    author.ID,
+		Source:      series.Source,
+		MediaType:   "magazine",
+		ForeignID:   series.ForeignID + ":" + identifier,
+		Title:       series.Title + " - " + identifier,
+		ReleaseDate: releaseDate,
+		Monitored:   monitored,
+	}
+	if err := s.UpsertBook(book); err != nil {
+		return nil, err
+	}
+	if err := s.LinkBookSeries(book.ID, series.ID, 0); err != nil {
+		return nil, err
+	}
+	return book, nil
+}
+
 // DeleteSeries removes a series and its volume/issue books (prose books in
 // a series are never deleted this way — they belong to their author).
 func (s *Store) DeleteSeries(id int64) error {

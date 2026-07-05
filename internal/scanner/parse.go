@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -52,6 +53,78 @@ func IsComicPath(name string) bool {
 }
 
 var volumeMarker = regexp.MustCompile(`(?i)(?:\bv|\bvol\.?\s*|\bvolume\s+|#)(\d{1,4}(?:\.\d+)?)`)
+
+// magazineExtensions are the file types magazine roots scan for.
+var magazineExtensions = map[string]bool{
+	".pdf":  true,
+	".epub": true,
+	".cbz":  true,
+}
+
+// IsMagazinePath reports whether a filename is a magazine file.
+func IsMagazinePath(name string) bool {
+	return magazineExtensions[strings.ToLower(filepath.Ext(name))]
+}
+
+var (
+	numericDate = regexp.MustCompile(`\b((?:19|20)\d{2})[-._ ](\d{1,2})(?:[-._ ](\d{1,2}))?\b`)
+	wordedDate  = regexp.MustCompile(`(?i)\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(?:(\d{1,2})(?:st|nd|rd|th)?,?\s+)?((?:19|20)\d{2})\b`)
+	issueWord   = regexp.MustCompile(`(?i)\b(?:issue|no)\.?\s+(\d{1,5})\b`)
+)
+
+var monthNumbers = map[string]int{
+	"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+	"jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+// realExt matches actual file extensions (".pdf") as opposed to whatever
+// follows the last dot in a release title (".04 (retail)").
+var realExt = regexp.MustCompile(`^\.[A-Za-z0-9]{1,5}$`)
+
+// IssueIdentifier extracts a magazine issue's identity from a release or
+// file name: an ISO-ish date ("2026-07", "2026-07-04", "July 2026",
+// "4 July 2026" is not supported — month-first only) or an issue number
+// ("Issue 452"). Empty means none found.
+func IssueIdentifier(name string) string {
+	if ext := filepath.Ext(name); realExt.MatchString(ext) {
+		name = strings.TrimSuffix(name, ext)
+	}
+	if m := numericDate.FindStringSubmatch(name); m != nil {
+		if m[3] != "" {
+			return normDate(m[1], m[2], m[3])
+		}
+		return normDate(m[1], m[2], "")
+	}
+	if m := wordedDate.FindStringSubmatch(name); m != nil {
+		month := monthNumbers[strings.ToLower(m[1])[:3]]
+		if month > 0 {
+			day := ""
+			if m[2] != "" {
+				day = m[2]
+			}
+			return normDate(m[3], strconv.Itoa(month), day)
+		}
+	}
+	if m := issueWord.FindStringSubmatch(name); m != nil {
+		return "issue-" + strings.TrimLeft(m[1], "0")
+	}
+	return ""
+}
+
+func normDate(year, month, day string) string {
+	m, _ := strconv.Atoi(month)
+	if m < 1 || m > 12 {
+		return ""
+	}
+	out := fmt.Sprintf("%s-%02d", year, m)
+	if day != "" {
+		d, _ := strconv.Atoi(day)
+		if d >= 1 && d <= 31 {
+			out += fmt.Sprintf("-%02d", d)
+		}
+	}
+	return out
+}
 
 // VolumeFromName extracts a volume/issue number from a filename ("Berserk
 // v05", "Berserk Vol. 5", "The Walking Dead #12"); 0 means none found.

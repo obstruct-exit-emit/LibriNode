@@ -46,6 +46,10 @@ type NamingSettings struct {
 	MangaFile   string `yaml:"manga_file" json:"mangaFile"`
 	ComicFolder string `yaml:"comic_folder" json:"comicFolder"`
 	ComicFile   string `yaml:"comic_file" json:"comicFile"`
+	// Magazines: issue books are titled "Magazine - <date/issue>", so the
+	// file template can lean on {Book Title}.
+	MagazineFolder string `yaml:"magazine_folder" json:"magazineFolder"`
+	MagazineFile   string `yaml:"magazine_file" json:"magazineFile"`
 }
 
 func defaultNaming() NamingSettings {
@@ -58,6 +62,8 @@ func defaultNaming() NamingSettings {
 		MangaFile:       "{Series Title} Vol. {Series Position}",
 		ComicFolder:     "{Series Title}",
 		ComicFile:       "{Series Title} #{Series Position}",
+		MagazineFolder:  "{Series Title}",
+		MagazineFile:    "{Book Title}",
 	}
 }
 
@@ -172,6 +178,12 @@ func Load(dataDir string) (*Config, error) {
 	}
 	if cfg.Naming.ComicFolder == "" {
 		cfg.Naming.ComicFolder = defaultNaming().ComicFolder
+	}
+	if cfg.Naming.MagazineFolder == "" {
+		cfg.Naming.MagazineFolder = defaultNaming().MagazineFolder
+	}
+	if cfg.Naming.MagazineFile == "" {
+		cfg.Naming.MagazineFile = defaultNaming().MagazineFile
 	}
 	if cfg.Naming.ComicFile == "" {
 		cfg.Naming.ComicFile = defaultNaming().ComicFile

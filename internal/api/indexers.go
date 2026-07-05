@@ -76,6 +76,9 @@ func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 	if in.ComicCategories == "" {
 		in.ComicCategories = "7030"
 	}
+	if in.MagazineCategories == "" {
+		in.MagazineCategories = "7010"
+	}
 	if in.Priority <= 0 || in.Priority > 50 {
 		in.Priority = 25
 	}

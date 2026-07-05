@@ -30,6 +30,7 @@ var formatsByMediaType = map[string][]string{
 	"audiobook": {"m4b", "m4a", "mp3", "flac", "opus"},
 	"manga":     {"cbz", "cbr", "epub"},
 	"comic":     {"cbz", "cbr", "pdf"},
+	"magazine":  {"pdf", "epub", "cbz"},
 }
 
 // ValidateProfile normalizes and checks a profile definition in place.

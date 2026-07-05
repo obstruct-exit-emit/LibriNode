@@ -216,6 +216,77 @@ func TestSearchWantedAudiobook(t *testing.T) {
 	}
 }
 
+func TestSearchWantedMagazine(t *testing.T) {
+	// Two issues on the indexer; one already in the library.
+	f := fixture(t, `<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel>
+	  <item><title>The Economist - 2026-07-04 PDF</title><guid>m1</guid>
+	    <link>https://idx/get/eco-0704.nzb</link><newznab:attr name="size" value="52428800"/></item>
+	  <item><title>The Economist - 2026-06-27 PDF</title><guid>m2</guid>
+	    <link>https://idx/get/eco-0627.nzb</link><newznab:attr name="size" value="52428800"/></item>
+	  <item><title>The Economist - 2026-07-04 EPUB</title><guid>m3</guid>
+	    <link>https://idx/get/eco-0704-epub.nzb</link><newznab:attr name="size" value="52428800"/></item>
+	</channel></rss>`)
+
+	// Give the ebook fixtures files so only the magazine is wanted.
+	for _, b := range []*library.Book{f.book} {
+		if err := f.store.UpsertBookFile(&library.BookFile{
+			RootFolderID: 1, BookID: b.ID, MediaType: "ebook", Path: "/x/" + b.Title + ".epub", Format: "epub",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mag := &library.Series{Source: "manual", ForeignID: "magazine:economist",
+		Title: "The Economist", MediaType: "magazine", Monitored: true, MonitorNew: true}
+	if err := f.store.UpsertSeries(mag); err != nil {
+		t.Fatal(err)
+	}
+	// 2026-06-27 is already owned.
+	if _, err := f.store.CreateMagazineIssue(mag, "2026-06-27", false); err != nil {
+		t.Fatal(err)
+	}
+
+	outcomes, err := f.svc.SearchWanted(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exactly one new issue grabbed (pdf beats epub for the same identifier).
+	magGrabs := 0
+	for _, o := range outcomes {
+		if o.MediaType == "magazine" {
+			magGrabs++
+			if !o.Grabbed || o.Release != "The Economist - 2026-07-04 PDF" {
+				t.Fatalf("magazine outcome = %+v", o)
+			}
+		}
+	}
+	if magGrabs != 1 {
+		t.Fatalf("magazine outcomes = %+v", outcomes)
+	}
+	if len(f.sabAdd) != 1 || f.sabAdd[0] != "https://idx/get/eco-0704.nzb" {
+		t.Errorf("sab adds = %v", f.sabAdd)
+	}
+	// The issue book exists, monitored, wanted-shaped.
+	volumes, _ := f.store.ListVolumes(mag.ID)
+	if len(volumes) != 2 {
+		t.Fatalf("volumes = %+v", volumes)
+	}
+
+	// Second pass: the new issue is pending; nothing more is grabbed.
+	outcomes, err = f.svc.SearchWanted(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outcomes {
+		if o.Grabbed {
+			t.Fatalf("second pass grabbed: %+v", o)
+		}
+	}
+	if len(f.sabAdd) != 1 {
+		t.Errorf("double grab: %v", f.sabAdd)
+	}
+}
+
 func TestSearchBookPendingGrabShortCircuits(t *testing.T) {
 	f := fixture(t, goodSearchXML)
 

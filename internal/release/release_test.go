@@ -244,6 +244,36 @@ func TestScoreVolume(t *testing.T) {
 	}
 }
 
+func TestScoreMagazine(t *testing.T) {
+	prefs := DefaultMagazinePreferences()
+	owned := map[string]bool{"2026-06-27": true}
+
+	fresh, id := ScoreMagazine(rel("The Economist - 2026-07-04 PDF", indexer.ProtocolUsenet, 50<<20, -1), prefs, "The Economist", owned)
+	if !fresh.Approved || id != "2026-07-04" {
+		t.Fatalf("fresh issue = %+v (id %q)", fresh.Rejections, id)
+	}
+
+	ownedIssue, _ := ScoreMagazine(rel("The Economist - 2026-06-27 PDF", indexer.ProtocolUsenet, 50<<20, -1), prefs, "The Economist", owned)
+	if ownedIssue.Approved {
+		t.Error("owned issue should be rejected")
+	}
+
+	wrongMag, _ := ScoreMagazine(rel("Wired - 2026-07 PDF", indexer.ProtocolUsenet, 50<<20, -1), prefs, "The Economist", owned)
+	if wrongMag.Approved {
+		t.Error("different magazine should be rejected")
+	}
+
+	noIssue, _ := ScoreMagazine(rel("The Economist PDF", indexer.ProtocolUsenet, 50<<20, -1), prefs, "The Economist", owned)
+	if noIssue.Approved {
+		t.Error("release without issue identifier should be rejected")
+	}
+
+	numbered, id := ScoreMagazine(rel("Retro Gamer Issue 261 PDF", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Retro Gamer", nil)
+	if !numbered.Approved || id != "issue-261" {
+		t.Errorf("numbered issue = %+v (id %q)", numbered.Rejections, id)
+	}
+}
+
 func TestRank(t *testing.T) {
 	prefs := DefaultEbookPreferences()
 	candidates := []Candidate{

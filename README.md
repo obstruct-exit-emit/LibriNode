@@ -1,6 +1,6 @@
 # LibriNode
 
-A self-hosted media automation server for **written media** — the Readarr / LazyLibrarian successor that treats ebooks, audiobooks, manga, and comics as first-class citizens.
+A self-hosted media automation server for **written media** — the Readarr / LazyLibrarian successor that treats ebooks, audiobooks, manga, comics, and magazines as first-class citizens.
 
 LibriNode monitors your wanted list, searches your indexers, sends releases to your download client, then imports, renames, and organizes files into per-type libraries — automatically.
 
@@ -18,11 +18,11 @@ Runs on **Windows** and **Linux** (bare metal or Docker).
 - **LazyLibrarian** covers a lot but has an aging UI and inconsistent metadata.
 - **Mylar** does comics only; **Kavita/Komga** are readers, not automation.
 
-Nothing today automates **all four** written-media types in one app with modern metadata (Hardcover) and clean *arr-style integrations. That's the gap LibriNode fills.
+Nothing today automates **all five** written-media types in one app with modern metadata (Hardcover) and clean *arr-style integrations. That's the gap LibriNode fills.
 
 ## Core Features
 
-### 📚 Four media types, four libraries
+### 📚 Five media types, five libraries
 Each media type is a fully independent library with its **own root folder(s)**, naming scheme, quality profile, and monitoring rules:
 
 | Type | Root folder (example) | Formats |
@@ -31,6 +31,7 @@ Each media type is a fully independent library with its **own root folder(s)**, 
 | Audiobooks | `D:\Media\Audiobooks` / `/data/audiobooks` | m4b, m4a, mp3, flac, opus |
 | Manga | `D:\Media\Manga` / `/data/manga` | cbz, cbr, epub |
 | Comics | `D:\Media\Comics` / `/data/comics` | cbz, cbr, pdf |
+| Magazines | `D:\Media\Magazines` / `/data/magazines` | pdf, epub, cbz |
 
 An author/series can exist in multiple libraries at once (e.g. own the ebook *and* the audiobook) without conflicts.
 
@@ -90,7 +91,7 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
    then **Save** — search goes live immediately, no restart.
 3. **Settings → Root Folders:** add the folder(s) where your media lives —
-   one root per media type (ebook, audiobook, manga, comic).
+   one root per media type (ebook, audiobook, manga, comic, magazine).
 4. **Search:** find authors or books on Hardcover and add them to the
    library (adding an author pulls the full bibliography; adding a book
    pulls its editions).
@@ -129,6 +130,15 @@ or the daily sweep) discover new volumes and start monitoring them. One
 AniList quirk: *ongoing* manga often have no official volume count yet, so
 they add with zero volumes and fill in once AniList publishes totals —
 completed series (e.g. Death Note) arrive with all volumes immediately.
+
+**Magazines** work LazyLibrarian-style — periodicals have no metadata
+provider, so you add one **by name** (Series tab → "Add magazine"). LibriNode
+then recognizes issues by date or number in release and file names
+(`The Economist - 2026-07-04.pdf`, `Retro Gamer Issue 261`): scanning a
+magazine root materializes owned issues into the library automatically, and
+the automatic search grabs newly published issues (capped at 3 per pass)
+using each indexer's **Magazine categories** (default `7010`). Imports land
+as `Magazine/Magazine - date.pdf`.
 Manga/comic searches use each indexer's **Comic categories** (default
 `7030`), scans understand `Series/Series v05.cbz` layouts, and imports
 write `ComicInfo.xml` into CBZ archives for Kavita/Komga.
@@ -200,7 +210,7 @@ scriptable:
 | System | `GET /system/status`, `GET /ping` (no auth) |
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
-| Series | `GET/POST /series`, `GET/DELETE /series/{id}`, `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
+| Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}`, `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
 | Authors | `GET/POST /author`, `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
@@ -270,6 +280,12 @@ metadata endpoints return 503.
 - [x] Issue/volume monitoring: per-series "monitor future volumes" — refresh discovers new volumes and monitors them automatically
 - [x] Kavita/Komga-friendly folder layouts (`Series/Series Vol. N.cbz`, templates editable)
 
+### Phase 4.5 — Magazines
+- [x] Magazine media type: root folders, quality profiles (pdf-first), indexer categories (7010)
+- [x] Provider-less series: add magazines by name; issues recognized by date/number parsing (ISO dates, "July 2026", "Issue 452")
+- [x] Scanning materializes owned issues into the library; automatic search grabs new issues (capped per pass)
+- [x] `Magazine/Magazine - date.pdf` layout on import
+
 ### Phase 5 — Polish & 1.0
 - [ ] Full settings UI as specced above, with Test buttons everywhere
 - [ ] Notifications (Discord, webhook, email) on grab/import/upgrade/failure
@@ -290,7 +306,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phases 0–4 complete: all four media types work end-to-end.** Ebooks and audiobooks flow author-first from Hardcover; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included). One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, and volume numbers, quality profiles, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Phase 5 (polish & 1.0 — full UI overhaul, notifications, packaging) is next.
+🚧 **Pre-alpha — Phases 0–4.5 complete: all five media types work end-to-end.** Ebooks and audiobooks flow author-first from Hardcover; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Phase 5 (polish & 1.0 — full UI overhaul, notifications, packaging) is next.
 
 ## License
 

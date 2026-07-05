@@ -999,6 +999,35 @@ func TestAutoSearchEndpoints(t *testing.T) {
 	a.want(a.call("POST", "/api/v1/book/9999/search", nil, nil), http.StatusNotFound)
 }
 
+func TestMagazineSeries(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	// Magazines are created by name; no provider involved.
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "magazine"}, nil), http.StatusBadRequest) // no title
+	var mag library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "magazine", "title": "The Economist"}, &mag), http.StatusCreated)
+	if mag.MediaType != "magazine" || !mag.Monitored || !mag.MonitorNew || mag.Source != "manual" {
+		t.Fatalf("magazine = %+v", mag)
+	}
+
+	// Listed alongside other series types; filterable.
+	var list []library.Series
+	a.want(a.call("GET", "/api/v1/series?mediaType=magazine", nil, &list), http.StatusOK)
+	if len(list) != 1 || list[0].Title != "The Economist" {
+		t.Fatalf("list = %+v", list)
+	}
+
+	// Refresh is a quiet no-op (no provider), not an error.
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/refresh", mag.ID), nil, nil), http.StatusOK)
+
+	// Magazine search-by-provider is rejected with guidance.
+	a.want(a.call("GET", "/api/v1/search?term=x&type=magazine", nil, nil), http.StatusBadRequest)
+
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/series/%d", mag.ID), nil, nil), http.StatusNoContent)
+}
+
 func TestRefreshEndpoints(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

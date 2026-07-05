@@ -29,9 +29,11 @@ type Indexer struct {
 	AudioCategories string `json:"audioCategories"`
 	// ComicCategories are used for manga and comic searches (7030 = Books/Comics).
 	ComicCategories string `json:"comicCategories"`
-	Enabled         bool   `json:"enabled"`
-	Priority        int    `json:"priority"` // 1-50, lower wins ties
-	AddedAt         string `json:"addedAt"`
+	// MagazineCategories are used for magazine searches (7010 = Books/Mags).
+	MagazineCategories string `json:"magazineCategories"`
+	Enabled            bool   `json:"enabled"`
+	Priority           int    `json:"priority"` // 1-50, lower wins ties
+	AddedAt            string `json:"addedAt"`
 }
 
 // Protocol reports how releases from this indexer are downloaded.
@@ -49,6 +51,8 @@ func (i *Indexer) CategoriesFor(mediaType string) string {
 		return i.AudioCategories
 	case "manga", "comic":
 		return i.ComicCategories
+	case "magazine":
+		return i.MagazineCategories
 	}
 	return i.Categories
 }

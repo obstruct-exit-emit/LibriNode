@@ -9,6 +9,9 @@ export default function SeriesView({
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
   const [openID, setOpenID] = useState<number | null>(null);
+  const [magazineTitle, setMagazineTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const reload = useCallback(() => {
     api
@@ -20,17 +23,37 @@ export default function SeriesView({
 
   useEffect(reload, [reload]);
 
+  const addMagazine = (e: React.FormEvent) => {
+    e.preventDefault();
+    const title = magazineTitle.trim();
+    if (!title) return;
+    setBusy(true);
+    setNotice("");
+    api
+      .addMagazine(title)
+      .then(() => {
+        setMagazineTitle("");
+        setNotice(`✓ Added "${title}" — new issues are grabbed as they appear on your indexers`);
+        reload();
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
   if (loading) return <p className="muted">Loading series…</p>;
 
   return (
     <section className="card">
       <h2>Series ({series.length})</h2>
-      {series.length === 0 ? (
+      {series.length === 0 && (
         <p className="muted">
-          No manga or comic series yet — use <strong>Search</strong> with type
-          manga or comic to add one.
+          No series yet — use <strong>Search</strong> with type manga or
+          comic, or add a magazine by name below.
         </p>
-      ) : (
+      )}
+      {series.length > 0 && (
         <ul className="rows">
           {series.map((s) => (
             <SeriesRow
@@ -43,6 +66,20 @@ export default function SeriesView({
             />
           ))}
         </ul>
+      )}
+
+      <form onSubmit={addMagazine} className="search-form" style={{ marginTop: "0.75rem" }}>
+        <input
+          placeholder="Add a magazine by name (e.g. The Economist) — issues match by date"
+          value={magazineTitle}
+          onChange={(e) => setMagazineTitle(e.target.value)}
+        />
+        <button type="submit" disabled={busy || !magazineTitle.trim()}>
+          Add magazine
+        </button>
+      </form>
+      {notice && (
+        <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>
       )}
     </section>
   );
