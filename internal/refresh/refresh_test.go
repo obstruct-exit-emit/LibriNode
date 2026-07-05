@@ -86,7 +86,7 @@ func TestSyncWithoutProviderReturnsNotConfigured(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 
 	svc := New(library.NewStore(db), metadata.NewManager())
-	if _, err := svc.SyncAuthor(context.Background(), "100", true); !errors.Is(err, metadata.ErrNotConfigured) {
+	if _, err := svc.SyncAuthor(context.Background(), "100", true, "ebook"); !errors.Is(err, metadata.ErrNotConfigured) {
 		t.Errorf("err = %v, want ErrNotConfigured", err)
 	}
 }
@@ -95,7 +95,7 @@ func TestSyncAuthorThenRefreshPicksUpNewBooks(t *testing.T) {
 	svc, store, provider := newFixture(t)
 	ctx := context.Background()
 
-	author, err := svc.SyncAuthor(ctx, "100", true)
+	author, err := svc.SyncAuthor(ctx, "100", true, "ebook")
 	if err != nil {
 		t.Fatalf("SyncAuthor: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestSyncBookCreatesStubAuthorAndEditions(t *testing.T) {
 	svc, store, _ := newFixture(t)
 	ctx := context.Background()
 
-	book, err := svc.SyncBook(ctx, "1", true)
+	book, err := svc.SyncBook(ctx, "1", true, "ebook")
 	if err != nil {
 		t.Fatalf("SyncBook: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestRefreshBookUpdatesEditions(t *testing.T) {
 	svc, store, provider := newFixture(t)
 	ctx := context.Background()
 
-	book, err := svc.SyncBook(ctx, "1", true)
+	book, err := svc.SyncBook(ctx, "1", true, "ebook")
 	if err != nil {
 		t.Fatalf("SyncBook: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestRefreshAllSkipsFailures(t *testing.T) {
 	svc, store, provider := newFixture(t)
 	ctx := context.Background()
 
-	author, err := svc.SyncAuthor(ctx, "100", true)
+	author, err := svc.SyncAuthor(ctx, "100", true, "ebook")
 	if err != nil {
 		t.Fatal(err)
 	}

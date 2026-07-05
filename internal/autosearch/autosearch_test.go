@@ -81,12 +81,12 @@ func fixture(t *testing.T, searchXML string) *fx {
 		t.Fatal(err)
 	}
 	f.book = &library.Book{AuthorID: author.ID, Source: "hardcover", ForeignID: "1",
-		Title: "Mort", Monitored: true}
+		Title: "Mort", Monitored: true, InEbookLibrary: true, EbookMonitored: true}
 	if err := store.UpsertBook(f.book); err != nil {
 		t.Fatal(err)
 	}
 	f.owned = &library.Book{AuthorID: author.ID, Source: "hardcover", ForeignID: "2",
-		Title: "Sourcery", Monitored: true}
+		Title: "Sourcery", Monitored: true, InEbookLibrary: true, EbookMonitored: true}
 	if err := store.UpsertBook(f.owned); err != nil {
 		t.Fatal(err)
 	}
@@ -185,10 +185,8 @@ func TestSearchWantedAudiobook(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Opt in to the audiobook via a monitored audiobook edition.
-	ed := &library.Edition{BookID: f.book.ID, Source: "hardcover", ForeignID: "ed-a1",
-		Format: library.FormatAudiobook, Monitored: true}
-	if err := f.store.UpsertEdition(ed); err != nil {
+	// Opt in via audiobook library membership (Plex-style explicit model).
+	if err := f.store.SetBookLibrary(f.book.ID, "audiobook", true, true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,10 +206,10 @@ func TestSearchWantedAudiobook(t *testing.T) {
 		t.Fatalf("grabs = %+v", grabs)
 	}
 
-	// Without the monitored audiobook edition (Sourcery), nothing else runs.
+	// Without audiobook membership (Sourcery), nothing else runs.
 	for _, x := range outcomes {
 		if x.BookID == f.owned.ID {
-			t.Error("book without audiobook opt-in was searched")
+			t.Error("book without audiobook membership was searched")
 		}
 	}
 }

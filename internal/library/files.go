@@ -55,7 +55,7 @@ func (s *Store) UpsertBookFile(f *BookFile) error {
 	if f.MediaType == "" {
 		f.MediaType = "ebook"
 	}
-	return s.db.QueryRow(`
+	err := s.db.QueryRow(`
 		INSERT INTO book_files (root_folder_id, book_id, media_type, path, size, format, modified_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
@@ -68,6 +68,15 @@ func (s *Store) UpsertBookFile(f *BookFile) error {
 		RETURNING id`,
 		f.RootFolderID, bookID, f.MediaType, f.Path, f.Size, f.Format, f.ModifiedAt,
 	).Scan(&f.ID)
+	if err != nil {
+		return err
+	}
+	// Owning a format puts the book in that format's library (Plex-style
+	// explicit membership; monitored flag untouched).
+	if f.BookID > 0 {
+		return s.EnsureBookLibrary(f.BookID, f.MediaType)
+	}
+	return nil
 }
 
 const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), media_type, path, size, format, modified_at, added_at`
@@ -128,6 +137,11 @@ func (s *Store) SetBookFileBook(id, bookID int64) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	if bookID > 0 {
+		if file, err := s.GetBookFile(id); err == nil {
+			return s.EnsureBookLibrary(bookID, file.MediaType)
+		}
 	}
 	return nil
 }

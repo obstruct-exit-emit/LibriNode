@@ -140,8 +140,9 @@ func (s *Store) UpsertBook(b *Book) error {
 		b.MediaType = "book"
 	}
 	return s.db.QueryRow(`
-		INSERT INTO books (author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO books (author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
+			in_ebook_library, ebook_monitored, in_audiobook_library, audiobook_monitored)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (metadata_source, foreign_id) DO UPDATE SET
 			author_id = excluded.author_id,
 			media_type = excluded.media_type,
@@ -155,10 +156,68 @@ func (s *Store) UpsertBook(b *Book) error {
 		RETURNING id`,
 		b.AuthorID, b.Source, b.MediaType, b.ForeignID, b.Title, b.SortTitle,
 		b.Description, b.ReleaseDate, b.Rating, b.CoverURL, b.Monitored,
+		b.InEbookLibrary, b.EbookMonitored, b.InAudiobookLibrary, b.AudiobookMonitored,
 	).Scan(&b.ID)
 }
 
+// SetBookLibrary adds or removes a prose book from a format library
+// (ebook/audiobook) and sets that membership's monitored flag.
+func (s *Store) SetBookLibrary(id int64, mediaType string, member, monitored bool) error {
+	var query string
+	switch mediaType {
+	case "ebook":
+		query = `UPDATE books SET in_ebook_library = ?, ebook_monitored = ?, updated_at = datetime('now')
+			WHERE id = ? AND media_type = 'book'`
+	case "audiobook":
+		query = `UPDATE books SET in_audiobook_library = ?, audiobook_monitored = ?, updated_at = datetime('now')
+			WHERE id = ? AND media_type = 'book'`
+	default:
+		return errors.New("library must be ebook or audiobook")
+	}
+	res, err := s.db.Exec(query, member, member && monitored, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// EnsureBookLibrary makes an owned book a member of the format's library
+// without touching its monitored flag (scan/import: owning it puts it there).
+func (s *Store) EnsureBookLibrary(id int64, mediaType string) error {
+	var query string
+	switch mediaType {
+	case "ebook":
+		query = `UPDATE books SET in_ebook_library = 1 WHERE id = ? AND media_type = 'book'`
+	case "audiobook":
+		query = `UPDATE books SET in_audiobook_library = 1 WHERE id = ? AND media_type = 'book'`
+	default:
+		return nil
+	}
+	_, err := s.db.Exec(query, id)
+	return err
+}
+
+// SetAuthorBooksLibrary bulk-enrolls all of an author's prose books in a
+// format library (used when adding an author from that library's area).
+func (s *Store) SetAuthorBooksLibrary(authorID int64, mediaType string, monitored bool) error {
+	var query string
+	switch mediaType {
+	case "ebook":
+		query = `UPDATE books SET in_ebook_library = 1, ebook_monitored = ? WHERE author_id = ? AND media_type = 'book'`
+	case "audiobook":
+		query = `UPDATE books SET in_audiobook_library = 1, audiobook_monitored = ? WHERE author_id = ? AND media_type = 'book'`
+	default:
+		return errors.New("library must be ebook or audiobook")
+	}
+	_, err := s.db.Exec(query, monitored, authorID)
+	return err
+}
+
 const bookCols = `id, author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
+	in_ebook_library, ebook_monitored, in_audiobook_library, audiobook_monitored,
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id),
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'ebook'),
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'audiobook'),
@@ -168,6 +227,7 @@ func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	var b Book
 	err := row.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
 		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
+		&b.InEbookLibrary, &b.EbookMonitored, &b.InAudiobookLibrary, &b.AudiobookMonitored,
 		&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.AddedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

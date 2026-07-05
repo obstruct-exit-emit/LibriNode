@@ -100,7 +100,17 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 // --- Authors ---
 
 func (s *server) handleListAuthors(w http.ResponseWriter, r *http.Request) {
-	authors, err := s.store.ListAuthors()
+	var authors []library.Author
+	var err error
+	if lib := r.URL.Query().Get("library"); lib != "" {
+		if _, ok := formatLibrary(lib); !ok {
+			writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+			return
+		}
+		authors, err = s.store.ListAuthorsInLibrary(lib)
+	} else {
+		authors, err = s.store.ListAuthors()
+	}
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -115,6 +125,7 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ForeignAuthorID string `json:"foreignAuthorId"`
 		Monitored       *bool  `json:"monitored"`
+		Library         string `json:"library"` // which format library to add into
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ForeignAuthorID == "" {
 		writeError(w, http.StatusBadRequest, "foreignAuthorId is required")
@@ -124,17 +135,38 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	if req.Monitored != nil {
 		monitored = *req.Monitored
 	}
+	lib, ok := formatLibrary(req.Library)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+		return
+	}
 
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	author, err := s.refresh.SyncAuthor(ctx, req.ForeignAuthorID, monitored)
+	author, err := s.refresh.SyncAuthor(ctx, req.ForeignAuthorID, monitored, lib)
 	if err != nil {
 		writeSyncError(w, err)
 		return
 	}
+	// Re-adds enroll existing books too (upserts preserve membership).
+	if err := s.store.SetAuthorBooksLibrary(author.ID, lib, monitored); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	s.rematchFiles()
 	s.writeAuthorDetail(w, http.StatusCreated, author.ID)
+}
+
+// formatLibrary validates the target format library ("" defaults to ebook).
+func formatLibrary(v string) (string, bool) {
+	switch v {
+	case "", "ebook":
+		return "ebook", true
+	case "audiobook":
+		return "audiobook", true
+	}
+	return "", false
 }
 
 // rematchFiles attaches previously scanned unmatched files to newly added
@@ -247,6 +279,7 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ForeignBookID string `json:"foreignBookId"`
 		Monitored     *bool  `json:"monitored"`
+		Library       string `json:"library"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ForeignBookID == "" {
 		writeError(w, http.StatusBadRequest, "foreignBookId is required")
@@ -256,17 +289,78 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 	if req.Monitored != nil {
 		monitored = *req.Monitored
 	}
+	lib, ok := formatLibrary(req.Library)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+		return
+	}
 
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	book, err := s.refresh.SyncBook(ctx, req.ForeignBookID, monitored)
+	book, err := s.refresh.SyncBook(ctx, req.ForeignBookID, monitored, lib)
 	if err != nil {
 		writeSyncError(w, err)
 		return
 	}
+	// Re-adds enroll the existing book too (upserts preserve membership).
+	if err := s.store.SetBookLibrary(book.ID, lib, true, monitored); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	s.rematchFiles()
 	s.writeBookDetail(w, http.StatusCreated, book.ID)
+}
+
+// handleBookLibrary is the cross-add/remove: PUT /book/{id}/library puts a
+// prose book into (or out of) a format library, with its monitored choice.
+func (s *server) handleBookLibrary(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Library   string `json:"library"`
+		Member    bool   `json:"member"`
+		Monitored bool   `json:"monitored"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	lib, ok := formatLibrary(req.Library)
+	if !ok || req.Library == "" {
+		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+		return
+	}
+	if err := s.store.SetBookLibrary(id, lib, req.Member, req.Monitored); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.writeBookDetail(w, http.StatusOK, id)
+}
+
+// handleLibraries reports which media-type libraries are set up (Plex-style:
+// the UI only shows active ones).
+func (s *server) handleLibraries(w http.ResponseWriter, r *http.Request) {
+	statuses, err := s.store.LibraryStatuses()
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, statuses)
+}
+
+// handleHome builds the Home page: per-library sections, active libraries
+// only, types never mixed within a row.
+func (s *server) handleHome(w http.ResponseWriter, r *http.Request) {
+	sections, err := s.store.Home(12)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sections)
 }
 
 // handleRefreshBook re-syncs an existing book's metadata and editions.

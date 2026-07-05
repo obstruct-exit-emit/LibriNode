@@ -60,6 +60,19 @@ func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string
 		return &BookOutcome{BookID: bookID, BookTitle: book.Title, MediaType: "magazine",
 			Message: "magazine issues are searched at the series level"}, nil
 	}
+	// Prose searches require library membership — the Plex-style model:
+	// a book is only acquirable as a format it was added as.
+	if book.MediaType == "book" {
+		member := book.InEbookLibrary
+		if mediaType == "audiobook" {
+			member = book.InAudiobookLibrary
+		}
+		if !member {
+			return &BookOutcome{BookID: bookID, BookTitle: book.Title, MediaType: mediaType,
+				Message: "not in the " + mediaType + " library — add it there first"}, nil
+		}
+	}
+
 	if pending, err := s.pendingBookIDs(); err != nil {
 		return nil, err
 	} else if pending[pendingKey(bookID, mediaType)] {
@@ -262,38 +275,33 @@ type want struct {
 }
 
 func (s *Service) wants(book *library.Book) []want {
-	if !book.Monitored {
-		return nil
-	}
 	// Magazine issues are acquired at the series level (searchMagazine),
 	// never through per-book search.
 	if book.MediaType == "magazine" {
 		return nil
 	}
 	// Manga volumes / comic issues want exactly their own type (no upgrade
-	// mode for volumes yet).
+	// mode for volumes yet); the classic monitored flag governs them.
 	if book.MediaType == "manga" || book.MediaType == "comic" {
-		if book.HasFile {
+		if !book.Monitored || book.HasFile {
 			return nil
 		}
 		return []want{{mediaType: book.MediaType}}
 	}
+	// Prose books: each format library membership carries its own monitored
+	// flag (Plex-style explicit membership).
 	wants := []want{}
-	if !book.HasEbookFile {
-		wants = append(wants, want{mediaType: "ebook"})
-	} else if min, ok := s.upgradeMinScore(book, "ebook"); ok {
-		wants = append(wants, want{mediaType: "ebook", minScore: min})
-	}
-	audiobookOptIn := false
-	if ok, err := s.store.HasMonitoredEdition(book.ID, "audiobook"); err == nil && ok {
-		audiobookOptIn = true
-	}
-	if !book.HasAudiobookFile {
-		if audiobookOptIn {
-			wants = append(wants, want{mediaType: "audiobook"})
+	if book.InEbookLibrary && book.EbookMonitored {
+		if !book.HasEbookFile {
+			wants = append(wants, want{mediaType: "ebook"})
+		} else if min, ok := s.upgradeMinScore(book, "ebook"); ok {
+			wants = append(wants, want{mediaType: "ebook", minScore: min})
 		}
-	} else if audiobookOptIn {
-		if min, ok := s.upgradeMinScore(book, "audiobook"); ok {
+	}
+	if book.InAudiobookLibrary && book.AudiobookMonitored {
+		if !book.HasAudiobookFile {
+			wants = append(wants, want{mediaType: "audiobook"})
+		} else if min, ok := s.upgradeMinScore(book, "audiobook"); ok {
 			wants = append(wants, want{mediaType: "audiobook", minScore: min})
 		}
 	}
