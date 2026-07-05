@@ -305,6 +305,7 @@ metadata endpoints return 503.
 
 ### Post-1.0 ideas
 - [ ] "Missing" view per author: a dropdown in the author area listing media you don't have — bibliography gaps from the metadata provider, organized (by series, then year) — with one-click add/monitor
+- [ ] Manga colorized/monochrome variants: own both, with separate root folders per variant — but **one** shared Manga library (unlike ebook/audiobook, no split areas); every volume shows both variants with per-variant owned state, sharing the same series/volume metadata
 - [ ] External notifications (Discord, webhook, email) on grab/import/upgrade/failure
 - [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)
 - [ ] Fuzzy / ISBN- and embedded-metadata-based file matching (scanning is exact-normalized-match today)
