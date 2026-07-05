@@ -287,14 +287,27 @@ metadata endpoints return 503.
 - [ ] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own area — sidebar entry, scoped browsing (author-first for books, series-first for manga/comics/magazines), scoped search-and-add and wanted list; the Home page is the only place types meet, as stacked per-library sections ("Recently added — Ebooks", "Wanted — Manga") that never interleave types within a row; type-specific settings render only for active libraries
 - [ ] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred from owning the other format. Membership is set by scanning (you own it), by which library you add it from, or by cross-add: a book's detail page shows that other formats exist, with an "Add to Audiobooks/Ebooks" button that prompts whether to monitor. This replaces the current edition-monitoring opt-in as the wanted signal
 - [ ] Full settings UI as specced above, with Test buttons everywhere
+- [ ] Failed-release blocklist: a release that failed to download is never grabbed again; search falls to the next candidate
+- [ ] Health checks: background monitoring (root folder unreachable, indexer failing repeatedly, download client down, provider token invalid) with a warning banner in the UI
+- [ ] Authentication: login page with username/password sessions (replacing the raw API-key prompt), API-key regeneration; SSL/reverse-proxy guidance
+- [ ] Wanted page per library: everything missing, with search buttons
+- [ ] Delete options: removing a book/author/series can optionally delete its files from disk (otherwise the next scan re-finds them as strays)
+- [ ] Log file on disk (with rotation) + log viewer in the UI (System → events)
 - [ ] Calendar view (upcoming releases across all libraries)
 - [ ] Upgrade handling (replace when a better-quality release appears)
+- [ ] Per-indexer failure backoff (rest an indexer that keeps erroring instead of hammering it every sweep)
+- [ ] Seed-goal handling: qBittorrent ratio polling + remove-after-seeding
+- [ ] Pagination/virtualized browsing in the new UI (built in from the start, not retrofitted)
 - [ ] Backups + restore
-- [ ] Windows installer/service, Linux packages/systemd, official Docker image
+- [ ] Windows installer/service, Linux packages/systemd, official Docker image — with real version stamping (ldflags) in CI release builds
 - [ ] Docs site + API reference
+- [ ] OPF sidecar files for Calibre/Audiobookshelf; rename/organize support for non-ebook libraries
 
 ### Post-1.0 ideas
 - [ ] External notifications (Discord, webhook, email) on grab/import/upgrade/failure
+- [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)
+- [ ] Fuzzy / ISBN- and embedded-metadata-based file matching (scanning is exact-normalized-match today)
+- [ ] `ComicInfo.xml` for CBR archives (needs a RAR writer)
 - [ ] Import lists (Hardcover want-to-read shelf → auto-monitor)
 - [ ] Multi-user / permissions
 - [ ] Direct integrations: Calibre, Kavita, Komga, Audiobookshelf notify-on-import
