@@ -15,7 +15,7 @@ Runs on **Windows** and **Linux** (bare metal or Docker).
 ## Why another *arr?
 
 - **Readarr** is retired/unmaintained and never handled manga or comics.
-- **LazyLibrarian** covers a lot but has an aging UI and inconsistent metadata.
+- **LazyLibrarian** covers a lot (including magazines, which LibriNode also automates) but has an aging UI and inconsistent metadata.
 - **Mylar** does comics only; **Kavita/Komga** are readers, not automation.
 
 Nothing today automates **all five** written-media types in one app with modern metadata (Hardcover) and clean *arr-style integrations. That's the gap LibriNode fills.
@@ -215,7 +215,7 @@ scriptable:
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
-| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
+| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
