@@ -122,22 +122,13 @@ func (s *server) handlePutNamingSettings(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if req.EbookFolder == "" || req.EbookFile == "" {
-		writeError(w, http.StatusBadRequest, "ebookFolder and ebookFile are required")
-		return
-	}
-	// Audiobook templates keep their defaults when omitted (older clients).
-	if req.AudiobookFolder == "" {
-		req.AudiobookFolder = "{Author Name}"
-	}
-	if req.AudiobookFile == "" {
-		req.AudiobookFile = "{Book Title}"
-	}
+	// Empty fields fall back to defaults (SetNaming fills them), so partial
+	// payloads can never wipe another media type's templates.
 	if err := s.cfg.SetNaming(req); err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, namingResponse(req))
+	writeJSON(w, http.StatusOK, namingResponse(s.cfg.NamingSettings()))
 }
 
 // handleTestMetadataProvider builds a provider from the submitted (unsaved)

@@ -408,9 +408,15 @@ func TestNamingSettingsAndRename(t *testing.T) {
 		t.Fatalf("example = %q", ns.Example)
 	}
 
-	// Empty templates rejected; valid update re-renders the example.
+	// Empty templates fall back to defaults rather than erroring.
+	var filled struct {
+		EbookFolder string `json:"ebookFolder"`
+	}
 	a.want(a.call("PUT", "/api/v1/settings/naming",
-		map[string]string{"ebookFolder": "", "ebookFile": "x"}, nil), http.StatusBadRequest)
+		map[string]string{"ebookFolder": "", "ebookFile": "x"}, &filled), http.StatusOK)
+	if filled.EbookFolder != "{Author Name}" {
+		t.Fatalf("empty folder template not defaulted: %+v", filled)
+	}
 	a.want(a.call("PUT", "/api/v1/settings/naming", map[string]string{
 		"ebookFolder": "{Author SortName}",
 		"ebookFile":   "{Book Title} ({Release Year})",
@@ -997,6 +1003,29 @@ func TestAutoSearchEndpoints(t *testing.T) {
 	}
 
 	a.want(a.call("POST", "/api/v1/book/9999/search", nil, nil), http.StatusNotFound)
+}
+
+func TestNamingSaveKeepsOtherTemplates(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	// A partial save (only ebook fields, like an older client) must not wipe
+	// the other media types' templates.
+	var ns struct {
+		EbookFolder    string `json:"ebookFolder"`
+		MangaFile      string `json:"mangaFile"`
+		ComicFile      string `json:"comicFile"`
+		MagazineFolder string `json:"magazineFolder"`
+	}
+	a.want(a.call("PUT", "/api/v1/settings/naming", map[string]string{
+		"ebookFolder": "{Author SortName}",
+		"ebookFile":   "{Book Title}",
+	}, &ns), http.StatusOK)
+	if ns.EbookFolder != "{Author SortName}" {
+		t.Errorf("ebook folder not saved: %+v", ns)
+	}
+	if ns.MangaFile == "" || ns.ComicFile == "" || ns.MagazineFolder == "" {
+		t.Fatalf("partial naming save wiped other templates: %+v", ns)
+	}
 }
 
 func TestMagazineSeries(t *testing.T) {

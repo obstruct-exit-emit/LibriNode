@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -158,36 +159,7 @@ func Load(dataDir string) (*Config, error) {
 	}
 
 	// Empty templates (fresh section, hand-edited file) fall back to defaults.
-	if cfg.Naming.EbookFolder == "" {
-		cfg.Naming.EbookFolder = defaultNaming().EbookFolder
-	}
-	if cfg.Naming.EbookFile == "" {
-		cfg.Naming.EbookFile = defaultNaming().EbookFile
-	}
-	if cfg.Naming.AudiobookFolder == "" {
-		cfg.Naming.AudiobookFolder = defaultNaming().AudiobookFolder
-	}
-	if cfg.Naming.AudiobookFile == "" {
-		cfg.Naming.AudiobookFile = defaultNaming().AudiobookFile
-	}
-	if cfg.Naming.MangaFolder == "" {
-		cfg.Naming.MangaFolder = defaultNaming().MangaFolder
-	}
-	if cfg.Naming.MangaFile == "" {
-		cfg.Naming.MangaFile = defaultNaming().MangaFile
-	}
-	if cfg.Naming.ComicFolder == "" {
-		cfg.Naming.ComicFolder = defaultNaming().ComicFolder
-	}
-	if cfg.Naming.MagazineFolder == "" {
-		cfg.Naming.MagazineFolder = defaultNaming().MagazineFolder
-	}
-	if cfg.Naming.MagazineFile == "" {
-		cfg.Naming.MagazineFile = defaultNaming().MagazineFile
-	}
-	if cfg.Naming.ComicFile == "" {
-		cfg.Naming.ComicFile = defaultNaming().ComicFile
-	}
+	cfg.Naming.FillDefaults()
 
 	if cfg.APIKey == "" {
 		cfg.APIKey = newAPIKey()
@@ -232,8 +204,32 @@ func (c *Config) SetMetadata(ms MetadataSettings) error {
 	return c.save()
 }
 
-// SetNaming replaces the naming templates and persists the config.
+// FillDefaults replaces empty templates with the built-in defaults, so a
+// partial update (or hand-edited config) can never leave a media type with
+// an empty — and thus garbage-rendering — template.
+func (ns *NamingSettings) FillDefaults() {
+	def := defaultNaming()
+	fill := func(dst *string, fallback string) {
+		if strings.TrimSpace(*dst) == "" {
+			*dst = fallback
+		}
+	}
+	fill(&ns.EbookFolder, def.EbookFolder)
+	fill(&ns.EbookFile, def.EbookFile)
+	fill(&ns.AudiobookFolder, def.AudiobookFolder)
+	fill(&ns.AudiobookFile, def.AudiobookFile)
+	fill(&ns.MangaFolder, def.MangaFolder)
+	fill(&ns.MangaFile, def.MangaFile)
+	fill(&ns.ComicFolder, def.ComicFolder)
+	fill(&ns.ComicFile, def.ComicFile)
+	fill(&ns.MagazineFolder, def.MagazineFolder)
+	fill(&ns.MagazineFile, def.MagazineFile)
+}
+
+// SetNaming replaces the naming templates and persists the config. Empty
+// fields fall back to defaults rather than being stored.
 func (c *Config) SetNaming(ns NamingSettings) error {
+	ns.FillDefaults()
 	c.mu.Lock()
 	c.Naming = ns
 	c.mu.Unlock()

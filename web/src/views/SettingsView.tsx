@@ -219,9 +219,17 @@ function QualityProfilesCard({
 }: {
   onError: (message: string) => void;
 }) {
+  const defaultFormats: Record<string, string> = {
+    ebook: "epub,azw3,mobi",
+    audiobook: "m4b,m4a,mp3",
+    manga: "cbz,cbr",
+    comic: "cbz,cbr",
+    magazine: "pdf,epub",
+  };
   const [profiles, setProfiles] = useState<QualityProfile[]>([]);
   const [name, setName] = useState("");
-  const [formats, setFormats] = useState("epub,azw3,mobi");
+  const [profileType, setProfileType] = useState("ebook");
+  const [formats, setFormats] = useState(defaultFormats.ebook);
   const [language, setLanguage] = useState("english");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -251,6 +259,7 @@ function QualityProfilesCard({
       api
         .addProfile({
           name: name.trim(),
+          mediaType: profileType,
           formats: formats.split(",").map((f) => f.trim()).filter(Boolean),
           language,
           retailBonus: 25,
@@ -272,7 +281,7 @@ function QualityProfilesCard({
           <li key={p.id}>
             <div className="row">
               <span>
-                {p.name}{" "}
+                {p.name} <span className="muted">({p.mediaType})</span>{" "}
                 {p.isDefault && <span className="owned yes">default</span>}
               </span>
               <span className="row-actions">
@@ -308,6 +317,22 @@ function QualityProfilesCard({
         <label>
           Name
           <input value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label>
+          Media type
+          <select
+            value={profileType}
+            onChange={(e) => {
+              setProfileType(e.target.value);
+              setFormats(defaultFormats[e.target.value] ?? "");
+            }}
+          >
+            <option value="ebook">Ebook</option>
+            <option value="audiobook">Audiobook</option>
+            <option value="manga">Manga</option>
+            <option value="comic">Comic</option>
+            <option value="magazine">Magazine</option>
+          </select>
         </label>
         <label>
           Formats (best first)

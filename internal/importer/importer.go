@@ -268,7 +268,9 @@ func (s *Service) matchByTitle(title string) *library.Book {
 	var match *library.Book
 	for i := range books {
 		b := &books[i]
-		if b.HasEbookFile || !b.Monitored {
+		// Only prose books: the fallback imports as ebook, and volumes/issues
+		// are always acquired through tracked grabs.
+		if b.MediaType != "book" || b.HasEbookFile || !b.Monitored {
 			continue
 		}
 		for _, key := range scanner.TitleKeys(b.Title) {
