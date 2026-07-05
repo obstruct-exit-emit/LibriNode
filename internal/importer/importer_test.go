@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/librinode/librinode/internal/config"
@@ -265,6 +266,120 @@ func TestFailedDownloadResolvesGrab(t *testing.T) {
 	}
 	if len(f.removed) != 1 {
 		t.Errorf("failed download not removed from client: %v", f.removed)
+	}
+}
+
+func TestFailedDownloadIsBlocklisted(t *testing.T) {
+	f := fixture(t)
+
+	f.history = append(f.history, map[string]any{
+		"nzo_id": "nzo_bad2", "name": "Mort broken", "status": "Failed",
+		"fail_message": "crc error", "category": "librinode",
+	})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_bad2",
+		Title: "Mort broken", GUID: "guid-bad", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := f.grabs.ListBlocklist()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].GUID != "guid-bad" || entries[0].Title != "Mort broken" {
+		t.Fatalf("blocklist = %+v", entries)
+	}
+	// Both keys block, and title matching survives case/spacing changes.
+	blocked, _ := f.grabs.BlockedKeys()
+	if !download.IsBlocked(blocked, "guid-bad", "") || !download.IsBlocked(blocked, "", "mort  BROKEN") {
+		t.Error("blocklist keys don't match by guid/title")
+	}
+}
+
+func TestImportUpgradeReplacesFile(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	// The book owns a PDF on disk.
+	oldPath := filepath.Join(f.rootDir, "Terry Pratchett", "Mort.pdf")
+	if err := os.MkdirAll(filepath.Dir(oldPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, []byte("old-pdf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 1, BookID: f.book.ID, MediaType: "ebook", Path: oldPath, Format: "pdf",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A tracked grab delivers an EPUB (better per the default profile).
+	f.completedDownload(t, "nzo_up", "Terry Pratchett - Mort Retail EPUB", "mort.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_up",
+		Title: "Terry Pratchett - Mort Retail EPUB", Protocol: download.ProtocolUsenet,
+		MediaType: "ebook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	// New epub recorded, old pdf gone from disk and library.
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Error("upgraded-away pdf still on disk")
+	}
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 || files[0].Format != "epub" {
+		t.Fatalf("files after upgrade = %+v", files)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusImported ||
+		!strings.Contains(grabs[0].Message, "upgraded (pdf → epub)") {
+		t.Fatalf("grab = %+v", grabs[0])
+	}
+}
+
+func TestImportNotAnUpgradeSkips(t *testing.T) {
+	f := fixture(t)
+
+	// The book owns an EPUB; a grabbed PDF must not replace it.
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 1, BookID: f.book.ID, MediaType: "ebook",
+		Path: filepath.Join(f.rootDir, "m.epub"), Format: "epub",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.completedDownload(t, "nzo_dn", "Terry Pratchett - Mort PDF", "mort.pdf")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_dn",
+		Title: "Terry Pratchett - Mort PDF", Protocol: download.ProtocolUsenet,
+		MediaType: "ebook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 0 || result.Skipped == 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 || files[0].Format != "epub" {
+		t.Fatalf("files = %+v", files)
 	}
 }
 

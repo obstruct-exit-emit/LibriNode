@@ -218,7 +218,7 @@ func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabR
 // records the grab (tied to a book when bookID > 0) so Completed Download
 // Handling can import the result. Used by both the grab endpoint and
 // automatic search.
-func (s *Service) GrabRelease(ctx context.Context, protocol, url, title string, bookID int64, mediaType string) (*GrabResult, *GrabRecord, error) {
+func (s *Service) GrabRelease(ctx context.Context, protocol, url, title, guid string, bookID int64, mediaType string) (*GrabResult, *GrabRecord, error) {
 	result, err := s.Grab(ctx, protocol, url, title)
 	if err != nil {
 		return nil, nil, err
@@ -228,6 +228,7 @@ func (s *Service) GrabRelease(ctx context.Context, protocol, url, title string, 
 		ClientConfigID: result.ClientID,
 		ClientItemID:   result.ID,
 		Title:          title,
+		GUID:           guid,
 		Protocol:       protocol,
 		MediaType:      mediaType,
 	}

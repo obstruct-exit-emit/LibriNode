@@ -139,6 +139,7 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title       string `json:"title"`
 		DownloadURL string `json:"downloadUrl"`
+		GUID        string `json:"guid"`
 		Protocol    string `json:"protocol"`
 		BookID      int64  `json:"bookId"`
 		MediaType   string `json:"mediaType"`
@@ -163,7 +164,7 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
 	defer cancel()
 
-	result, grab, err := s.downloads.GrabRelease(ctx, req.Protocol, req.DownloadURL, req.Title, req.BookID, req.MediaType)
+	result, grab, err := s.downloads.GrabRelease(ctx, req.Protocol, req.DownloadURL, req.Title, req.GUID, req.BookID, req.MediaType)
 	if errors.Is(err, download.ErrNoClient) {
 		writeError(w, http.StatusServiceUnavailable,
 			"no enabled "+req.Protocol+" download client — add one under Settings")
@@ -247,6 +248,31 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, grabs)
+}
+
+// handleBlocklist lists releases blocked after failed downloads.
+func (s *server) handleBlocklist(w http.ResponseWriter, r *http.Request) {
+	entries, err := s.downloads.Store().ListBlocklist()
+	if err != nil {
+		writeDownloadError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, entries)
+}
+
+// handleUnblock removes one blocklist entry so the release can be grabbed
+// again.
+func (s *server) handleUnblock(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := s.downloads.Store().DeleteBlock(id); err != nil {
+		writeDownloadError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleQueue shows every LibriNode download across all enabled clients.

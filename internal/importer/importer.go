@@ -7,6 +7,7 @@ package importer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/organize"
+	"github.com/librinode/librinode/internal/release"
 	"github.com/librinode/librinode/internal/scanner"
 )
 
@@ -71,6 +73,10 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 				continue
 			}
 			_ = s.downloads.Store().ResolveGrab(grab.ID, download.GrabStatusFailed, "download failed in client")
+			// Never grab this release again; search falls to the next candidate.
+			if err := s.downloads.Store().AddBlock(grab.GUID, grab.Title, "download failed in client"); err != nil {
+				result.note("blocklisting %s: %v", grab.Title, err)
+			}
 			// Failed downloads are junk in the client; clean up data too.
 			if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, true); err != nil {
 				result.note("removing failed %s: %v", item.Title, err)
@@ -134,10 +140,9 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	if mediaType == "audiobook" {
 		owned = book.HasAudiobookFile
 	}
-	if owned {
-		if grab != nil {
-			s.resolve(grab, download.GrabStatusImported, "book already has a "+mediaType+" file")
-		}
+	// Untracked downloads never replace existing files; tracked grabs for
+	// owned books may be upgrades — decided below once the format is known.
+	if owned && grab == nil {
 		result.Skipped++
 		return
 	}
@@ -173,6 +178,20 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		return
 	}
 
+	// Owned + tracked grab: only proceed when the new format genuinely
+	// upgrades the owned one; the old files are replaced after import.
+	var replacing []library.BookFile
+	if owned {
+		old, better := s.upgradeCheck(book, mediaType, format)
+		if !better {
+			s.resolve(grab, download.GrabStatusImported,
+				"book already has a "+mediaType+" file (not an upgrade)")
+			result.Skipped++
+			return
+		}
+		replacing = old
+	}
+
 	place, err := s.organize.PlaceFile(book, format, mediaType)
 	if err != nil {
 		result.note("%s: %v", item.Title, err)
@@ -186,7 +205,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		// Multi-file audiobook: the per-book folder is the unit; original
 		// track names are preserved inside it.
 		target = place.Dir
-		if _, err := os.Stat(target); err == nil {
+		if _, err := os.Stat(target); err == nil && len(replacing) == 0 {
 			result.note("%s: target already exists: %s", item.Title, target)
 			result.Skipped++
 			return
@@ -237,8 +256,25 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		return
 	}
 
+	// Upgrade: the replaced files leave disk and library together.
+	for _, old := range replacing {
+		if strings.EqualFold(old.Path, target) {
+			continue
+		}
+		if err := os.RemoveAll(old.Path); err != nil {
+			result.note("removing upgraded file %s: %v", old.Path, err)
+		}
+		if err := s.store.DeleteBookFile(old.ID); err != nil && !errorsIsNotFound(err) {
+			result.note("forgetting upgraded file %s: %v", old.Path, err)
+		}
+	}
+
 	if grab != nil {
-		s.resolve(grab, download.GrabStatusImported, "imported to "+target)
+		message := "imported to " + target
+		if len(replacing) > 0 {
+			message = "upgraded (" + replacing[0].Format + " → " + format + "), imported to " + target
+		}
+		s.resolve(grab, download.GrabStatusImported, message)
 		// Usenet leaves nothing to seed; clear the history entry (data stays
 		// on disk — we only copied from it). Torrents keep seeding.
 		if grab.Protocol == download.ProtocolUsenet {
@@ -249,6 +285,40 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	}
 	result.Imported++
 	slog.Info("imported download", "book", book.Title, "path", target)
+}
+
+// upgradeCheck decides whether newFormat genuinely upgrades the book's
+// owned files of this media type (per the type's quality profile), returning
+// the files to replace.
+func (s *Service) upgradeCheck(book *library.Book, mediaType, newFormat string) ([]library.BookFile, bool) {
+	prefs := release.PreferencesFor(s.store, mediaType)
+	newScore, ok := prefs.FormatScores[newFormat]
+	if !ok {
+		return nil, false
+	}
+	files, err := s.store.ListBookFiles(book.ID)
+	if err != nil {
+		return nil, false
+	}
+	old := []library.BookFile{}
+	ownedBest := 0
+	for _, f := range files {
+		if f.MediaType != mediaType {
+			continue
+		}
+		old = append(old, f)
+		if sc, ok := prefs.FormatScores[f.Format]; ok && sc > ownedBest {
+			ownedBest = sc
+		}
+	}
+	if len(old) == 0 {
+		return nil, false
+	}
+	return old, newScore > ownedBest
+}
+
+func errorsIsNotFound(err error) bool {
+	return errors.Is(err, library.ErrNotFound)
 }
 
 func (s *Service) resolve(grab *download.GrabRecord, status, message string) {

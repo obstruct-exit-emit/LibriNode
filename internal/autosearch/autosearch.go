@@ -41,7 +41,9 @@ type BookOutcome struct {
 
 // SearchBook searches for one book as the given media type and grabs the
 // best approved release. Never returns an error for "nothing found" —
-// that's an outcome.
+// that's an outcome. When the book is already owned in that format and its
+// profile allows upgrades, the search runs in upgrade mode: only strictly
+// better formats approve.
 func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string) (*BookOutcome, error) {
 	if mediaType == "" {
 		mediaType = "ebook"
@@ -64,12 +66,80 @@ func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string
 		return &BookOutcome{BookID: bookID, BookTitle: book.Title, MediaType: mediaType,
 			Message: "a grab is already pending for this book"}, nil
 	}
-	return s.searchOne(ctx, book, mediaType)
+
+	minScore := 0
+	if s.ownedIn(book, mediaType) {
+		min, upgradable := s.upgradeMinScore(book, mediaType)
+		if !upgradable {
+			return &BookOutcome{BookID: bookID, BookTitle: book.Title, MediaType: mediaType,
+				Message: "already owned — enable upgrades in the quality profile to search for better formats"}, nil
+		}
+		minScore = min
+	}
+	return s.searchOne(ctx, book, mediaType, minScore)
 }
 
-func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType string) (*BookOutcome, error) {
+// ownedIn reports whether the book has a file of the given media type.
+func (s *Service) ownedIn(book *library.Book, mediaType string) bool {
+	switch mediaType {
+	case "ebook":
+		return book.HasEbookFile
+	case "audiobook":
+		return book.HasAudiobookFile
+	}
+	return book.HasFile
+}
+
+// upgradeMinScore computes upgrade mode for an owned book: the owned
+// format's score (candidates must beat it), and whether an upgrade is
+// wanted at all (profile allows upgrades and the owned format is below the
+// cutoff — empty cutoff means the profile's best format).
+func (s *Service) upgradeMinScore(book *library.Book, mediaType string) (int, bool) {
+	profile, err := s.store.DefaultProfile(mediaType)
+	if err != nil || !profile.UpgradesAllowed || len(profile.Formats) == 0 {
+		return 0, false
+	}
+	prefs := release.PreferencesFromProfile(*profile)
+
+	cutoff := profile.Cutoff
+	if cutoff == "" {
+		cutoff = profile.Formats[0]
+	}
+	cutoffScore := prefs.FormatScores[cutoff]
+
+	files, err := s.store.ListBookFiles(book.ID)
+	if err != nil {
+		return 0, false
+	}
+	owned := 0
+	seen := false
+	for _, f := range files {
+		if f.MediaType != mediaType {
+			continue
+		}
+		seen = true
+		if sc, ok := prefs.FormatScores[f.Format]; ok && sc > owned {
+			owned = sc
+		}
+	}
+	if !seen {
+		return 0, false
+	}
+	if owned == 0 {
+		// The owned format isn't in the profile at all — anything listed
+		// is an upgrade.
+		return 1, true
+	}
+	if owned >= cutoffScore {
+		return 0, false // cutoff met; done upgrading
+	}
+	return owned, true
+}
+
+func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType string, minFormatScore int) (*BookOutcome, error) {
 	outcome := &BookOutcome{BookID: book.ID, BookTitle: book.Title, MediaType: mediaType}
 	prefs := release.PreferencesFor(s.store, mediaType)
+	prefs.MinFormatScore = minFormatScore
 
 	var query string
 	var score func(indexer.Release) release.Candidate
@@ -115,6 +185,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 	for _, rel := range found {
 		candidates = append(candidates, score(rel))
 	}
+	s.markBlocked(candidates)
 	release.Rank(candidates)
 
 	var best *release.Candidate
@@ -132,7 +203,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 		return outcome, nil
 	}
 
-	result, _, err := s.downloads.GrabRelease(ctx, best.Protocol, best.DownloadURL, best.Title, book.ID, mediaType)
+	result, _, err := s.downloads.GrabRelease(ctx, best.Protocol, best.DownloadURL, best.Title, best.GUID, book.ID, mediaType)
 	if err != nil {
 		outcome.Message = "grab failed: " + err.Error()
 		return outcome, nil
@@ -143,6 +214,21 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 	slog.Info("auto-grabbed release",
 		"book", book.Title, "mediaType", mediaType, "release", best.Title, "client", result.Client)
 	return outcome, nil
+}
+
+// markBlocked rejects candidates on the failed-release blocklist.
+func (s *Service) markBlocked(candidates []release.Candidate) {
+	blocked, err := s.downloads.Store().BlockedKeys()
+	if err != nil || len(blocked) == 0 {
+		return
+	}
+	for i := range candidates {
+		c := &candidates[i]
+		if download.IsBlocked(blocked, c.GUID, c.Title) {
+			c.Approved = false
+			c.Rejections = append(c.Rejections, "blocklisted (failed to download previously)")
+		}
+	}
 }
 
 func pendingKey(bookID int64, mediaType string) string {
@@ -167,8 +253,15 @@ func (s *Service) pendingBookIDs() (map[string]bool, error) {
 
 // wants lists the media types a book should be searched as: ebooks whenever
 // monitored and fileless; audiobooks additionally require a monitored
-// audiobook edition (the per-book opt-in).
-func (s *Service) wants(book *library.Book) []string {
+// audiobook edition (the per-book opt-in). Owned formats stay wanted in
+// upgrade mode (minScore > 0) while the profile allows upgrades and the
+// owned format is below the cutoff.
+type want struct {
+	mediaType string
+	minScore  int
+}
+
+func (s *Service) wants(book *library.Book) []want {
 	if !book.Monitored {
 		return nil
 	}
@@ -177,23 +270,34 @@ func (s *Service) wants(book *library.Book) []string {
 	if book.MediaType == "magazine" {
 		return nil
 	}
-	// Manga volumes / comic issues want exactly their own type.
+	// Manga volumes / comic issues want exactly their own type (no upgrade
+	// mode for volumes yet).
 	if book.MediaType == "manga" || book.MediaType == "comic" {
 		if book.HasFile {
 			return nil
 		}
-		return []string{book.MediaType}
+		return []want{{mediaType: book.MediaType}}
 	}
-	types := []string{}
+	wants := []want{}
 	if !book.HasEbookFile {
-		types = append(types, "ebook")
+		wants = append(wants, want{mediaType: "ebook"})
+	} else if min, ok := s.upgradeMinScore(book, "ebook"); ok {
+		wants = append(wants, want{mediaType: "ebook", minScore: min})
+	}
+	audiobookOptIn := false
+	if ok, err := s.store.HasMonitoredEdition(book.ID, "audiobook"); err == nil && ok {
+		audiobookOptIn = true
 	}
 	if !book.HasAudiobookFile {
-		if ok, err := s.store.HasMonitoredEdition(book.ID, "audiobook"); err == nil && ok {
-			types = append(types, "audiobook")
+		if audiobookOptIn {
+			wants = append(wants, want{mediaType: "audiobook"})
+		}
+	} else if audiobookOptIn {
+		if min, ok := s.upgradeMinScore(book, "audiobook"); ok {
+			wants = append(wants, want{mediaType: "audiobook", minScore: min})
 		}
 	}
-	return types
+	return wants
 }
 
 // searchMagazine looks for new issues of a monitored magazine: any release
@@ -221,9 +325,18 @@ func (s *Service) searchMagazine(ctx context.Context, series *library.Series) ([
 	}
 
 	// Best approved candidate per unowned issue identifier.
-	best := map[string]release.Candidate{}
+	scored := make([]release.Candidate, 0, len(found))
+	identifiersByIdx := make([]string, 0, len(found))
 	for _, rel := range found {
 		cand, identifier := release.ScoreMagazine(rel, prefs, series.Title, owned)
+		scored = append(scored, cand)
+		identifiersByIdx = append(identifiersByIdx, identifier)
+	}
+	s.markBlocked(scored)
+
+	best := map[string]release.Candidate{}
+	for i, cand := range scored {
+		identifier := identifiersByIdx[i]
 		if !cand.Approved || identifier == "" {
 			continue
 		}
@@ -250,7 +363,7 @@ func (s *Service) searchMagazine(ctx context.Context, series *library.Series) ([
 			return outcomes, err
 		}
 		outcome := BookOutcome{BookID: book.ID, BookTitle: book.Title, MediaType: "magazine"}
-		result, _, err := s.downloads.GrabRelease(ctx, cand.Protocol, cand.DownloadURL, cand.Title, book.ID, "magazine")
+		result, _, err := s.downloads.GrabRelease(ctx, cand.Protocol, cand.DownloadURL, cand.Title, cand.GUID, book.ID, "magazine")
 		if err != nil {
 			outcome.Message = "grab failed: " + err.Error()
 		} else {
@@ -301,17 +414,17 @@ func (s *Service) SearchWanted(ctx context.Context) ([]BookOutcome, error) {
 	}
 	for i := range books {
 		book := &books[i]
-		for _, mediaType := range s.wants(book) {
-			if pending[pendingKey(book.ID, mediaType)] {
+		for _, w := range s.wants(book) {
+			if pending[pendingKey(book.ID, w.mediaType)] {
 				continue
 			}
 			if ctx.Err() != nil {
 				return outcomes, ctx.Err()
 			}
-			outcome, err := s.searchOne(ctx, book, mediaType)
+			outcome, err := s.searchOne(ctx, book, w.mediaType, w.minScore)
 			if err != nil {
 				outcomes = append(outcomes, BookOutcome{
-					BookID: book.ID, BookTitle: book.Title, MediaType: mediaType, Message: err.Error(),
+					BookID: book.ID, BookTitle: book.Title, MediaType: w.mediaType, Message: err.Error(),
 				})
 				continue
 			}

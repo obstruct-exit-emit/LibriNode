@@ -125,6 +125,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("DELETE /api/v1/downloadclient/{id}", s.auth(s.handleDeleteDownloadClient))
 	mux.HandleFunc("POST /api/v1/downloadclient/test", s.auth(s.handleTestDownloadClient))
 	mux.HandleFunc("GET /api/v1/queue", s.auth(s.handleQueue))
+	mux.HandleFunc("GET /api/v1/blocklist", s.auth(s.handleBlocklist))
+	mux.HandleFunc("DELETE /api/v1/blocklist/{id}", s.auth(s.handleUnblock))
 	mux.HandleFunc("POST /api/v1/library/import", s.auth(s.handleImport))
 	mux.HandleFunc("GET /api/v1/history", s.auth(s.handleHistory))
 	mux.HandleFunc("POST /api/v1/book/{id}/search", s.auth(s.handleAutoSearchBook))

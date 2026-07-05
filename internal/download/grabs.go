@@ -19,6 +19,7 @@ type GrabRecord struct {
 	ClientConfigID int64  `json:"clientConfigId,omitempty"`
 	ClientItemID   string `json:"clientItemId,omitempty"`
 	Title          string `json:"title"`
+	GUID           string `json:"guid,omitempty"` // release guid, for the blocklist
 	Protocol       string `json:"protocol"`
 	MediaType      string `json:"mediaType"`
 	Status         string `json:"status"`
@@ -28,12 +29,12 @@ type GrabRecord struct {
 }
 
 const grabCols = `id, COALESCE(book_id, 0), COALESCE(client_config_id, 0), client_item_id,
-	title, protocol, media_type, status, message, grabbed_at, COALESCE(completed_at, '')`
+	title, guid, protocol, media_type, status, message, grabbed_at, COALESCE(completed_at, '')`
 
 func scanGrab(row interface{ Scan(...any) error }) (*GrabRecord, error) {
 	var g GrabRecord
 	err := row.Scan(&g.ID, &g.BookID, &g.ClientConfigID, &g.ClientItemID,
-		&g.Title, &g.Protocol, &g.MediaType, &g.Status, &g.Message, &g.GrabbedAt, &g.CompletedAt)
+		&g.Title, &g.GUID, &g.Protocol, &g.MediaType, &g.Status, &g.Message, &g.GrabbedAt, &g.CompletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -54,10 +55,10 @@ func (s *Store) AddGrab(g *GrabRecord) error {
 		g.MediaType = "ebook"
 	}
 	return s.db.QueryRow(`
-		INSERT INTO grabs (book_id, client_config_id, client_item_id, title, protocol, media_type, status)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO grabs (book_id, client_config_id, client_item_id, title, guid, protocol, media_type, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, grabbed_at`,
-		bookID, configID, g.ClientItemID, g.Title, g.Protocol, g.MediaType, g.Status,
+		bookID, configID, g.ClientItemID, g.Title, g.GUID, g.Protocol, g.MediaType, g.Status,
 	).Scan(&g.ID, &g.GrabbedAt)
 }
 

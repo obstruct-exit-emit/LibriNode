@@ -215,7 +215,17 @@ export interface QualityProfile {
   retailBonus: number;
   minSize: number;
   maxSize: number;
+  upgradesAllowed: boolean;
+  cutoff?: string;
   isDefault: boolean;
+}
+
+export interface BlockEntry {
+  id: number;
+  guid?: string;
+  title: string;
+  reason?: string;
+  blockedAt: string;
 }
 
 export interface NamingSettings {
@@ -392,11 +402,15 @@ export const api = {
     protocol: string,
     bookId?: number,
     mediaType: string = "ebook",
+    guid: string = "",
   ) =>
     request<{ client: string; id?: string; grabId: number }>(
       "/api/v1/release/grab",
-      json({ title, downloadUrl, protocol, bookId, mediaType }),
+      json({ title, downloadUrl, protocol, bookId, mediaType, guid }),
     ),
+  blocklist: () => request<BlockEntry[]>("/api/v1/blocklist"),
+  unblock: (id: number) =>
+    request<void>(`/api/v1/blocklist/${id}`, { method: "DELETE" }),
   searchReleasesForBook: (bookId: number, mediaType: string = "ebook") =>
     request<{ releases: ReleaseCandidate[]; errors: string[] }>(
       `/api/v1/release?bookId=${bookId}&mediaType=${mediaType}`,
@@ -420,6 +434,11 @@ export const api = {
   listProfiles: () => request<QualityProfile[]>("/api/v1/qualityprofile"),
   addProfile: (p: Partial<QualityProfile>) =>
     request<QualityProfile>("/api/v1/qualityprofile", json(p)),
+  updateProfile: (p: QualityProfile) =>
+    request<QualityProfile>(`/api/v1/qualityprofile/${p.id}`, {
+      ...json(p),
+      method: "PUT",
+    }),
   deleteProfile: (id: number) =>
     request<void>(`/api/v1/qualityprofile/${id}`, { method: "DELETE" }),
   setDefaultProfile: (id: number) =>

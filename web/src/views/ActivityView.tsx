@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type GrabRecord, type QueueItem } from "../api";
+import { api, type BlockEntry, type GrabRecord, type QueueItem } from "../api";
 
 export default function ActivityView({
   onError,
@@ -8,17 +8,19 @@ export default function ActivityView({
 }) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [history, setHistory] = useState<GrabRecord[]>([]);
+  const [blocked, setBlocked] = useState<BlockEntry[]>([]);
   const [clientErrors, setClientErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState("");
 
   const reload = useCallback(() => {
-    Promise.all([api.queue(), api.history()])
-      .then(([q, h]) => {
+    Promise.all([api.queue(), api.history(), api.blocklist()])
+      .then(([q, h, b]) => {
         setItems(q.items);
         setClientErrors(q.errors);
         setHistory(h);
+        setBlocked(b);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
@@ -93,6 +95,43 @@ export default function ActivityView({
         </ul>
       )}
     </section>
+
+    {blocked.length > 0 && (
+      <section className="card">
+        <h2>Blocklist ({blocked.length})</h2>
+        <p className="muted">
+          Releases that failed to download — never grabbed again. Remove an
+          entry to give a release another chance.
+        </p>
+        <ul className="rows">
+          {blocked.map((b) => (
+            <li key={b.id}>
+              <div className="row">
+                <span>
+                  {b.title}
+                  {b.reason && <span className="file-path muted"> — {b.reason}</span>}
+                </span>
+                <span className="row-actions">
+                  <button
+                    className="toggle"
+                    onClick={() =>
+                      api
+                        .unblock(b.id)
+                        .then(reload)
+                        .catch((err: unknown) =>
+                          onError(String(err instanceof Error ? err.message : err)),
+                        )
+                    }
+                  >
+                    remove
+                  </button>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
 
     {history.length > 0 && (
       <section className="card">

@@ -399,7 +399,7 @@ function BookRow({
 
   const grab = (c: ReleaseCandidate) => {
     api
-      .grabRelease(c.title, c.downloadUrl, c.protocol, book.id, mediaType)
+      .grabRelease(c.title, c.downloadUrl, c.protocol, book.id, mediaType, c.guid)
       .then((r) => setGrabNotice(`✓ Sent "${c.title}" to ${r.client}`))
       .catch((err: unknown) =>
         setGrabNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),

@@ -231,6 +231,7 @@ function QualityProfilesCard({
   const [profileType, setProfileType] = useState("ebook");
   const [formats, setFormats] = useState(defaultFormats.ebook);
   const [language, setLanguage] = useState("english");
+  const [upgrades, setUpgrades] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -263,6 +264,7 @@ function QualityProfilesCard({
           formats: formats.split(",").map((f) => f.trim()).filter(Boolean),
           language,
           retailBonus: 25,
+          upgradesAllowed: upgrades,
         })
         .then(() => setName("")),
     );
@@ -289,6 +291,14 @@ function QualityProfilesCard({
                   {p.formats.join(" › ")}
                   {p.language ? ` · ${p.language}` : " · any language"}
                 </span>
+                <button
+                  className={p.upgradesAllowed ? "toggle on" : "toggle"}
+                  disabled={busy}
+                  title="When on, owning a lesser format keeps the book wanted until the profile's best format"
+                  onClick={() => run(() => api.updateProfile({ ...p, upgradesAllowed: !p.upgradesAllowed }))}
+                >
+                  {p.upgradesAllowed ? "upgrades on" : "upgrades off"}
+                </button>
                 {!p.isDefault && (
                   <>
                     <button
@@ -341,6 +351,16 @@ function QualityProfilesCard({
             onChange={(e) => setFormats(e.target.value)}
             placeholder="epub,azw3,mobi"
           />
+        </label>
+        <label>
+          <span>
+            <input
+              type="checkbox"
+              checked={upgrades}
+              onChange={(e) => setUpgrades(e.target.checked)}
+            />{" "}
+            Allow upgrades (keep wanted until the best format is owned)
+          </span>
         </label>
         <label>
           Language

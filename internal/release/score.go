@@ -22,6 +22,9 @@ type Preferences struct {
 	Language string
 	MinSize  int64
 	MaxSize  int64
+	// MinFormatScore, when > 0, rejects formats scoring at or below it —
+	// used by upgrade searches so only genuinely better formats approve.
+	MinFormatScore int
 	// RejectAbridged drops releases that state they are abridged
 	// (audiobook profiles default to true).
 	RejectAbridged bool
@@ -157,6 +160,8 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 		c.reject("no recognized ebook format in release name")
 	case best < 0:
 		c.reject(fmt.Sprintf("format %s not wanted", strings.Join(c.Parsed.Formats, "/")))
+	case prefs.MinFormatScore > 0 && best <= prefs.MinFormatScore:
+		c.reject("not an upgrade over the owned format")
 	default:
 		c.Score += best
 	}

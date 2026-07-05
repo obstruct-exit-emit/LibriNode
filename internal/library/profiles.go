@@ -19,8 +19,12 @@ type QualityProfile struct {
 	RetailBonus int      `json:"retailBonus"`
 	MinSize     int64    `json:"minSize"`
 	MaxSize     int64    `json:"maxSize"`
-	IsDefault   bool     `json:"isDefault"`
-	AddedAt     string   `json:"addedAt"`
+	// UpgradesAllowed keeps books wanted while their owned format is below
+	// Cutoff (empty cutoff = the profile's best format).
+	UpgradesAllowed bool   `json:"upgradesAllowed"`
+	Cutoff          string `json:"cutoff,omitempty"`
+	IsDefault       bool   `json:"isDefault"`
+	AddedAt         string `json:"addedAt"`
 }
 
 // formatsByMediaType lists the grabbable formats per media type (Phase 1-2
@@ -76,6 +80,19 @@ func ValidateProfile(p *QualityProfile) error {
 	if p.RetailBonus < 0 || p.RetailBonus > 100 {
 		return errors.New("retailBonus must be 0-100")
 	}
+	p.Cutoff = strings.ToLower(strings.TrimSpace(p.Cutoff))
+	if p.Cutoff != "" {
+		found := false
+		for _, f := range p.Formats {
+			if f == p.Cutoff {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("cutoff %q is not one of the profile's formats", p.Cutoff)
+		}
+	}
 	// Unset size bounds get the standard sanity window rather than
 	// silently disabling the size checks.
 	if p.MinSize == 0 && p.MaxSize == 0 {
@@ -88,13 +105,13 @@ func ValidateProfile(p *QualityProfile) error {
 	return nil
 }
 
-const profileCols = `id, name, media_type, formats, language, retail_bonus, min_size, max_size, is_default, added_at`
+const profileCols = `id, name, media_type, formats, language, retail_bonus, min_size, max_size, upgrades_allowed, cutoff, is_default, added_at`
 
 func scanProfile(row interface{ Scan(...any) error }) (*QualityProfile, error) {
 	var p QualityProfile
 	var formats string
 	err := row.Scan(&p.ID, &p.Name, &p.MediaType, &formats, &p.Language,
-		&p.RetailBonus, &p.MinSize, &p.MaxSize, &p.IsDefault, &p.AddedAt)
+		&p.RetailBonus, &p.MinSize, &p.MaxSize, &p.UpgradesAllowed, &p.Cutoff, &p.IsDefault, &p.AddedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -112,11 +129,11 @@ func (s *Store) AddProfile(p *QualityProfile) error {
 		return err
 	}
 	return s.db.QueryRow(`
-		INSERT INTO quality_profiles (name, media_type, formats, language, retail_bonus, min_size, max_size, is_default)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO quality_profiles (name, media_type, formats, language, retail_bonus, min_size, max_size, upgrades_allowed, cutoff, is_default)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, added_at`,
 		p.Name, p.MediaType, strings.Join(p.Formats, ","), p.Language,
-		p.RetailBonus, p.MinSize, p.MaxSize, p.IsDefault,
+		p.RetailBonus, p.MinSize, p.MaxSize, p.UpgradesAllowed, p.Cutoff, p.IsDefault,
 	).Scan(&p.ID, &p.AddedAt)
 }
 
@@ -126,10 +143,10 @@ func (s *Store) UpdateProfile(p *QualityProfile) error {
 	}
 	res, err := s.db.Exec(`
 		UPDATE quality_profiles
-		SET name = ?, formats = ?, language = ?, retail_bonus = ?, min_size = ?, max_size = ?
+		SET name = ?, formats = ?, language = ?, retail_bonus = ?, min_size = ?, max_size = ?, upgrades_allowed = ?, cutoff = ?
 		WHERE id = ?`,
 		p.Name, strings.Join(p.Formats, ","), p.Language,
-		p.RetailBonus, p.MinSize, p.MaxSize, p.ID)
+		p.RetailBonus, p.MinSize, p.MaxSize, p.UpgradesAllowed, p.Cutoff, p.ID)
 	if err != nil {
 		return err
 	}

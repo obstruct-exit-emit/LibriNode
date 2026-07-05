@@ -287,6 +287,96 @@ func TestSearchWantedMagazine(t *testing.T) {
 	}
 }
 
+func TestBlocklistedReleaseIsSkipped(t *testing.T) {
+	f := fixture(t, goodSearchXML)
+
+	// The best release (retail epub, guid g1) failed before; search must
+	// fall to the next approved candidate.
+	if err := f.grabs.AddBlock("g1", "Terry Pratchett - Mort Retail EPUB", "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	outcomes, err := f.svc.SearchWanted(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || !outcomes[0].Grabbed {
+		t.Fatalf("outcomes = %+v", outcomes)
+	}
+	if outcomes[0].Release != "Terry Pratchett - Mort PDF" {
+		t.Fatalf("grabbed %q, want the non-blocked PDF", outcomes[0].Release)
+	}
+}
+
+func TestUpgradeSearch(t *testing.T) {
+	f := fixture(t, goodSearchXML)
+
+	// Mort owns a PDF; with upgrades off, nothing is wanted.
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 1, BookID: f.book.ID, MediaType: "ebook",
+		Path: "/x/mort.pdf", Format: "pdf",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	outcomes, err := f.svc.SearchWanted(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 0 {
+		t.Fatalf("upgrades off but searched: %+v", outcomes)
+	}
+
+	// Enable upgrades on the default ebook profile: the pdf is below the
+	// epub cutoff, so the book is wanted again — and only the epub approves.
+	profile, err := f.store.DefaultProfile("ebook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.UpgradesAllowed = true
+	if err := f.store.UpdateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+
+	outcomes, err = f.svc.SearchWanted(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || !outcomes[0].Grabbed {
+		t.Fatalf("outcomes = %+v", outcomes)
+	}
+	if outcomes[0].Release != "Terry Pratchett - Mort Retail EPUB" {
+		t.Fatalf("grabbed %q, want the epub upgrade", outcomes[0].Release)
+	}
+
+	// Owning the cutoff format ends the upgrade hunt.
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	for _, file := range files {
+		if err := f.store.DeleteBookFile(file.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 1, BookID: f.book.ID, MediaType: "ebook",
+		Path: "/x/mort.epub", Format: "epub",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Clear the pending grab from the upgrade above so it can't mask wants.
+	grabs, _ := f.grabs.ListGrabs(download.GrabStatusGrabbed)
+	for _, g := range grabs {
+		if err := f.grabs.ResolveGrab(g.ID, download.GrabStatusImported, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outcomes, err = f.svc.SearchWanted(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 0 {
+		t.Fatalf("cutoff met but still searched: %+v", outcomes)
+	}
+}
+
 func TestSearchBookPendingGrabShortCircuits(t *testing.T) {
 	f := fixture(t, goodSearchXML)
 
