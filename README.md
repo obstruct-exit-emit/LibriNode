@@ -35,7 +35,7 @@ Each media type is a fully independent library with its **own root folder(s)**, 
 | Comics | `D:\Media\Comics` / `/data/comics` | cbz, cbr, pdf |
 | Magazines | `D:\Media\Magazines` / `/data/magazines` | pdf, epub, cbz |
 
-An author/series can exist in multiple libraries at once (e.g. own the ebook *and* the audiobook) without conflicts.
+An author/series can exist in multiple libraries at once (e.g. own the ebook *and* the audiobook) without conflicts — but only in the libraries where you actually own or added that format.
 
 ### ⬇️ Download clients
 - **qBittorrent** (torrents) — category support, seed-goal awareness, remove-after-import
@@ -285,6 +285,7 @@ metadata endpoints return 503.
 
 ### Phase 5 — Polish & 1.0
 - [ ] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own area — sidebar entry, scoped browsing (author-first for books, series-first for manga/comics/magazines), scoped search-and-add and wanted list; the Home page is the only place types meet, as stacked per-library sections ("Recently added — Ebooks", "Wanted — Manga") that never interleave types within a row; type-specific settings render only for active libraries
+- [ ] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred from owning the other format. Membership is set by scanning (you own it), by which library you add it from, or by cross-add: a book's detail page shows that other formats exist, with an "Add to Audiobooks/Ebooks" button that prompts whether to monitor. This replaces the current edition-monitoring opt-in as the wanted signal
 - [ ] Full settings UI as specced above, with Test buttons everywhere
 - [ ] Calendar view (upcoming releases across all libraries)
 - [ ] Upgrade handling (replace when a better-quality release appears)
