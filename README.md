@@ -304,6 +304,7 @@ metadata endpoints return 503.
 - [ ] OPF sidecar files for Calibre/Audiobookshelf; rename/organize support for non-ebook libraries
 
 ### Post-1.0 ideas
+- [ ] "Missing" view per author: a dropdown in the author area listing media you don't have — bibliography gaps from the metadata provider, organized (by series, then year) — with one-click add/monitor
 - [ ] External notifications (Discord, webhook, email) on grab/import/upgrade/failure
 - [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)
 - [ ] Fuzzy / ISBN- and embedded-metadata-based file matching (scanning is exact-normalized-match today)
