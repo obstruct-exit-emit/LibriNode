@@ -1057,6 +1057,61 @@ func TestMagazineSeries(t *testing.T) {
 	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/series/%d", mag.ID), nil, nil), http.StatusNoContent)
 }
 
+func TestLibrariesHomeAndCrossAdd(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// Fresh install: nothing active, Home empty.
+	var libs []library.LibraryStatus
+	a.want(a.call("GET", "/api/v1/libraries", nil, &libs), http.StatusOK)
+	for _, l := range libs {
+		if l.Active {
+			t.Fatalf("library %s active on fresh install", l.MediaType)
+		}
+	}
+
+	// Adding a book (default: ebook library) activates Ebooks only.
+	var book library.Book
+	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, &book), http.StatusCreated)
+	if !book.InEbookLibrary || !book.EbookMonitored || book.InAudiobookLibrary {
+		t.Fatalf("membership after add = %+v", book)
+	}
+	a.want(a.call("GET", "/api/v1/libraries", nil, &libs), http.StatusOK)
+	for _, l := range libs {
+		if (l.MediaType == "ebook") != l.Active {
+			t.Fatalf("library activity wrong: %+v", libs)
+		}
+	}
+
+	// Home: one section (ebook), the book in recently-added and wanted.
+	var home []library.HomeSection
+	a.want(a.call("GET", "/api/v1/home", nil, &home), http.StatusOK)
+	if len(home) != 1 || home[0].MediaType != "ebook" ||
+		len(home[0].RecentlyAdded) != 1 || len(home[0].Wanted) != 1 {
+		t.Fatalf("home = %+v", home)
+	}
+
+	// Cross-add to Audiobooks with monitoring: activates the library and
+	// the scoped author list sees it.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", book.ID),
+		map[string]any{"library": "audiobook", "member": true, "monitored": true}, &book), http.StatusOK)
+	if !book.InAudiobookLibrary || !book.AudiobookMonitored {
+		t.Fatalf("cross-add failed: %+v", book)
+	}
+	var authors []library.Author
+	a.want(a.call("GET", "/api/v1/author?library=audiobook", nil, &authors), http.StatusOK)
+	if len(authors) != 1 {
+		t.Fatalf("audiobook authors = %+v", authors)
+	}
+
+	// Remove from Ebooks: gone from that library's authors, still in Audiobooks.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", book.ID),
+		map[string]any{"library": "ebook", "member": false}, &book), http.StatusOK)
+	a.want(a.call("GET", "/api/v1/author?library=ebook", nil, &authors), http.StatusOK)
+	if len(authors) != 0 {
+		t.Fatalf("ebook authors after removal = %+v", authors)
+	}
+}
+
 func TestRefreshEndpoints(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

@@ -17,11 +17,11 @@ var MediaTypes = []string{"ebook", "audiobook", "manga", "comic", "magazine"}
 func itemsWhere(mediaType string) string {
 	switch mediaType {
 	case "ebook":
-		return `media_type = 'book' AND in_ebook_library = 1`
+		return `books.media_type = 'book' AND books.in_ebook_library = 1`
 	case "audiobook":
-		return `media_type = 'book' AND in_audiobook_library = 1`
+		return `books.media_type = 'book' AND books.in_audiobook_library = 1`
 	}
-	return `media_type = '` + mediaType + `'`
+	return `books.media_type = '` + mediaType + `'`
 }
 
 // wantedWhere returns the SQL predicate selecting a library's wanted items
@@ -32,11 +32,11 @@ func wantedWhere(mediaType string) string {
 	}
 	switch mediaType {
 	case "ebook":
-		return itemsWhere("ebook") + ` AND ebook_monitored = 1 AND ` + fileClause("ebook")
+		return itemsWhere("ebook") + ` AND books.ebook_monitored = 1 AND ` + fileClause("ebook")
 	case "audiobook":
-		return itemsWhere("audiobook") + ` AND audiobook_monitored = 1 AND ` + fileClause("audiobook")
+		return itemsWhere("audiobook") + ` AND books.audiobook_monitored = 1 AND ` + fileClause("audiobook")
 	}
-	return itemsWhere(mediaType) + ` AND monitored = 1 AND ` + fileClause(mediaType)
+	return itemsWhere(mediaType) + ` AND books.monitored = 1 AND ` + fileClause(mediaType)
 }
 
 // LibraryStatuses reports every media type's activity and counts.
@@ -147,7 +147,7 @@ func (s *Store) Home(limit int) ([]HomeSection, error) {
 func (s *Store) ListAuthorsInLibrary(mediaType string) ([]Author, error) {
 	rows, err := s.db.Query(`
 		SELECT ` + authorCols + ` FROM authors
-		WHERE EXISTS (SELECT 1 FROM books b WHERE b.author_id = authors.id AND ` + itemsWhere(mediaType) + `)
+		WHERE EXISTS (SELECT 1 FROM books WHERE books.author_id = authors.id AND ` + itemsWhere(mediaType) + `)
 		ORDER BY sort_name`)
 	if err != nil {
 		return nil, err

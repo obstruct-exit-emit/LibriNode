@@ -12,17 +12,36 @@ import {
 
 export default function SettingsView({
   onError,
+  onLibrariesChanged,
 }: {
   onError: (message: string) => void;
+  onLibrariesChanged?: () => void;
 }) {
+  // Plex-style gating: type-specific settings render only for libraries
+  // that are set up. Root Folders always offers every type — that's how a
+  // library gets created in the first place.
+  const [activeTypes, setActiveTypes] = useState<string[]>([]);
+  const reloadLibraries = useCallback(() => {
+    api
+      .libraries()
+      .then((ls) => setActiveTypes(ls.filter((l) => l.active).map((l) => l.mediaType)))
+      .catch(() => setActiveTypes([]));
+  }, []);
+  useEffect(reloadLibraries, [reloadLibraries]);
+
+  const librariesChanged = () => {
+    reloadLibraries();
+    onLibrariesChanged?.();
+  };
+
   return (
     <>
       <MetadataCard onError={onError} />
-      <RootFoldersCard onError={onError} />
+      <RootFoldersCard onError={onError} onChanged={librariesChanged} />
       <IndexersCard onError={onError} />
       <DownloadClientsCard onError={onError} />
-      <QualityProfilesCard onError={onError} />
-      <NamingCard onError={onError} />
+      <QualityProfilesCard onError={onError} activeTypes={activeTypes} />
+      <NamingCard onError={onError} activeTypes={activeTypes} />
     </>
   );
 }
@@ -216,9 +235,12 @@ function DownloadClientsCard({
 
 function QualityProfilesCard({
   onError,
+  activeTypes,
 }: {
   onError: (message: string) => void;
+  activeTypes: string[];
 }) {
+  const profileTypes = activeTypes.length > 0 ? activeTypes : ["ebook"];
   const defaultFormats: Record<string, string> = {
     ebook: "epub,azw3,mobi",
     audiobook: "m4b,m4a,mp3",
@@ -337,11 +359,11 @@ function QualityProfilesCard({
               setFormats(defaultFormats[e.target.value] ?? "");
             }}
           >
-            <option value="ebook">Ebook</option>
-            <option value="audiobook">Audiobook</option>
-            <option value="manga">Manga</option>
-            <option value="comic">Comic</option>
-            <option value="magazine">Magazine</option>
+            {profileTypes.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -589,9 +611,12 @@ function IndexersCard({
 
 function NamingCard({
   onError,
+  activeTypes,
 }: {
   onError: (message: string) => void;
+  activeTypes: string[];
 }) {
+  const show = (t: string) => activeTypes.length === 0 || activeTypes.includes(t);
   const [settings, setSettings] = useState<NamingSettings | null>(null);
   const [folder, setFolder] = useState("");
   const [file, setFile] = useState("");
@@ -656,21 +681,25 @@ function NamingCard({
         <p className="muted">
           Example: <code>{settings.example}</code>
         </p>
-        <label>
-          Audiobook folder template
-          <input value={abFolder} onChange={(e) => setAbFolder(e.target.value)} />
-        </label>
-        <label>
-          Audiobook book-folder template
-          <input
-            title="Names the per-book folder (Audiobookshelf layout); multi-file books keep their track names inside it"
-            value={abFile}
-            onChange={(e) => setAbFile(e.target.value)}
-          />
-        </label>
-        <p className="muted">
-          Audiobook example: <code>{settings.audiobookExample}</code>
-        </p>
+        {show("audiobook") && (
+          <>
+            <label>
+              Audiobook folder template
+              <input value={abFolder} onChange={(e) => setAbFolder(e.target.value)} />
+            </label>
+            <label>
+              Audiobook book-folder template
+              <input
+                title="Names the per-book folder (Audiobookshelf layout); multi-file books keep their track names inside it"
+                value={abFile}
+                onChange={(e) => setAbFile(e.target.value)}
+              />
+            </label>
+            <p className="muted">
+              Audiobook example: <code>{settings.audiobookExample}</code>
+            </p>
+          </>
+        )}
         <div className="settings-actions">
           <button disabled={busy || !folder.trim() || !file.trim()} onClick={save}>
             Save
@@ -849,8 +878,10 @@ const mediaTypes = ["ebook", "audiobook", "manga", "comic", "magazine"] as const
 
 function RootFoldersCard({
   onError,
+  onChanged,
 }: {
   onError: (message: string) => void;
+  onChanged?: () => void;
 }) {
   const [folders, setFolders] = useState<RootFolder[]>([]);
   const [mediaType, setMediaType] = useState<string>("ebook");
@@ -878,6 +909,7 @@ function RootFoldersCard({
       .then(() => {
         setPath("");
         reload();
+        onChanged?.();
       })
       .catch((err: unknown) =>
         setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
@@ -889,7 +921,10 @@ function RootFoldersCard({
     if (!confirm(`Remove root folder ${f.path}? Files on disk are not touched.`)) return;
     api
       .deleteRootFolder(f.id)
-      .then(reload)
+      .then(() => {
+        reload();
+        onChanged?.();
+      })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   };
 

@@ -87,7 +87,14 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
 
 1. Build and run the server (see [Development](#development) below), then
    open `http://localhost:7845` and paste the API key from `config.yaml` in
-   your data directory.
+   your data directory. The UI is Plex-style: a sidebar with **Home** plus
+   one entry per library — and a library only appears once you've set it up
+   (added its root folder, or already own content of that type). Home shows
+   per-library Recently-added and Wanted rows with cover art; each library
+   page has its own **+ Add**, scan, and search controls. For prose books,
+   Ebooks and Audiobooks are separate libraries: a book belongs only to the
+   format libraries you added it to (or own), and the book detail offers
+   "Add to Audiobooks/Ebooks" to cross-add with a monitor prompt.
 2. **Settings → Metadata Provider:** paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
    then **Save** — search goes live immediately, no restart.
@@ -212,8 +219,9 @@ scriptable:
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}`, `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
-| Authors | `GET/POST /author`, `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
-| Books | `GET/POST /book`, `GET/DELETE /book/{id}`, `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
+| Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections) |
+| Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
+| Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}`, `PUT /book/{id}/library` (per-format membership + monitored), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
@@ -284,8 +292,8 @@ metadata endpoints return 503.
 - [x] Magazine scanning materializes owned issues; automatic search grabs new issues (capped per pass); `Magazine/Magazine - date.pdf` layout; indexer categories 7010
 
 ### Phase 5 — Polish & 1.0
-- [ ] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own area — sidebar entry, scoped browsing (author-first for books, series-first for manga/comics/magazines), scoped search-and-add and wanted list; the Home page is the only place types meet, as stacked per-library sections ("Recently added — Ebooks", "Wanted — Manga") that never interleave types within a row; type-specific settings render only for active libraries
-- [ ] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred from owning the other format. Membership is set by scanning (you own it), by which library you add it from, or by cross-add: a book's detail page shows that other formats exist, with an "Add to Audiobooks/Ebooks" button that prompts whether to monitor. This replaces the current edition-monitoring opt-in as the wanted signal
+- [x] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own sidebar area with scoped browsing (author-first for books, series-first for manga/comics/magazines), scoped add-and-search, and unmatched files; the Home page is the only place types meet, as stacked per-library sections (Recently added / Wanted with cover art) that never interleave types; type-specific settings render only for active libraries
+- [x] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred. Membership is set by scanning/importing (owning it), by which library you add from, or by cross-add from the book detail ("Add to Audiobooks" with a monitor prompt); each membership has its own monitored flag, replacing edition monitoring as the wanted signal
 - [ ] Full settings UI as specced above, with Test buttons everywhere
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
 - [ ] Health checks: background monitoring (root folder unreachable, indexer failing repeatedly, download client down, provider token invalid) with a warning banner in the UI

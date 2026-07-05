@@ -1,89 +1,171 @@
-import { useEffect, useState } from "react";
-import { api, ApiError, getApiKey, setApiKey } from "./api";
+import { useCallback, useEffect, useState } from "react";
+import { api, ApiError, getApiKey, setApiKey, type LibraryStatus } from "./api";
 import ActivityView from "./views/ActivityView";
-import LibraryView from "./views/LibraryView";
-import SearchView from "./views/SearchView";
-import SeriesView from "./views/SeriesView";
+import BooksLibraryView from "./views/BooksLibraryView";
+import HomeView from "./views/HomeView";
+import SeriesLibraryView from "./views/SeriesLibraryView";
 import SettingsView from "./views/SettingsView";
 import SystemView from "./views/SystemView";
 import "./App.css";
 
-type Tab = "library" | "series" | "search" | "activity" | "settings" | "system";
+// Plex-style navigation: Home, then one entry per *active* library (a media
+// type appears only once its library is set up), then the app-level pages.
+type Page =
+  | { name: "home" }
+  | { name: "library"; mediaType: string }
+  | { name: "activity" }
+  | { name: "settings" }
+  | { name: "system" };
+
+export const libraryLabels: Record<string, string> = {
+  ebook: "Ebooks",
+  audiobook: "Audiobooks",
+  manga: "Manga",
+  comic: "Comics",
+  magazine: "Magazines",
+};
+
+const libraryIcons: Record<string, string> = {
+  ebook: "📖",
+  audiobook: "🎧",
+  manga: "🀄",
+  comic: "💥",
+  magazine: "📰",
+};
 
 export default function App() {
   const [key, setKey] = useState(getApiKey());
   const [connected, setConnected] = useState(false);
-  const [tab, setTab] = useState<Tab>("library");
+  const [libraries, setLibraries] = useState<LibraryStatus[]>([]);
+  const [page, setPage] = useState<Page>({ name: "home" });
   const [error, setError] = useState("");
+
+  const reloadLibraries = useCallback(() => {
+    api
+      .libraries()
+      .then(setLibraries)
+      .catch(() => setLibraries([]));
+  }, []);
 
   useEffect(() => {
     if (!key) return;
     setError("");
     api
       .systemStatus()
-      .then(() => setConnected(true))
+      .then(() => {
+        setConnected(true);
+        reloadLibraries();
+      })
       .catch((err: unknown) => {
         setConnected(false);
         setError(err instanceof ApiError ? err.message : String(err));
       });
-  }, [key]);
+  }, [key, reloadLibraries]);
+
+  const active = libraries.filter((l) => l.active);
+
+  const go = (p: Page) => {
+    setError("");
+    setPage(p);
+    reloadLibraries(); // library activity can change after adds/scans
+  };
+
+  const navButton = (p: Page, label: string, icon: string) => {
+    const current =
+      page.name === p.name &&
+      (p.name !== "library" ||
+        (page.name === "library" && page.mediaType === (p as { mediaType?: string }).mediaType));
+    return (
+      <button
+        key={label}
+        className={current ? "nav-item active" : "nav-item"}
+        onClick={() => go(p)}
+      >
+        <span className="nav-icon">{icon}</span> {label}
+      </button>
+    );
+  };
 
   return (
-    <div className="app">
-      <header>
-        <h1>🖋️ LibriNode</h1>
-        {connected && (
+    <div className={connected ? "app with-sidebar" : "app"}>
+      {connected && (
+        <aside className="sidebar">
+          <h1 className="brand">🖋️ LibriNode</h1>
           <nav>
-            {(["library", "series", "search", "activity", "settings", "system"] as const).map((t) => (
+            {navButton({ name: "home" }, "Home", "🏠")}
+            {active.length > 0 && <div className="nav-group">Libraries</div>}
+            {active.map((l) =>
+              navButton(
+                { name: "library", mediaType: l.mediaType },
+                libraryLabels[l.mediaType] ?? l.mediaType,
+                libraryIcons[l.mediaType] ?? "📚",
+              ),
+            )}
+            <div className="nav-group">App</div>
+            {navButton({ name: "activity" }, "Activity", "⬇️")}
+            {navButton({ name: "settings" }, "Settings", "⚙️")}
+            {navButton({ name: "system" }, "System", "🖥️")}
+          </nav>
+        </aside>
+      )}
+
+      <main className="content">
+        {!connected && <h1 className="brand">🖋️ LibriNode</h1>}
+
+        {!key && (
+          <section className="card">
+            <h2>Connect</h2>
+            <p>
+              Paste the API key from <code>config.yaml</code> in your LibriNode
+              data directory.
+            </p>
+            <ApiKeyForm onSave={setKey} />
+          </section>
+        )}
+
+        {error && (
+          <section className="card error">
+            <p>{error}</p>
+            {!connected && key && (
               <button
-                key={t}
-                className={tab === t ? "tab active" : "tab"}
                 onClick={() => {
+                  setApiKey("");
+                  setKey("");
                   setError("");
-                  setTab(t);
                 }}
               >
-                {t[0].toUpperCase() + t.slice(1)}
+                Change API key
               </button>
-            ))}
-          </nav>
+            )}
+          </section>
         )}
-      </header>
 
-      {!key && (
-        <section className="card">
-          <h2>Connect</h2>
-          <p>
-            Paste the API key from <code>config.yaml</code> in your LibriNode
-            data directory.
-          </p>
-          <ApiKeyForm onSave={setKey} />
-        </section>
-      )}
-
-      {error && (
-        <section className="card error">
-          <p>{error}</p>
-          {!connected && key && (
-            <button
-              onClick={() => {
-                setApiKey("");
-                setKey("");
-                setError("");
-              }}
-            >
-              Change API key
-            </button>
-          )}
-        </section>
-      )}
-
-      {connected && tab === "library" && <LibraryView onError={setError} />}
-      {connected && tab === "series" && <SeriesView onError={setError} />}
-      {connected && tab === "search" && <SearchView onError={setError} />}
-      {connected && tab === "activity" && <ActivityView onError={setError} />}
-      {connected && tab === "settings" && <SettingsView onError={setError} />}
-      {connected && tab === "system" && <SystemView onError={setError} />}
+        {connected && page.name === "home" && (
+          <HomeView
+            onError={setError}
+            onOpenLibrary={(mediaType) => go({ name: "library", mediaType })}
+          />
+        )}
+        {connected && page.name === "library" &&
+          (page.mediaType === "ebook" || page.mediaType === "audiobook" ? (
+            <BooksLibraryView
+              key={page.mediaType}
+              library={page.mediaType}
+              onError={setError}
+            />
+          ) : (
+            <SeriesLibraryView
+              key={page.mediaType}
+              mediaType={page.mediaType}
+              onError={setError}
+            />
+          ))}
+        {connected && page.name === "activity" && <ActivityView onError={setError} />}
+        {connected && page.name === "settings" && (
+          <SettingsView onError={setError} onLibrariesChanged={reloadLibraries} />
+        )}
+        {connected && page.name === "system" && <SystemView onError={setError} />}
+      </main>
     </div>
   );
 }

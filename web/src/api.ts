@@ -35,6 +35,10 @@ export interface Book {
   rating: number;
   coverUrl: string;
   monitored: boolean;
+  inEbookLibrary: boolean;
+  ebookMonitored: boolean;
+  inAudiobookLibrary: boolean;
+  audiobookMonitored: boolean;
   hasFile: boolean;
   hasEbookFile: boolean;
   hasAudiobookFile: boolean;
@@ -68,6 +72,7 @@ export interface BookFile {
   id: number;
   rootFolderId: number;
   bookId?: number;
+  mediaType: string;
   path: string;
   size: number;
   format: string;
@@ -199,6 +204,29 @@ export interface GrabRecord {
   completedAt?: string;
 }
 
+export interface LibraryStatus {
+  mediaType: string;
+  active: boolean;
+  items: number;
+  wanted: number;
+}
+
+export interface HomeItem {
+  bookId: number;
+  title: string;
+  subtitle?: string;
+  coverUrl?: string;
+  hasFile: boolean;
+}
+
+export interface HomeSection {
+  mediaType: string;
+  items: number;
+  wantedCount: number;
+  recentlyAdded: HomeItem[];
+  wanted: HomeItem[];
+}
+
 export interface ImportResult {
   imported: number;
   failed: number;
@@ -326,6 +354,13 @@ const json = (body: unknown): RequestInit => ({
 
 export const api = {
   systemStatus: () => request<SystemStatus>("/api/v1/system/status"),
+  libraries: () => request<LibraryStatus[]>("/api/v1/libraries"),
+  home: () => request<HomeSection[]>("/api/v1/home"),
+  setBookLibrary: (id: number, library: string, member: boolean, monitored: boolean) =>
+    request<Book>(`/api/v1/book/${id}/library`, {
+      ...json({ library, member, monitored }),
+      method: "PUT",
+    }),
 
   searchAuthors: (term: string) =>
     request<SearchAuthor[]>(
@@ -336,10 +371,11 @@ export const api = {
       `/api/v1/search?type=book&term=${encodeURIComponent(term)}`,
     ),
 
-  listAuthors: () => request<Author[]>("/api/v1/author"),
+  listAuthors: (library?: string) =>
+    request<Author[]>(`/api/v1/author${library ? `?library=${library}` : ""}`),
   getAuthor: (id: number) => request<Author>(`/api/v1/author/${id}`),
-  addAuthor: (foreignAuthorId: string) =>
-    request<Author>("/api/v1/author", json({ foreignAuthorId })),
+  addAuthor: (foreignAuthorId: string, library: string = "ebook") =>
+    request<Author>("/api/v1/author", json({ foreignAuthorId, library })),
   refreshAuthor: (id: number) =>
     request<Author>(`/api/v1/author/${id}/refresh`, { method: "POST" }),
   monitorAuthor: (id: number, monitored: boolean) =>
@@ -353,8 +389,8 @@ export const api = {
   listBooks: (authorId?: number) =>
     request<Book[]>(authorId ? `/api/v1/book?authorId=${authorId}` : "/api/v1/book"),
   getBook: (id: number) => request<Book>(`/api/v1/book/${id}`),
-  addBook: (foreignBookId: string) =>
-    request<Book>("/api/v1/book", json({ foreignBookId })),
+  addBook: (foreignBookId: string, library: string = "ebook") =>
+    request<Book>("/api/v1/book", json({ foreignBookId, library })),
   monitorBook: (id: number, monitored: boolean) =>
     request(`/api/v1/book/${id}/monitor`, {
       ...json({ monitored }),

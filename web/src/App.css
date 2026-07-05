@@ -342,3 +342,146 @@ button.toggle.on {
   gap: 0.1rem;
   padding: 0.2rem 0;
 }
+
+/* --- Plex-style layout: sidebar + content --- */
+.app.with-sidebar {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1.5rem;
+  max-width: 1200px;
+}
+
+.sidebar {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  border-right: 1px solid var(--border);
+  padding-right: 1rem;
+  min-height: 80vh;
+}
+
+.sidebar .brand {
+  font-size: 1.3rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.nav-item {
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.nav-item:hover {
+  background: var(--card);
+}
+
+.nav-item.active {
+  background: var(--accent-dim, #2c2c3a);
+  font-weight: 600;
+}
+
+.nav-icon {
+  margin-right: 0.35rem;
+}
+
+.nav-group {
+  margin: 0.9rem 0 0.25rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  padding-left: 0.6rem;
+}
+
+@media (max-width: 800px) {
+  .app.with-sidebar {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+    border-right: none;
+    min-height: auto;
+  }
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .nav-group {
+    display: none;
+  }
+}
+
+/* --- Home rows --- */
+.home-row h3 {
+  margin: 0.75rem 0 0.4rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.home-strip {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.home-tile {
+  flex: 0 0 96px;
+  width: 96px;
+}
+
+.home-tile img,
+.home-cover-fallback {
+  width: 96px;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.home-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  overflow: hidden;
+}
+
+.home-tile-title {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-tile-sub {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Embedded add panel --- */
+.add-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
