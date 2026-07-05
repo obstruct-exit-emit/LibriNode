@@ -10,7 +10,7 @@ Runs on **Windows** and **Linux** (bare metal or Docker).
 > five media types work end-to-end, from metadata search through automatic
 > grabbing to organized imports —
 > [see what works now](#getting-started-what-works-today). Phase 5 (UI
-> overhaul, notifications, packaging) is what stands between here and 1.0.
+> overhaul, upgrade handling, packaging) is what stands between here and 1.0.
 
 ---
 
@@ -65,7 +65,6 @@ Settings
 ├── Metadata             (Hardcover account/API, provider priorities, sidecar files)
 ├── Indexers             (Prowlarr sync, manual Newznab/Torznab, categories)
 ├── Download Clients     (qBittorrent, SABnzbd, category mapping)
-├── Connect              (notifications: Discord, webhooks, email, ...)
 ├── General              (host/port, auth, SSL, proxy, logging, backups)
 └── UI                   (theme, language, date formats)
 ```
@@ -286,7 +285,6 @@ metadata endpoints return 503.
 
 ### Phase 5 — Polish & 1.0
 - [ ] Full settings UI as specced above, with Test buttons everywhere
-- [ ] Notifications (Discord, webhook, email) on grab/import/upgrade/failure
 - [ ] Calendar view (upcoming releases across all libraries)
 - [ ] Upgrade handling (replace when a better-quality release appears)
 - [ ] Backups + restore
@@ -294,6 +292,7 @@ metadata endpoints return 503.
 - [ ] Docs site + API reference
 
 ### Post-1.0 ideas
+- [ ] External notifications (Discord, webhook, email) on grab/import/upgrade/failure
 - [ ] Import lists (Hardcover want-to-read shelf → auto-monitor)
 - [ ] Multi-user / permissions
 - [ ] Direct integrations: Calibre, Kavita, Komga, Audiobookshelf notify-on-import
@@ -304,7 +303,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phases 0–4 complete: all five media types work end-to-end.** Ebooks and audiobooks flow author-first from Hardcover; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Phase 5 (polish & 1.0 — full UI overhaul, notifications, packaging) is next.
+🚧 **Pre-alpha — Phases 0–4 complete: all five media types work end-to-end.** Ebooks and audiobooks flow author-first from Hardcover; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Phase 5 (polish & 1.0 — full UI overhaul, upgrade handling, calendar, backups, packaging; external notifications deferred to post-1.0) is next.
 
 ## License
 
