@@ -229,6 +229,19 @@ func (s *Store) FilePathsForBook(bookID int64) ([]string, error) {
 	return s.filePaths(`SELECT path FROM book_files WHERE book_id = ?`, bookID)
 }
 
+// FilePathsForBookFormat returns a book's file paths for one media type —
+// the delete-files option when leaving a single format library.
+func (s *Store) FilePathsForBookFormat(bookID int64, mediaType string) ([]string, error) {
+	return s.filePaths(`SELECT path FROM book_files WHERE book_id = ? AND media_type = ?`, bookID, mediaType)
+}
+
+// DeleteBookFilesForFormat forgets a book's file rows for one media type
+// (used after their disk files are deleted; the book itself survives).
+func (s *Store) DeleteBookFilesForFormat(bookID int64, mediaType string) error {
+	_, err := s.db.Exec(`DELETE FROM book_files WHERE book_id = ? AND media_type = ?`, bookID, mediaType)
+	return err
+}
+
 // FilePathsForAuthor returns the on-disk paths of every file attached to an
 // author's books.
 func (s *Store) FilePathsForAuthor(authorID int64) ([]string, error) {
@@ -246,8 +259,8 @@ func (s *Store) FilePathsForSeries(seriesID int64) ([]string, error) {
 		WHERE book_id IN (SELECT book_id FROM series_books WHERE series_id = ?)`, seriesID)
 }
 
-func (s *Store) filePaths(query string, arg any) ([]string, error) {
-	rows, err := s.db.Query(query, arg)
+func (s *Store) filePaths(query string, args ...any) ([]string, error) {
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

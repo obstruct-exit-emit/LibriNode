@@ -6,6 +6,7 @@ import {
   type Edition,
   type ReleaseCandidate,
 } from "../api";
+import RemovePanel from "../components/RemovePanel";
 
 // Full-page author detail, *arr-style: header with portrait, description and
 // author-level actions, then this library's books as clean rows. All
@@ -25,6 +26,7 @@ export default function AuthorDetailView({
   const [author, setAuthor] = useState<Author | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const reload = useCallback(() => {
     // Visible = member of this library AND (monitored here or owned here);
@@ -58,11 +60,7 @@ export default function AuthorDetailView({
       .finally(() => setBusy(false));
   };
 
-  const remove = () => {
-    if (!confirm(`Remove ${author.name} and all their books from every library?`)) return;
-    const deleteFiles = confirm(
-      "Also delete their files from disk?\n\nOK = delete files · Cancel = keep files (the next scan re-finds them as unmatched)",
-    );
+  const remove = (deleteFiles: boolean) => {
     setBusy(true);
     api
       .deleteAuthor(author.id, deleteFiles)
@@ -97,10 +95,19 @@ export default function AuthorDetailView({
             >
               Refresh metadata
             </button>
-            <button className="danger" disabled={busy} onClick={remove}>
+            <button className="danger" disabled={busy} onClick={() => setConfirmRemove(!confirmRemove)}>
               Remove author
             </button>
           </div>
+          {confirmRemove && (
+            <RemovePanel
+              message={`Remove ${author.name} and all their books from every library?`}
+              checkboxLabel="Also delete their files from disk (otherwise the next scan re-finds them as unmatched)"
+              busy={busy}
+              onConfirm={remove}
+              onCancel={() => setConfirmRemove(false)}
+            />
+          )}
         </div>
       </section>
 
@@ -135,6 +142,7 @@ function BookRow({
   const [open, setOpen] = useState(false);
   const [candidates, setCandidates] = useState<ReleaseCandidate[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
 
   const owned = library === "ebook" ? book.hasEbookFile : book.hasAudiobookFile;
@@ -153,9 +161,9 @@ function BookRow({
     setOpen(!open);
   };
 
-  const setMembership = (lib: string, member: boolean, mon: boolean) => {
+  const setMembership = (lib: string, member: boolean, mon: boolean, deleteFiles = false) => {
     api
-      .setBookLibrary(book.id, lib, member, mon)
+      .setBookLibrary(book.id, lib, member, mon, deleteFiles)
       .then(onChanged)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   };
@@ -229,12 +237,8 @@ function BookRow({
             </button>
             <button
               className="danger"
-              title={`Remove from the ${library} library (files and the other library are untouched)`}
-              onClick={() => {
-                if (confirm(`Remove "${book.title}" from this library?`)) {
-                  setMembership(library, false, false);
-                }
-              }}
+              title={`Remove from the ${library} library (the other library is untouched)`}
+              onClick={() => setConfirmRemove(!confirmRemove)}
             >
               remove from library
             </button>
@@ -268,6 +272,15 @@ function BookRow({
               </button>
             )}
           </div>
+          {confirmRemove && (
+            <RemovePanel
+              message={`Remove "${book.title}" from the ${library === "ebook" ? "Ebooks" : "Audiobooks"} library? The other library is untouched.`}
+              checkboxLabel={`Also delete its ${library} file(s) from disk`}
+              busy={searching}
+              onConfirm={(deleteFiles) => setMembership(library, false, false, deleteFiles)}
+              onCancel={() => setConfirmRemove(false)}
+            />
+          )}
           {candidates && (
             <ul className="rows nested">
               {candidates.length === 0 && <li className="muted">No releases found.</li>}

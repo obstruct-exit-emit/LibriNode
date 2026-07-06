@@ -394,9 +394,15 @@ export const api = {
     request<HealthResult>("/api/v1/health/check", { method: "POST" }),
   libraries: () => request<LibraryStatus[]>("/api/v1/libraries"),
   home: () => request<HomeSection[]>("/api/v1/home"),
-  setBookLibrary: (id: number, library: string, member: boolean, monitored: boolean) =>
+  setBookLibrary: (
+    id: number,
+    library: string,
+    member: boolean,
+    monitored: boolean,
+    deleteFiles = false,
+  ) =>
     request<Book>(`/api/v1/book/${id}/library`, {
-      ...json({ library, member, monitored }),
+      ...json({ library, member, monitored, deleteFiles }),
       method: "PUT",
     }),
 

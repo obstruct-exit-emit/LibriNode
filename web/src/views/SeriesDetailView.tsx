@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Book, type Series } from "../api";
 import { libraryLabels } from "../App";
+import RemovePanel from "../components/RemovePanel";
 
 // Full-page series detail, *arr-style: header with cover, description and
 // series-level actions, then volumes/issues as clean rows.
@@ -18,6 +19,7 @@ export default function SeriesDetailView({
   const label = libraryLabels[mediaType] ?? mediaType;
   const [series, setSeries] = useState<Series | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [notice, setNotice] = useState("");
 
   const reload = useCallback(() => {
@@ -43,11 +45,7 @@ export default function SeriesDetailView({
       .finally(() => setBusy(false));
   };
 
-  const remove = () => {
-    if (!confirm(`Remove ${series.title} and all its ${unitName}s from the library?`)) return;
-    const deleteFiles = confirm(
-      "Also delete its files from disk?\n\nOK = delete files · Cancel = keep files (the next scan re-finds them as unmatched)",
-    );
+  const remove = (deleteFiles: boolean) => {
     setBusy(true);
     api
       .deleteSeries(series.id, deleteFiles)
@@ -111,10 +109,23 @@ export default function SeriesDetailView({
                 Refresh metadata
               </button>
             )}
-            <button className="danger" disabled={busy} onClick={remove}>
+            <button
+              className="danger"
+              disabled={busy}
+              onClick={() => setConfirmRemove(!confirmRemove)}
+            >
               Remove series
             </button>
           </div>
+          {confirmRemove && (
+            <RemovePanel
+              message={`Remove ${series.title} and all its ${unitName}s from the library?`}
+              checkboxLabel="Also delete its files from disk (otherwise the next scan re-finds them as unmatched)"
+              busy={busy}
+              onConfirm={remove}
+              onCancel={() => setConfirmRemove(false)}
+            />
+          )}
         </div>
       </section>
 

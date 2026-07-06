@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/librinode/librinode/internal/library"
@@ -333,6 +334,9 @@ func (s *server) handleBookLibrary(w http.ResponseWriter, r *http.Request) {
 		Library   string `json:"library"`
 		Member    bool   `json:"member"`
 		Monitored bool   `json:"monitored"`
+		// DeleteFiles removes this format's files from disk when leaving
+		// the library (ignored when member is true).
+		DeleteFiles bool `json:"deleteFiles"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -343,9 +347,29 @@ func (s *server) handleBookLibrary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
 		return
 	}
+	deleteFiles := req.DeleteFiles && !req.Member
+	var paths []string
+	if deleteFiles {
+		var err error
+		if paths, err = s.store.FilePathsForBookFormat(id, lib); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	if err := s.store.SetBookLibrary(id, lib, req.Member, req.Monitored); err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	if deleteFiles {
+		if _, errs := s.removeFilesFromDisk(paths); len(errs) > 0 {
+			slog.Warn("deleting files on library removal", "bookId", id, "errors", strings.Join(errs, "; "))
+		}
+		// The book row survives, so its file rows must go explicitly (disk
+		// deletion alone would leave them stale until the next scan).
+		if err := s.store.DeleteBookFilesForFormat(id, lib); err != nil {
+			writeStoreError(w, err)
+			return
+		}
 	}
 	s.writeBookDetail(w, http.StatusOK, id)
 }
