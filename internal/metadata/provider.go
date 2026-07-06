@@ -1,7 +1,7 @@
 // Package metadata defines the pluggable metadata-provider interface and the
-// provider-neutral types it returns. Hardcover is the first implementation
-// (books/audiobooks); manga and comic providers slot in behind the same
-// interface in Phase 4.
+// provider-neutral types it returns. Hardcover implements it for books and
+// audiobooks; manga and comic providers (AniList, ComicVine) slot in behind
+// the SeriesProvider interface.
 package metadata
 
 import (

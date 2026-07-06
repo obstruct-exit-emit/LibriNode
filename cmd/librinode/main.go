@@ -32,8 +32,7 @@ import (
 )
 
 // metadataRefreshInterval is how often the whole library is re-synced with
-// the metadata provider. Configurable scheduling can come with the settings
-// UI in Phase 5.
+// the metadata provider (not yet configurable).
 const metadataRefreshInterval = 24 * time.Hour
 
 // importInterval is how often Completed Download Handling checks the

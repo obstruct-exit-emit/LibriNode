@@ -4,7 +4,7 @@
 package library
 
 // Edition formats. "physical" editions are tracked for completeness but are
-// never grabbed; ebook is the Phase 1 focus, audiobook lands in Phase 3.
+// never grabbed.
 const (
 	FormatEbook     = "ebook"
 	FormatAudiobook = "audiobook"

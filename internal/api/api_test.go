@@ -1209,20 +1209,10 @@ func TestAddBookFlow(t *testing.T) {
 		t.Fatalf("%d books in library, want just the added one", len(allBooks))
 	}
 
-	// Editions landed; only the ebook one is monitored (Phase 1 ebook-first).
+	// Editions landed (edition monitoring is retired — per-format library
+	// membership decides what gets acquired; editions are reference info).
 	if len(book.Editions) != 3 {
 		t.Fatalf("book has %d editions, want 3", len(book.Editions))
-	}
-	monitoredByFormat := map[string]bool{}
-	var audioEditionID int64
-	for _, e := range book.Editions {
-		monitoredByFormat[e.Format] = e.Monitored
-		if e.Format == "audiobook" {
-			audioEditionID = e.ID
-		}
-	}
-	if !monitoredByFormat["ebook"] || monitoredByFormat["audiobook"] || monitoredByFormat["physical"] {
-		t.Errorf("edition monitoring by format = %v, want only ebook", monitoredByFormat)
 	}
 
 	// Series link persisted.
@@ -1230,16 +1220,7 @@ func TestAddBookFlow(t *testing.T) {
 		t.Errorf("book series = %+v", book.Series)
 	}
 
-	// Manually monitor the audiobook edition.
-	a.want(a.call("PUT", fmt.Sprintf("/api/v1/edition/%d/monitor", audioEditionID),
-		map[string]bool{"monitored": true}, nil), http.StatusOK)
 	var detail library.Book
-	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", book.ID), nil, &detail), http.StatusOK)
-	for _, e := range detail.Editions {
-		if e.ID == audioEditionID && !e.Monitored {
-			t.Error("audiobook edition not monitored after monitor call")
-		}
-	}
 
 	// Unmonitor the book itself.
 	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/monitor", book.ID),

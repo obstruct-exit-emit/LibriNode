@@ -10,8 +10,9 @@ import (
 	"github.com/librinode/librinode/internal/scanner"
 )
 
-// Preferences drive scoring. Quality profiles (a later Phase 2 slice) will
-// produce these per library; until then DefaultEbookPreferences applies.
+// Preferences drive scoring. Each media type's default quality profile
+// produces these (PreferencesFor); the Default*Preferences constructors are
+// the built-in fallbacks when no profile exists.
 type Preferences struct {
 	// FormatScores ranks acceptable formats; formats absent from the map
 	// are rejected.
@@ -80,12 +81,6 @@ func DefaultComicPreferences() Preferences {
 		MinSize:      2 << 20,
 		MaxSize:      2 << 30,
 	}
-}
-
-// PreferencesForEbook resolves the ebook rules (kept for callers without a
-// media-type dimension).
-func PreferencesForEbook(store *library.Store) Preferences {
-	return PreferencesFor(store, "ebook")
 }
 
 // DefaultAudiobookPreferences prefers single-file m4b (Audiobookshelf's

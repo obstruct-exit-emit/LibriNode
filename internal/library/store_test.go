@@ -190,14 +190,6 @@ func TestBookAndEditionCRUD(t *testing.T) {
 		t.Fatalf("unexpected editions: %+v", eds)
 	}
 
-	if err := s.SetEditionMonitored(e.ID, false); err != nil {
-		t.Fatalf("SetEditionMonitored: %v", err)
-	}
-	ge, _ := s.GetEdition(e.ID)
-	if ge.Monitored {
-		t.Error("SetEditionMonitored(false) had no effect")
-	}
-
 	// Series linking.
 	sr := &Series{Source: "hardcover", ForeignID: "ser-1", Title: "Discworld"}
 	if err := s.UpsertSeries(sr); err != nil {

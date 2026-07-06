@@ -285,7 +285,7 @@ func (s *server) handleListBooks(w http.ResponseWriter, r *http.Request) {
 
 // handleAddBook syncs one book (with editions) from the metadata provider.
 // The author is created as an unmonitored stub when not in the library yet;
-// ebook editions start monitored (Phase 1 is ebook-first).
+// the book joins the library named in the request ("ebook" by default).
 func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ForeignBookID string `json:"foreignBookId"`
@@ -525,24 +525,3 @@ func (s *server) handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 	s.finishDelete(w, deleteFiles, paths)
 }
 
-// --- Editions ---
-
-func (s *server) handleMonitorEdition(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid id")
-		return
-	}
-	var req struct {
-		Monitored bool `json:"monitored"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-	if err := s.store.SetEditionMonitored(id, req.Monitored); err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id, "monitored": req.Monitored})
-}

@@ -27,20 +27,6 @@ body {
   padding: 2rem 1rem 4rem;
 }
 
-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-
-header h1 {
-  margin: 0;
-  font-size: 1.75rem;
-}
-
 nav {
   display: flex;
   gap: 0.25rem;
@@ -222,26 +208,6 @@ button.toggle.on {
 
 .search-form {
   margin-bottom: 1rem;
-}
-
-.results img {
-  width: 32px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 3px;
-}
-
-.result {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  min-width: 0;
-}
-
-.added {
-  color: var(--ok);
-  font-size: 0.85rem;
-  white-space: nowrap;
 }
 
 .settings-form {

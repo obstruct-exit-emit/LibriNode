@@ -363,17 +363,6 @@ func (s *Store) ListEditions(bookID int64) ([]Edition, error) {
 	return editions, rows.Err()
 }
 
-func (s *Store) SetEditionMonitored(id int64, monitored bool) error {
-	res, err := s.db.Exec(`UPDATE editions SET monitored = ? WHERE id = ?`, monitored, id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 // --- Series ---
 
 // UpsertSeries inserts or refreshes a series by (source, foreign_id),

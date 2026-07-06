@@ -83,7 +83,15 @@ func (st *sessionStore) create() string {
 	}
 	token := hex.EncodeToString(b)
 	st.mu.Lock()
-	st.tokens[token] = time.Now().Add(sessionTTL)
+	// Prune expired sessions here — logins are rare, and expired tokens are
+	// otherwise only deleted when presented again.
+	now := time.Now()
+	for t, expiry := range st.tokens {
+		if now.After(expiry) {
+			delete(st.tokens, t)
+		}
+	}
+	st.tokens[token] = now.Add(sessionTTL)
 	st.mu.Unlock()
 	return token
 }

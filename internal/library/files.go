@@ -211,17 +211,6 @@ func (s *Store) ListVolumeRefs() ([]VolumeRef, error) {
 	return refs, rows.Err()
 }
 
-// HasMonitoredEdition reports whether a book has at least one monitored
-// edition of the given format — the opt-in signal for acquiring that format
-// (e.g. audiobook wanting).
-func (s *Store) HasMonitoredEdition(bookID int64, format string) (bool, error) {
-	var n int
-	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM editions WHERE book_id = ? AND format = ? AND monitored = 1`,
-		bookID, format).Scan(&n)
-	return n > 0, err
-}
-
 // FilePathsForBook returns the on-disk paths of a book's files (for
 // multi-file audiobooks the path is the book's directory). Used by the
 // delete-files option before the rows go away.

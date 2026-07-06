@@ -27,8 +27,7 @@ type QualityProfile struct {
 	AddedAt         string `json:"addedAt"`
 }
 
-// formatsByMediaType lists the grabbable formats per media type (Phase 1-2
-// covers ebooks; other types activate with their phases).
+// formatsByMediaType lists the grabbable formats per media type.
 var formatsByMediaType = map[string][]string{
 	"ebook":     {"epub", "azw3", "mobi", "pdf"},
 	"audiobook": {"m4b", "m4a", "mp3", "flac", "opus"},

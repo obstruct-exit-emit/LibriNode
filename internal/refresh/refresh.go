@@ -134,8 +134,10 @@ func (s *Service) RefreshBook(ctx context.Context, id int64) error {
 }
 
 // persistBook stores a provider book plus its series links and editions
-// under the given author. New ebook editions inherit the book's monitored
-// flag (Phase 1 is ebook-first; audiobook monitoring arrives in Phase 3).
+// under the given author, enrolling it in the target format library. (New
+// ebook editions still inherit the book's monitored flag into the legacy
+// editions.monitored column; per-format membership is what drives
+// acquisition.)
 func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, authorID int64, monitored bool, targetLibrary string) error {
 	source := p.Name()
 	book := &library.Book{

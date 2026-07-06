@@ -245,7 +245,6 @@ scriptable:
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
 | Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
 | Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
-| Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |

@@ -1,7 +1,7 @@
 // Package indexer implements LibriNode's indexer framework: Newznab (usenet)
 // and Torznab (torrent) clients behind one API, indexer configuration
 // storage, and aggregated release search. Release scoring and automatic
-// grabbing build on top of this in later Phase 2 slices.
+// grabbing (internal/release, internal/autosearch) build on top of this.
 package indexer
 
 // Indexer types. Torznab is Newznab's API shape served by torrent indexers

@@ -13,9 +13,9 @@ import (
 // scans can walk large libraries on slow disks; generous but bounded.
 const scanTimeout = 10 * time.Minute
 
-// handleScan walks all ebook root folders synchronously and reports what it
-// found. Fine for Phase 1 library sizes; a queued background command system
-// arrives with the acquisition pipeline.
+// handleScan walks all root folders synchronously and reports what it
+// found. Fine for current library sizes; a queued background command system
+// can replace it if scans ever get slow.
 func (s *server) handleScan(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
 	defer cancel()

@@ -61,6 +61,6 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 <main>
   <h1>&#128396;&#65039; LibriNode</h1>
   <p>The written-media automation server is running.</p>
-  <p>Web UI coming in Phase 1 &mdash; meanwhile, try <code>GET /api/v1/system/status</code> with your API key.</p>
+  <p>This build has no web UI embedded &mdash; run <code>npm run build</code> in <code>web/</code> and rebuild the binary. The API is fully available: try <code>GET /api/v1/system/status</code> with your API key.</p>
 </main>`))
 }

@@ -181,7 +181,7 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
           Host, port, and data directory are set in <code>config.yaml</code>{" "}
           (or <code>LIBRINODE_*</code> environment variables) and need a
           restart. For HTTPS, run LibriNode behind a reverse proxy — see the
-          README. Logs live under System; backups are planned before 1.0.
+          README. Health checks, logs, and backups live on the System page.
         </p>
       </section>
     </>

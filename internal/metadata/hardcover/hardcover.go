@@ -44,10 +44,6 @@ func WithEndpoint(url string) Option {
 	return func(c *Client) { c.endpoint = url }
 }
 
-func WithHTTPClient(hc *http.Client) Option {
-	return func(c *Client) { c.httpc = hc }
-}
-
 func New(token string, opts ...Option) *Client {
 	c := &Client{
 		endpoint: DefaultEndpoint,

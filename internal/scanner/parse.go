@@ -8,9 +8,8 @@ import (
 	"strings"
 )
 
-// ebookExtensions are the file types Phase 1 scans for (per the README's
-// ebook format list). Audiobook/manga/comic extensions come with their
-// phases.
+// ebookExtensions are the ebook file types the scanner recognizes (per the
+// README's format list); audio, comic, and magazine extensions follow below.
 var ebookExtensions = map[string]bool{
 	".epub": true,
 	".mobi": true,

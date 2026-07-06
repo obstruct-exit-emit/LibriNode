@@ -1,7 +1,7 @@
 // Package download talks to download clients — qBittorrent for torrents,
 // SABnzbd for usenet — behind one interface: send a release, watch its
-// progress, remove it. Completed Download Handling builds on this in the
-// next Phase 2 slice.
+// progress, remove it. Completed Download Handling (internal/importer)
+// builds on this.
 package download
 
 import (

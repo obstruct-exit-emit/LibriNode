@@ -492,12 +492,6 @@ export const api = {
       { method: "DELETE" },
     ),
 
-  monitorEdition: (id: number, monitored: boolean) =>
-    request(`/api/v1/edition/${id}/monitor`, {
-      ...json({ monitored }),
-      method: "PUT",
-    }),
-
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
   listUnmatchedFiles: () =>
     request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
