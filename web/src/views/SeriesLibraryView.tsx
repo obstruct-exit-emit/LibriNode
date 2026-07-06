@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Series, type SeriesResult } from "../api";
+import { api, type RenameMove, type Series, type SeriesResult } from "../api";
 import { libraryLabels } from "../App";
 import WantedCard from "../components/WantedCard";
 
@@ -23,6 +23,7 @@ export default function SeriesLibraryView({
   // Large libraries: filter client-side and render the grid incrementally.
   const [filter, setFilter] = useState("");
   const [visible, setVisible] = useState(60);
+  const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
 
   const reload = useCallback(() => {
     api
@@ -63,6 +64,32 @@ export default function SeriesLibraryView({
       .finally(() => setBusy(false));
   };
 
+  const previewRenames = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .renamePreview()
+      .then((r) => {
+        setRenamePlan(r.moves);
+        if (r.moves.length === 0) setNotice("All files already match the naming templates.");
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  const applyRenames = () => {
+    setBusy(true);
+    api
+      .renameApply()
+      .then((r) => {
+        setNotice(`Moved ${r.moves.length} file(s)${r.skips.length ? `, ${r.skips.length} skipped` : ""}.`);
+        setRenamePlan(null);
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
   if (loading) return <p className="muted">Loading…</p>;
 
   return (
@@ -75,10 +102,33 @@ export default function SeriesLibraryView({
         <span className="row-actions">
           <button onClick={() => setShowAdd(!showAdd)}>{showAdd ? "Close" : "+ Add"}</button>
           <button disabled={busy} onClick={searchWanted}>Search wanted</button>
+          <button disabled={busy} onClick={previewRenames} title="Preview naming-template moves">
+            Organize…
+          </button>
           <button disabled={busy} onClick={scan}>Scan files</button>
         </span>
       </div>
       {notice && <p className="muted">{notice}</p>}
+
+      {renamePlan && renamePlan.length > 0 && (
+        <div className="rename-plan">
+          <p>{renamePlan.length} file(s) would move to match the naming templates:</p>
+          <ul className="rows">
+            {renamePlan.map((m) => (
+              <li key={m.fileId}>
+                <div className="move">
+                  <span className="file-path muted">{m.from}</span>
+                  <span className="file-path">→ {m.to}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="settings-actions">
+            <button disabled={busy} onClick={applyRenames}>Apply</button>
+            <button className="toggle" onClick={() => setRenamePlan(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {showAdd &&
         (mediaType === "magazine" ? (

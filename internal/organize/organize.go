@@ -62,9 +62,6 @@ func (s *Service) Plan(bookID int64) ([]Move, []string, error) {
 	moves := []Move{}
 	skips := []string{}
 	for _, f := range files {
-		if f.MediaType != "ebook" {
-			continue // the rename engine covers ebooks; audiobooks are placed on import
-		}
 		target, title, err := s.targetPath(&f, rootByID)
 		if err != nil {
 			skips = append(skips, fmt.Sprintf("%s: %v", f.Path, err))
@@ -109,6 +106,9 @@ func (s *Service) Apply(moves []Move) (applied []Move, skips []string, err error
 			skips = append(skips, fmt.Sprintf("%s: %v", m.From, err))
 			continue
 		}
+		if info, err := os.Stat(m.To); err == nil && !info.IsDir() {
+			moveSidecars(m.From, m.To)
+		}
 		if err := s.store.SetBookFilePath(m.FileID, m.To); err != nil {
 			return applied, skips, fmt.Errorf("recording move of %s: %w", m.From, err)
 		}
@@ -126,7 +126,9 @@ func (s *Service) Apply(moves []Move) (applied []Move, skips []string, err error
 	return applied, skips, nil
 }
 
-// targetPath renders <root>/<folder>/<file>.<ext> for one file.
+// targetPath renders the template-defined location for one file, per media
+// type. For multi-file audiobooks (the record's path is the book folder) the
+// target is the folder itself.
 func (s *Service) targetPath(f *library.BookFile, rootByID map[int64]string) (string, string, error) {
 	root, ok := rootByID[f.RootFolderID]
 	if !ok {
@@ -136,9 +138,34 @@ func (s *Service) targetPath(f *library.BookFile, rootByID map[int64]string) (st
 	if err != nil {
 		return "", "", fmt.Errorf("book %d: %w", f.BookID, err)
 	}
-	target, err := s.renderPath(root, book, f.Format)
+	data, err := s.tokenData(book)
 	if err != nil {
 		return "", "", err
+	}
+	ns := s.cfg.NamingSettings()
+
+	var target string
+	switch f.MediaType {
+	case "audiobook":
+		bookDir := naming.Format(ns.AudiobookFile, data)
+		dir := filepath.Join(root, naming.Format(ns.AudiobookFolder, data), bookDir)
+		if info, err := os.Stat(f.Path); err == nil && info.IsDir() {
+			target = dir // the folder is the unit; tracks keep their names
+		} else {
+			target = filepath.Join(dir, bookDir+"."+f.Format)
+		}
+	case "manga":
+		target = filepath.Join(root, naming.Format(ns.MangaFolder, data),
+			naming.Format(ns.MangaFile, data)+"."+f.Format)
+	case "comic":
+		target = filepath.Join(root, naming.Format(ns.ComicFolder, data),
+			naming.Format(ns.ComicFile, data)+"."+f.Format)
+	case "magazine":
+		target = filepath.Join(root, naming.Format(ns.MagazineFolder, data),
+			naming.Format(ns.MagazineFile, data)+"."+f.Format)
+	default:
+		target = filepath.Join(root, naming.Format(ns.EbookFolder, data),
+			naming.Format(ns.EbookFile, data)+"."+f.Format)
 	}
 	return target, book.Title, nil
 }
@@ -167,18 +194,6 @@ func (s *Service) tokenData(book *library.Book) (naming.TokenData, error) {
 		data.ReleaseYear = book.ReleaseDate[:4]
 	}
 	return data, nil
-}
-
-// renderPath renders <root>/<folder template>/<file template>.<ext> for a book.
-func (s *Service) renderPath(root string, book *library.Book, format string) (string, error) {
-	data, err := s.tokenData(book)
-	if err != nil {
-		return "", err
-	}
-	ns := s.cfg.NamingSettings()
-	folder := naming.Format(ns.EbookFolder, data)
-	file := naming.Format(ns.EbookFile, data)
-	return filepath.Join(root, folder, file+"."+format), nil
 }
 
 // Placement says where an imported item belongs. For ebooks, Dir/FileName
@@ -242,6 +257,40 @@ func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Plac
 		}
 	}
 	return nil, fmt.Errorf("no %s root folder configured", mediaType)
+}
+
+// moveSidecars relocates OPF sidecars belonging to a moved file: the
+// base-named <file>.opf always follows; a metadata.opf follows only when
+// the old directory holds no other media afterwards (per-book folders —
+// shared author folders must never lose another book's sidecar).
+func moveSidecars(from, to string) {
+	oldBase := strings.TrimSuffix(from, filepath.Ext(from)) + ".opf"
+	if _, err := os.Stat(oldBase); err == nil {
+		newBase := strings.TrimSuffix(to, filepath.Ext(to)) + ".opf"
+		os.Remove(newBase)
+		os.Rename(oldBase, newBase)
+	}
+	oldMeta := filepath.Join(filepath.Dir(from), "metadata.opf")
+	if _, err := os.Stat(oldMeta); err == nil && dirHasNoMedia(filepath.Dir(from)) {
+		newMeta := filepath.Join(filepath.Dir(to), "metadata.opf")
+		os.Remove(newMeta)
+		os.Rename(oldMeta, newMeta)
+	}
+}
+
+// dirHasNoMedia reports whether dir contains only sidecars (no files other
+// than .opf, no subdirectories with content we might care about).
+func dirHasNoMedia(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".opf") {
+			return false
+		}
+	}
+	return true
 }
 
 // sameFile compares paths the way the target filesystem does (Windows and

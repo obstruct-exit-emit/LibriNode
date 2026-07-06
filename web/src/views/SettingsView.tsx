@@ -917,10 +917,7 @@ function NamingCard({
 }) {
   const show = (t: string) => activeTypes.length === 0 || activeTypes.includes(t);
   const [settings, setSettings] = useState<NamingSettings | null>(null);
-  const [folder, setFolder] = useState("");
-  const [file, setFile] = useState("");
-  const [abFolder, setAbFolder] = useState("");
-  const [abFile, setAbFile] = useState("");
+  const [t, setT] = useState<Partial<NamingSettings>>({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -929,10 +926,7 @@ function NamingCard({
       .getNamingSettings()
       .then((s) => {
         setSettings(s);
-        setFolder(s.ebookFolder);
-        setFile(s.ebookFile);
-        setAbFolder(s.audiobookFolder);
-        setAbFile(s.audiobookFile);
+        setT(s);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
@@ -943,10 +937,11 @@ function NamingCard({
     setBusy(true);
     setNotice("");
     api
-      .saveNamingSettings(folder.trim(), file.trim(), abFolder.trim(), abFile.trim())
+      .saveNamingSettings(t)
       .then((s) => {
         setSettings(s);
-        setNotice("✓ Saved — use Organize in the Library tab to apply to existing files");
+        setT(s);
+        setNotice("✓ Saved — use Organize on a library page to apply to existing files");
       })
       .catch((err: unknown) =>
         setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
@@ -954,53 +949,74 @@ function NamingCard({
       .finally(() => setBusy(false));
   };
 
+  const field = (label: string, key: keyof NamingSettings, title?: string) => (
+    <label>
+      {label}
+      <input
+        title={title}
+        value={(t[key] as string) ?? ""}
+        onChange={(e) => setT({ ...t, [key]: e.target.value })}
+      />
+    </label>
+  );
+
   return (
     <section className="card">
       <h2>File Naming</h2>
       <p className="muted">
-        How organized ebook files are placed inside a root folder. Available
-        tokens: {settings.tokens.map((t, i) => (
-          <span key={t}>
+        How organized files are placed inside a root folder, per media type.
+        Available tokens: {settings.tokens.map((tok, i) => (
+          <span key={tok}>
             {i > 0 && " "}
-            <code>{t}</code>
+            <code>{tok}</code>
           </span>
         ))}
         . Tokens without a value (e.g. series, for standalone books) drop out
-        cleanly.
+        cleanly; emptied fields revert to the defaults.
       </p>
       <div className="settings-form">
-        <label>
-          Folder template
-          <input value={folder} onChange={(e) => setFolder(e.target.value)} />
-        </label>
-        <label>
-          File template
-          <input value={file} onChange={(e) => setFile(e.target.value)} />
-        </label>
-        <p className="muted">
-          Example: <code>{settings.example}</code>
-        </p>
+        {show("ebook") && (
+          <>
+            {field("Ebook folder template", "ebookFolder")}
+            {field("Ebook file template", "ebookFile")}
+            <p className="muted">
+              Example: <code>{settings.example}</code>
+            </p>
+          </>
+        )}
         {show("audiobook") && (
           <>
-            <label>
-              Audiobook folder template
-              <input value={abFolder} onChange={(e) => setAbFolder(e.target.value)} />
-            </label>
-            <label>
-              Audiobook book-folder template
-              <input
-                title="Names the per-book folder (Audiobookshelf layout); multi-file books keep their track names inside it"
-                value={abFile}
-                onChange={(e) => setAbFile(e.target.value)}
-              />
-            </label>
+            {field("Audiobook folder template", "audiobookFolder")}
+            {field(
+              "Audiobook book-folder template",
+              "audiobookFile",
+              "Names the per-book folder (Audiobookshelf layout); multi-file books keep their track names inside it",
+            )}
             <p className="muted">
               Audiobook example: <code>{settings.audiobookExample}</code>
             </p>
           </>
         )}
+        {show("manga") && (
+          <>
+            {field("Manga folder template", "mangaFolder")}
+            {field("Manga file template", "mangaFile")}
+          </>
+        )}
+        {show("comic") && (
+          <>
+            {field("Comic folder template", "comicFolder")}
+            {field("Comic file template", "comicFile")}
+          </>
+        )}
+        {show("magazine") && (
+          <>
+            {field("Magazine folder template", "magazineFolder")}
+            {field("Magazine file template", "magazineFile")}
+          </>
+        )}
         <div className="settings-actions">
-          <button disabled={busy || !folder.trim() || !file.trim()} onClick={save}>
+          <button disabled={busy} onClick={save}>
             Save
           </button>
           {notice && (

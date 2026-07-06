@@ -20,6 +20,7 @@ import (
 	"github.com/librinode/librinode/internal/comicinfo"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/opf"
 	"github.com/librinode/librinode/internal/organize"
 	"github.com/librinode/librinode/internal/release"
 	"github.com/librinode/librinode/internal/scanner"
@@ -110,6 +111,32 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 			"imported", result.Imported, "failed", result.Failed, "skipped", result.Skipped)
 	}
 	return result, nil
+}
+
+// writeOPF drops the metadata sidecar next to an imported book: metadata.opf
+// in the per-book folder for audiobooks, <file>.opf beside flat ebook files.
+func (s *Service) writeOPF(book *library.Book, mediaType, target, dir string) error {
+	author, err := s.store.GetAuthor(book.AuthorID)
+	if err != nil {
+		return err
+	}
+	series, err := s.store.ListSeriesForBook(book.ID)
+	if err != nil {
+		return err
+	}
+	full, err := s.store.GetBook(book.ID) // detail includes editions (ISBN, language)
+	if err != nil {
+		full = book
+	}
+	data, err := opf.Render(full, author.Name, series)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "metadata.opf")
+	if mediaType == "ebook" {
+		path = strings.TrimSuffix(target, filepath.Ext(target)) + ".opf"
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 // matchGrab pairs a queue item with its grab record: by the client's item id
@@ -258,6 +285,14 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	if (mediaType == "manga" || mediaType == "comic") && format == "cbz" {
 		if err := s.writeComicInfo(target, book); err != nil {
 			result.note("%s: writing ComicInfo.xml: %v", item.Title, err)
+		}
+	}
+
+	// Ebooks and audiobooks get an OPF sidecar (Calibre/Audiobookshelf);
+	// failures aren't fatal to the import.
+	if mediaType == "ebook" || mediaType == "audiobook" {
+		if err := s.writeOPF(book, mediaType, target, place.Dir); err != nil {
+			result.note("%s: writing OPF sidecar: %v", item.Title, err)
 		}
 	}
 

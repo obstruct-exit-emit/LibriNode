@@ -296,6 +296,12 @@ export interface NamingSettings {
   ebookFile: string;
   audiobookFolder: string;
   audiobookFile: string;
+  mangaFolder: string;
+  mangaFile: string;
+  comicFolder: string;
+  comicFile: string;
+  magazineFolder: string;
+  magazineFile: string;
   tokens: string[];
   example: string;
   audiobookExample: string;
@@ -587,14 +593,9 @@ export const api = {
     ),
 
   getNamingSettings: () => request<NamingSettings>("/api/v1/settings/naming"),
-  saveNamingSettings: (
-    ebookFolder: string,
-    ebookFile: string,
-    audiobookFolder: string,
-    audiobookFile: string,
-  ) =>
+  saveNamingSettings: (templates: Partial<NamingSettings>) =>
     request<NamingSettings>("/api/v1/settings/naming", {
-      ...json({ ebookFolder, ebookFile, audiobookFolder, audiobookFile }),
+      ...json(templates),
       method: "PUT",
     }),
 

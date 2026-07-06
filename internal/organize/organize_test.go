@@ -87,6 +87,91 @@ func writeFile(t *testing.T, path string) {
 	}
 }
 
+// TestPlanNonEbookTypes: the rename engine covers every media type — comic
+// files move to Series templates, multi-file audiobooks move as folders (and
+// carry their sidecars), single-file audiobooks land in per-book folders.
+func TestPlanNonEbookTypes(t *testing.T) {
+	f := fixture(t)
+
+	// Comic volume linked to a series.
+	comicRoot := t.TempDir()
+	res, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('comic', ?)`, comicRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	comicRootID, _ := res.LastInsertId()
+	cSeries := &library.Series{Source: "comicvine", ForeignID: "77", Title: "The Walking Dead", MediaType: "comic"}
+	if err := f.store.UpsertSeries(cSeries); err != nil {
+		t.Fatal(err)
+	}
+	issue := &library.Book{AuthorID: f.tcom.AuthorID, Source: "comicvine", ForeignID: "77-1",
+		MediaType: "comic", Title: "The Walking Dead #1", Monitored: true}
+	if err := f.store.UpsertBook(issue); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.LinkBookSeries(issue.ID, cSeries.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(comicRoot, "dump", "twd001.cbz"))
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: comicRootID, BookID: issue.ID, MediaType: "comic",
+		Path: filepath.Join(comicRoot, "dump", "twd001.cbz"), Format: "cbz",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Multi-file audiobook: the record's path is the book folder.
+	abRoot := t.TempDir()
+	res, err = f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	abRootID, _ := res.LastInsertId()
+	abDir := filepath.Join(abRoot, "incoming", "mort audio")
+	writeFile(t, filepath.Join(abDir, "01.mp3"))
+	writeFile(t, filepath.Join(abDir, "metadata.opf"))
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: abRootID, BookID: f.mort.ID, MediaType: "audiobook",
+		Path: abDir, Format: "mp3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	moves, skips, err := f.svc.Plan(0)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(skips) != 0 {
+		t.Fatalf("skips = %v", skips)
+	}
+	targets := map[string]string{}
+	for _, m := range moves {
+		targets[m.From] = m.To
+	}
+	wantComic := filepath.Join(comicRoot, "The Walking Dead", "The Walking Dead #1.cbz")
+	if got := targets[filepath.Join(comicRoot, "dump", "twd001.cbz")]; got != wantComic {
+		t.Errorf("comic target = %q, want %q", got, wantComic)
+	}
+	wantAB := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	if got := targets[abDir]; got != wantAB {
+		t.Errorf("audiobook folder target = %q, want %q", got, wantAB)
+	}
+
+	if _, _, err := f.svc.Apply(moves); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	// The folder moved with its tracks and sidecar intact.
+	for _, p := range []string{
+		filepath.Join(wantAB, "01.mp3"),
+		filepath.Join(wantAB, "metadata.opf"),
+		wantComic,
+	} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("after apply, missing %s", p)
+		}
+	}
+}
+
 func TestPlanAndApply(t *testing.T) {
 	f := fixture(t)
 

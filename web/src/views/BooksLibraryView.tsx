@@ -119,11 +119,9 @@ export default function BooksLibraryView({
             <button disabled={busyHeader} onClick={searchWanted} title="Search indexers for everything wanted">
               Search wanted
             </button>
-            {library === "ebook" && (
-              <button disabled={busyHeader} onClick={previewRenames} title="Preview naming-template moves">
-                Organize…
-              </button>
-            )}
+            <button disabled={busyHeader} onClick={previewRenames} title="Preview naming-template moves">
+              Organize…
+            </button>
             <button disabled={busyHeader} onClick={scan} title="Scan root folders">
               Scan files
             </button>
