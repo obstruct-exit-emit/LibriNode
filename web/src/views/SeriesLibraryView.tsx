@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Book, type Series, type SeriesResult } from "../api";
+import { api, type Series, type SeriesResult } from "../api";
 import { libraryLabels } from "../App";
 
-// A series-first library area (Manga, Comics, or Magazines) — only series of
-// this media type appear; adding is scoped to this library.
+// A series-first library area (Manga, Comics, or Magazines) — a *arr-style
+// poster grid of series; clicking one opens its full detail page. Adding is
+// scoped to this library.
 export default function SeriesLibraryView({
   mediaType,
   onError,
+  onOpenSeries,
 }: {
   mediaType: string;
   onError: (message: string) => void;
+  onOpenSeries: (id: number) => void;
 }) {
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openID, setOpenID] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -88,18 +90,22 @@ export default function SeriesLibraryView({
             : ` to search for ${mediaType} series.`}
         </p>
       ) : (
-        <ul className="rows">
+        <div className="poster-grid">
           {series.map((s) => (
-            <SeriesRow
-              key={s.id}
-              series={s}
-              open={openID === s.id}
-              onToggleOpen={() => setOpenID(openID === s.id ? null : s.id)}
-              onChanged={reload}
-              onError={onError}
-            />
+            <button key={s.id} className="poster-card" onClick={() => onOpenSeries(s.id)}>
+              {s.coverUrl ? (
+                <img className="poster" src={s.coverUrl} alt="" loading="lazy" />
+              ) : (
+                <div className="poster fallback">{s.title.charAt(0)}</div>
+              )}
+              <span className="poster-title">{s.title}</span>
+              <span className="poster-sub">
+                {s.ownedCount}/{s.itemCount} owned
+                {!s.monitored && " · unmonitored"}
+              </span>
+            </button>
           ))}
-        </ul>
+        </div>
       )}
     </section>
   );
@@ -210,136 +216,5 @@ function AddMagazinePanel({ onAdded }: { onAdded: () => void }) {
       </form>
       {notice && <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>}
     </div>
-  );
-}
-
-function SeriesRow({
-  series,
-  open,
-  onToggleOpen,
-  onChanged,
-  onError,
-}: {
-  series: Series;
-  open: boolean;
-  onToggleOpen: () => void;
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
-  const [volumes, setVolumes] = useState<Book[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    api
-      .getSeries(series.id)
-      .then((detail) => setVolumes(detail.volumes ?? []))
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
-  }, [open, series.id, onError]);
-
-  const run = (action: () => Promise<unknown>) => {
-    setBusy(true);
-    action()
-      .then(onChanged)
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setBusy(false));
-  };
-
-  const owned = volumes.filter((v) => v.hasFile).length;
-
-  return (
-    <li>
-      <div className="row">
-        <button className="link" onClick={onToggleOpen}>
-          {open ? "▾" : "▸"} {series.title}
-        </button>
-        <span className="row-actions">
-          {open && (
-            <span className="muted">
-              {owned}/{volumes.length} owned
-            </span>
-          )}
-          <button
-            className={series.monitored ? "toggle on" : "toggle"}
-            disabled={busy}
-            onClick={() => run(() => api.monitorSeries(series.id, !series.monitored, !series.monitored))}
-          >
-            {series.monitored ? "monitored" : "unmonitored"}
-          </button>
-          {series.metadataSource !== "manual" && (
-            <button
-              disabled={busy}
-              title="Re-fetch from the metadata provider; new volumes follow the monitor-new setting"
-              onClick={() => run(() => api.refreshSeries(series.id))}
-            >
-              refresh
-            </button>
-          )}
-          <button
-            className="danger"
-            disabled={busy}
-            onClick={() => {
-              if (confirm(`Remove ${series.title} and all its volumes from the library?`)) {
-                run(() => api.deleteSeries(series.id));
-              }
-            }}
-          >
-            remove
-          </button>
-        </span>
-      </div>
-      {open && (
-        <>
-          {notice && <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>}
-          <ul className="rows nested">
-            {volumes.length === 0 && (
-              <li className="muted">
-                {series.mediaType === "magazine"
-                  ? "No issues yet — they appear when grabbed or scanned."
-                  : "No volumes."}
-              </li>
-            )}
-            {volumes.map((v) => (
-              <li key={v.id}>
-                <div className="row">
-                  <span>{v.title}</span>
-                  <span className="row-actions">
-                    <span className={v.hasFile ? "owned yes" : "owned no"}>
-                      {v.hasFile ? "owned" : "wanted"}
-                    </span>
-                    {!v.hasFile && series.mediaType !== "magazine" && (
-                      <button
-                        disabled={busy}
-                        title="Search indexers and grab the best release for this volume"
-                        onClick={() => {
-                          setBusy(true);
-                          setNotice("");
-                          api
-                            .autoSearchBook(v.id, series.mediaType)
-                            .then((o) =>
-                              setNotice(
-                                o.grabbed
-                                  ? `✓ Grabbed "${o.release}" via ${o.client}`
-                                  : `✗ ${v.title}: ${o.message ?? "nothing grabbed"}`,
-                              ),
-                            )
-                            .catch((err: unknown) =>
-                              setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
-                            )
-                            .finally(() => setBusy(false));
-                        }}
-                      >
-                        Auto grab
-                      </button>
-                    )}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </li>
   );
 }

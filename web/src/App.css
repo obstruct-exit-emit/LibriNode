@@ -485,3 +485,130 @@ button.toggle.on {
   padding: 0.75rem 1rem;
   margin: 0.75rem 0;
 }
+
+/* --- *arr-style poster grid (authors / series) --- */
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.poster-card {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: var(--text);
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.poster-card:hover .poster {
+  border-color: var(--accent);
+}
+
+.poster-card:hover {
+  filter: none;
+}
+
+.poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.poster.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  color: var(--muted);
+}
+
+.poster-title {
+  font-size: 0.82rem;
+  margin-top: 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poster-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Detail pages (author / series) --- */
+button.link.back {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+button.link.back:hover {
+  color: var(--text);
+  filter: none;
+}
+
+.detail-head {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.detail-art {
+  flex: 0 0 130px;
+  width: 130px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.detail-art.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  color: var(--muted);
+}
+
+.detail-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-info h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.4rem;
+}
+
+.detail-desc {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0.75rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .detail-head {
+    flex-direction: column;
+  }
+  .detail-art {
+    width: 100px;
+    flex-basis: auto;
+  }
+}

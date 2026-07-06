@@ -91,10 +91,14 @@ Every settings page follows the same pattern: sensible defaults, a **Test** butt
    one entry per library — and a library only appears once you've set it up
    (added its root folder, or already own content of that type). Home shows
    per-library Recently-added and Wanted rows with cover art; each library
-   page has its own **+ Add**, scan, and search controls. For prose books,
-   Ebooks and Audiobooks are separate libraries: a book belongs only to the
-   format libraries you added it to (or own), and the book detail offers
-   "Add to Audiobooks/Ebooks" to cross-add with a monitor prompt.
+   page is a *arr-style poster grid (authors for books, series for
+   manga/comics/magazines, with owned/total counts on every card) with its
+   own **+ Add**, scan, and search controls, and clicking a card opens a
+   full detail page — artwork, description, and actions up top, then the
+   books or volumes as clean rows. For prose books, Ebooks and Audiobooks
+   are separate libraries: a book belongs only to the format libraries you
+   added it to (or own), and the book detail offers "Add to
+   Audiobooks/Ebooks" to cross-add with a monitor prompt.
 2. **Settings → Metadata Provider:** paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
    then **Save** — search goes live immediately, no restart.
@@ -292,7 +296,7 @@ metadata endpoints return 503.
 - [x] Magazine scanning materializes owned issues; automatic search grabs new issues (capped per pass); `Magazine/Magazine - date.pdf` layout; indexer categories 7010
 
 ### Phase 5 — Polish & 1.0
-- [x] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own sidebar area with scoped browsing (author-first for books, series-first for manga/comics/magazines), scoped add-and-search, and unmatched files; the Home page is the only place types meet, as stacked per-library sections (Recently added / Wanted with cover art) that never interleave types; type-specific settings render only for active libraries
+- [x] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own sidebar area with *arr-style browsing — a poster grid (author-first for books, series-first for manga/comics/magazines, owned/total counts on each card) that opens into full detail pages with artwork, description, and per-item controls — plus scoped add-and-search and unmatched files; the Home page is the only place types meet, as stacked per-library sections (Recently added / Wanted with cover art) that never interleave types; type-specific settings render only for active libraries
 - [x] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred. Membership is set by scanning/importing (owning it), by which library you add from, or by cross-add from the book detail ("Add to Audiobooks" with a monitor prompt); each membership has its own monitored flag, replacing edition monitoring as the wanted signal
 - [ ] Full settings UI as specced above, with Test buttons everywhere
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab

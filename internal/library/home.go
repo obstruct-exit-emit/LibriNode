@@ -143,10 +143,15 @@ func (s *Store) Home(limit int) ([]HomeSection, error) {
 }
 
 // ListAuthorsInLibrary returns authors with at least one book in the given
-// format library (the Ebooks/Audiobooks area's author list).
+// format library, with per-author totals for the grid cards (books in this
+// library, and how many are owned in this format).
 func (s *Store) ListAuthorsInLibrary(mediaType string) ([]Author, error) {
 	rows, err := s.db.Query(`
-		SELECT ` + authorCols + ` FROM authors
+		SELECT ` + authorCols + `,
+			(SELECT COUNT(*) FROM books WHERE books.author_id = authors.id AND ` + itemsWhere(mediaType) + `),
+			(SELECT COUNT(*) FROM books WHERE books.author_id = authors.id AND ` + itemsWhere(mediaType) + `
+				AND EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '` + mediaType + `'))
+		FROM authors
 		WHERE EXISTS (SELECT 1 FROM books WHERE books.author_id = authors.id AND ` + itemsWhere(mediaType) + `)
 		ORDER BY sort_name`)
 	if err != nil {
@@ -156,11 +161,13 @@ func (s *Store) ListAuthorsInLibrary(mediaType string) ([]Author, error) {
 
 	authors := []Author{}
 	for rows.Next() {
-		a, err := scanAuthor(rows)
-		if err != nil {
+		var a Author
+		if err := rows.Scan(&a.ID, &a.Source, &a.ForeignID, &a.Name, &a.SortName,
+			&a.Description, &a.ImageURL, &a.Monitored, &a.AddedAt, &a.UpdatedAt,
+			&a.BookCount, &a.OwnedCount); err != nil {
 			return nil, err
 		}
-		authors = append(authors, *a)
+		authors = append(authors, a)
 	}
 	return authors, rows.Err()
 }

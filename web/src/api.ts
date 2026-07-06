@@ -21,6 +21,8 @@ export interface Author {
   description: string;
   imageUrl: string;
   monitored: boolean;
+  bookCount?: number;
+  ownedCount: number;
   books?: Book[];
 }
 
@@ -167,6 +169,8 @@ export interface Series {
   monitored: boolean;
   monitorNew: boolean;
   coverUrl: string;
+  itemCount: number;
+  ownedCount: number;
   volumes?: Book[];
 }
 

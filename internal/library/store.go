@@ -417,7 +417,11 @@ func (s *Store) GetSeries(id int64) (*Series, error) {
 
 // ListSeries returns series of a media type ("" = all).
 func (s *Store) ListSeries(mediaType string) ([]Series, error) {
-	query := `SELECT ` + seriesCols + ` FROM series`
+	query := `SELECT ` + seriesCols + `,
+		(SELECT COUNT(*) FROM series_books sb WHERE sb.series_id = series.id),
+		(SELECT COUNT(*) FROM series_books sb WHERE sb.series_id = series.id
+			AND EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = sb.book_id))
+	FROM series`
 	args := []any{}
 	if mediaType != "" {
 		query += ` WHERE media_type = ?`
@@ -432,11 +436,13 @@ func (s *Store) ListSeries(mediaType string) ([]Series, error) {
 
 	out := []Series{}
 	for rows.Next() {
-		sr, err := scanSeries(rows)
-		if err != nil {
+		var sr Series
+		if err := rows.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
+			&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.CoverURL,
+			&sr.ItemCount, &sr.OwnedCount); err != nil {
 			return nil, err
 		}
-		out = append(out, *sr)
+		out = append(out, sr)
 	}
 	return out, rows.Err()
 }

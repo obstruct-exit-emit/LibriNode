@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, getApiKey, setApiKey, type LibraryStatus } from "./api";
 import ActivityView from "./views/ActivityView";
+import AuthorDetailView from "./views/AuthorDetailView";
 import BooksLibraryView from "./views/BooksLibraryView";
 import HomeView from "./views/HomeView";
+import SeriesDetailView from "./views/SeriesDetailView";
 import SeriesLibraryView from "./views/SeriesLibraryView";
 import SettingsView from "./views/SettingsView";
 import SystemView from "./views/SystemView";
@@ -13,6 +15,8 @@ import "./App.css";
 type Page =
   | { name: "home" }
   | { name: "library"; mediaType: string }
+  | { name: "author"; id: number; library: "ebook" | "audiobook" }
+  | { name: "series-detail"; id: number; mediaType: string }
   | { name: "activity" }
   | { name: "settings" }
   | { name: "system" };
@@ -150,16 +154,36 @@ export default function App() {
           (page.mediaType === "ebook" || page.mediaType === "audiobook" ? (
             <BooksLibraryView
               key={page.mediaType}
-              library={page.mediaType}
+              library={page.mediaType as "ebook" | "audiobook"}
               onError={setError}
+              onOpenAuthor={(id) =>
+                go({ name: "author", id, library: page.mediaType as "ebook" | "audiobook" })
+              }
             />
           ) : (
             <SeriesLibraryView
               key={page.mediaType}
               mediaType={page.mediaType}
               onError={setError}
+              onOpenSeries={(id) => go({ name: "series-detail", id, mediaType: page.mediaType })}
             />
           ))}
+        {connected && page.name === "author" && (
+          <AuthorDetailView
+            id={page.id}
+            library={page.library}
+            onError={setError}
+            onBack={() => go({ name: "library", mediaType: page.library })}
+          />
+        )}
+        {connected && page.name === "series-detail" && (
+          <SeriesDetailView
+            id={page.id}
+            mediaType={page.mediaType}
+            onError={setError}
+            onBack={() => go({ name: "library", mediaType: page.mediaType })}
+          />
+        )}
         {connected && page.name === "activity" && <ActivityView onError={setError} />}
         {connected && page.name === "settings" && (
           <SettingsView onError={setError} onLibrariesChanged={reloadLibraries} />

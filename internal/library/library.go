@@ -23,6 +23,9 @@ type Author struct {
 	Monitored   bool   `json:"monitored"`
 	AddedAt     string `json:"addedAt"`
 	UpdatedAt   string `json:"updatedAt"`
+	// Grid stats, populated by library-scoped listings.
+	BookCount  int `json:"bookCount,omitempty"`
+	OwnedCount int `json:"ownedCount"`
 	// Populated on detail endpoints, not by ListAuthors.
 	Books []Book `json:"books,omitempty"`
 }
@@ -86,6 +89,9 @@ type Series struct {
 	Monitored   bool   `json:"monitored"`
 	MonitorNew  bool   `json:"monitorNew"` // future volumes start monitored
 	CoverURL    string `json:"coverUrl"`
+	// Grid stats, populated by listings.
+	ItemCount  int `json:"itemCount"`
+	OwnedCount int `json:"ownedCount"`
 	// Populated on detail endpoints.
 	Volumes []Book `json:"volumes,omitempty"`
 }
