@@ -70,6 +70,18 @@ func main() {
 }
 
 func run(dataDir string) error {
+	if dataDir == "" {
+		var err error
+		if dataDir, err = config.DefaultDataDir(); err != nil {
+			return fmt.Errorf("resolving default data dir: %w", err)
+		}
+	}
+	// A staged backup restore (POST /backup/{name}/restore) swaps in before
+	// anything opens the config or database.
+	if err := applyPendingRestore(dataDir); err != nil {
+		return fmt.Errorf("applying staged restore: %w", err)
+	}
+
 	cfg, err := config.Load(dataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -162,4 +174,27 @@ func run(dataDir string) error {
 		defer cancel()
 		return srv.Shutdown(ctx)
 	}
+}
+
+// applyPendingRestore swaps staged *.restore files (written by the backup
+// restore endpoint) into place, keeping the replaced files as *.pre-restore.
+func applyPendingRestore(dataDir string) error {
+	for _, name := range []string{"config.yaml", "librinode.db"} {
+		staged := filepath.Join(dataDir, name+".restore")
+		if _, err := os.Stat(staged); err != nil {
+			continue
+		}
+		live := filepath.Join(dataDir, name)
+		if _, err := os.Stat(live); err == nil {
+			os.Remove(live + ".pre-restore")
+			if err := os.Rename(live, live+".pre-restore"); err != nil {
+				return err
+			}
+		}
+		if err := os.Rename(staged, live); err != nil {
+			return err
+		}
+		slog.Info("restored from backup", "file", name)
+	}
+	return nil
 }

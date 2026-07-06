@@ -213,6 +213,12 @@ export interface AuthStatus {
   authenticated: boolean;
 }
 
+export interface BackupInfo {
+  name: string;
+  size: number;
+  createdAt: string;
+}
+
 export interface HealthIssue {
   source: string;
   level: "error" | "warning";
@@ -398,6 +404,22 @@ export const api = {
     }),
   logTail: (lines = 200) =>
     request<{ lines: string[]; path: string }>(`/api/v1/log?lines=${lines}`),
+  listBackups: () => request<BackupInfo[]>("/api/v1/backup"),
+  createBackup: () => request<BackupInfo>("/api/v1/backup", { method: "POST" }),
+  deleteBackup: (name: string) =>
+    request<void>(`/api/v1/backup/${name}`, { method: "DELETE" }),
+  restoreBackup: (name: string) =>
+    request<{ staged: number; message: string }>(
+      `/api/v1/backup/${name}/restore`,
+      { method: "POST" },
+    ),
+  downloadBackup: async (name: string): Promise<Blob> => {
+    const resp = await fetch(`/api/v1/backup/${name}/download`, {
+      headers: { "X-Api-Key": getApiKey() },
+    });
+    if (!resp.ok) throw new ApiError(resp.status, resp.statusText);
+    return resp.blob();
+  },
   health: () => request<HealthResult>("/api/v1/health"),
   checkHealth: () =>
     request<HealthResult>("/api/v1/health/check", { method: "POST" }),

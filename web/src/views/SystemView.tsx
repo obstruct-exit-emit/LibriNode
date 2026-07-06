@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type HealthResult, type SystemStatus } from "../api";
+import { api, type BackupInfo, type HealthResult, type SystemStatus } from "../api";
 
 export default function SystemView({
   onError,
@@ -20,6 +20,7 @@ export default function SystemView({
   return (
     <>
       <HealthCard onError={onError} />
+      <BackupsCard onError={onError} />
       <LogCard onError={onError} />
       <section className="card">
         <h2>System</h2>
@@ -41,6 +42,117 @@ export default function SystemView({
         </dl>
       </section>
     </>
+  );
+}
+
+// BackupsCard manages zip backups of the database + config: create, download,
+// delete, and stage a restore (applied on the next server start).
+function BackupsCard({ onError }: { onError: (message: string) => void }) {
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const reload = useCallback(() => {
+    api
+      .listBackups()
+      .then(setBackups)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  useEffect(reload, [reload]);
+
+  const run = (action: () => Promise<unknown>, done?: string) => {
+    setBusy(true);
+    setNotice("");
+    action()
+      .then(() => {
+        if (done) setNotice(done);
+        reload();
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  const download = (b: BackupInfo) => {
+    setBusy(true);
+    api
+      .downloadBackup(b.name)
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = b.name;
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Backups</h2>
+        <button
+          disabled={busy}
+          onClick={() => run(() => api.createBackup(), "✓ Backup created")}
+        >
+          Backup now
+        </button>
+      </div>
+      <p className="muted">
+        A backup is a zip of the database (consistent snapshot) and{" "}
+        <code>config.yaml</code>, stored under <code>backups/</code> in the
+        data directory. Restoring stages the files and applies them on the
+        next server start — the replaced files are kept as{" "}
+        <code>*.pre-restore</code>.
+      </p>
+      {notice && (
+        <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>
+      )}
+      {backups.length === 0 ? (
+        <p className="muted">No backups yet.</p>
+      ) : (
+        <ul className="rows">
+          {backups.map((b) => (
+            <li key={b.name}>
+              <div className="row">
+                <span className="file-path">{b.name}</span>
+                <span className="row-actions">
+                  <span className="muted">{(b.size / (1 << 20)).toFixed(1)} MiB</span>
+                  <button disabled={busy} onClick={() => download(b)}>
+                    Download
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      if (confirm(`Restore ${b.name}?\n\nThe current database and config are replaced on the next restart (kept as *.pre-restore).`)) {
+                        run(() => api.restoreBackup(b.name), "✓ Restore staged — restart LibriNode to apply");
+                      }
+                    }}
+                  >
+                    Restore
+                  </button>
+                  <button
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => {
+                      if (confirm(`Delete backup ${b.name}?`)) {
+                        run(() => api.deleteBackup(b.name));
+                      }
+                    }}
+                  >
+                    delete
+                  </button>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
