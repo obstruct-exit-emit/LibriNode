@@ -27,12 +27,16 @@ export default function AuthorDetailView({
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(() => {
+    // Visible = member of this library AND (monitored here or owned here);
+    // unmonitored, unowned members stay hidden until the post-1.0 Missing view.
+    const visible = (b: Book) =>
+      library === "ebook"
+        ? b.inEbookLibrary && (b.ebookMonitored || b.hasEbookFile)
+        : b.inAudiobookLibrary && (b.audiobookMonitored || b.hasAudiobookFile);
     Promise.all([api.getAuthor(id), api.listBooks(id)])
       .then(([a, all]) => {
         setAuthor(a);
-        setBooks(
-          all.filter((b) => (library === "ebook" ? b.inEbookLibrary : b.inAudiobookLibrary)),
-        );
+        setBooks(all.filter(visible));
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [id, library, onError]);

@@ -13,13 +13,21 @@ type LibraryStatus struct {
 // MediaTypes in display order.
 var MediaTypes = []string{"ebook", "audiobook", "manga", "comic", "magazine"}
 
-// itemsWhere returns the SQL predicate selecting a library's items.
+// itemsWhere returns the SQL predicate selecting a library's *visible*
+// items. In the format libraries a member book shows only while monitored
+// or owned in that format — unmonitored, unowned members stay enrolled but
+// hidden (a post-1.0 Missing view will surface them).
 func itemsWhere(mediaType string) string {
+	ownedClause := func(mt string) string {
+		return `EXISTS (SELECT 1 FROM book_files bf WHERE bf.book_id = books.id AND bf.media_type = '` + mt + `')`
+	}
 	switch mediaType {
 	case "ebook":
-		return `books.media_type = 'book' AND books.in_ebook_library = 1`
+		return `books.media_type = 'book' AND books.in_ebook_library = 1
+			AND (books.ebook_monitored = 1 OR ` + ownedClause("ebook") + `)`
 	case "audiobook":
-		return `books.media_type = 'book' AND books.in_audiobook_library = 1`
+		return `books.media_type = 'book' AND books.in_audiobook_library = 1
+			AND (books.audiobook_monitored = 1 OR ` + ownedClause("audiobook") + `)`
 	}
 	return `books.media_type = '` + mediaType + `'`
 }
