@@ -61,6 +61,10 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	imported, err := s.downloads.Store().ListGrabs(download.GrabStatusImported)
+	if err != nil {
+		return nil, err
+	}
 
 	for i := range items {
 		item := &items[i]
@@ -68,6 +72,22 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 		switch item.Status {
 		case "completed":
 			s.importItem(ctx, item, grab, result)
+		case "seeded":
+			// Seed goal reached (the client paused/stopped the finished
+			// torrent). Import it if we never did, then clean up: an
+			// already-imported grab's torrent is removed with its data.
+			if grab != nil {
+				s.importItem(ctx, item, grab, result)
+				continue
+			}
+			if g := matchGrab(imported, item); g != nil {
+				if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, true); err != nil {
+					result.note("removing seeded %s: %v", item.Title, err)
+				} else {
+					slog.Info("removed torrent after seeding goal", "title", item.Title)
+					result.note("removed %s after seeding goal", item.Title)
+				}
+			}
 		case "failed":
 			if grab == nil {
 				continue

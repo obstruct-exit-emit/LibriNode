@@ -159,8 +159,10 @@ func (q *qbittorrent) List(ctx context.Context) ([]Item, error) {
 	return items, nil
 }
 
-// qbitStatus normalizes qBittorrent's many states. Anything seeding or
-// finished counts as completed — the file is on disk.
+// qbitStatus normalizes qBittorrent's many states. Anything actively seeding
+// or finished counts as completed — the file is on disk. A finished torrent
+// that qBittorrent has paused/stopped (seed ratio or time goal reached, or
+// paused by hand) reports "seeded": done seeding, safe to remove.
 func qbitStatus(state string, progress float64) string {
 	switch state {
 	case "error", "missingFiles":
@@ -169,6 +171,8 @@ func qbitStatus(state string, progress float64) string {
 		return "paused"
 	case "queuedDL", "allocating", "metaDL", "checkingDL":
 		return "queued"
+	case "pausedUP", "stoppedUP":
+		return "seeded"
 	}
 	if strings.HasSuffix(state, "UP") || progress >= 1 {
 		return "completed"

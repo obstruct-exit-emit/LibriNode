@@ -52,7 +52,8 @@ func (c *ClientConfig) Protocol() string {
 }
 
 // Item is one download in a client, normalized across implementations.
-// Status is one of: queued, downloading, paused, completed, failed.
+// Status is one of: queued, downloading, paused, completed, seeded, failed
+// (seeded = finished torrent the client has stopped seeding — goal reached).
 type Item struct {
 	Client   string  `json:"client"`
 	ConfigID int64   `json:"clientConfigId"`

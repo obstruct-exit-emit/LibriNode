@@ -115,6 +115,69 @@ func (f *fx) completedDownload(t *testing.T, nzoID, title string, files ...strin
 	return dir
 }
 
+// TestSeededTorrentRemovedAfterImport: a finished torrent the client has
+// stopped seeding (goal reached) is removed with its data — but only once
+// its grab is imported.
+func TestSeededTorrentRemovedAfterImport(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	var deleted []string
+	qbit := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/login"):
+			w.Write([]byte("Ok."))
+		case strings.HasSuffix(r.URL.Path, "/torrents/info"):
+			w.Write([]byte(`[{"hash":"h1","name":"Terry Pratchett - Mort EPUB","state":"pausedUP","progress":1,"content_path":"/downloads/mort"}]`))
+		case strings.HasSuffix(r.URL.Path, "/torrents/delete"):
+			r.ParseForm()
+			deleted = append(deleted, r.FormValue("hashes")+":"+r.FormValue("deleteFiles"))
+			w.Write([]byte("Ok."))
+		default:
+			w.Write([]byte("{}"))
+		}
+	}))
+	t.Cleanup(qbit.Close)
+	if err := f.grabs.Add(&download.ClientConfig{
+		Name: "qbit", Type: download.TypeQBittorrent, Host: qbit.URL,
+		Category: "librinode", Enabled: true, Priority: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab already imported earlier → the seeded torrent gets cleaned up.
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 2,
+		Title: "Terry Pratchett - Mort EPUB", Protocol: download.ProtocolTorrent,
+		MediaType: "ebook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if err := f.grabs.ResolveGrab(grabs[0].ID, download.GrabStatusImported, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 1 || deleted[0] != "h1:true" {
+		t.Fatalf("deleted = %v, want [h1:true] (remove with data)", deleted)
+	}
+
+	// A torrent with no imported LibriNode grab is never touched.
+	deleted = nil
+	if err := f.grabs.ResolveGrab(grabs[0].ID, download.GrabStatusFailed, "test reset"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("foreign seeded torrent was removed: %v", deleted)
+	}
+}
+
 func TestImportAudiobookGrab(t *testing.T) {
 	f := fixture(t)
 	ctx := context.Background()
