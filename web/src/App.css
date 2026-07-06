@@ -547,6 +547,12 @@ button.toggle.on {
   text-overflow: ellipsis;
 }
 
+/* Cross-format badge/button: pushed to the right edge of the expanded
+   book detail, so it sits under the row's owned/rating/monitored badges. */
+.settings-actions .cross-format {
+  margin-left: auto;
+}
+
 /* --- Detail pages (author / series) --- */
 button.link.back {
   color: var(--muted);

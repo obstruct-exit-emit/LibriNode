@@ -220,32 +220,6 @@ function BookRow({
             <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
               Search releases
             </button>
-            {inOther ? (
-              <span
-                className={ownedOther ? "owned yes" : "owned no"}
-                title={
-                  ownedOther
-                    ? `You own the ${otherLibrary} of this book`
-                    : `Also in the ${otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"} library, not owned yet`
-                }
-              >
-                {otherLibrary === "audiobook" ? "🎧" : "📖"}{" "}
-                {otherLibrary} {ownedOther ? "owned" : "in library"}
-              </span>
-            ) : (
-              <button
-                className="toggle"
-                title={`This book isn't in the ${otherLibrary} library yet`}
-                onClick={() => {
-                  const mon = confirm(
-                    `Add "${book.title}" to the ${otherLibrary} library.\n\nOK = monitor (search for it automatically) · Cancel = just add`,
-                  );
-                  setMembership(otherLibrary, true, mon);
-                }}
-              >
-                + Add to {otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"}
-              </button>
-            )}
             <button
               className="danger"
               title={`Remove from the ${library} library (files and the other library are untouched)`}
@@ -259,6 +233,32 @@ function BookRow({
             </button>
             {grabNotice && (
               <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
+            )}
+            {inOther ? (
+              <span
+                className={`cross-format ${ownedOther ? "owned yes" : "owned no"}`}
+                title={
+                  ownedOther
+                    ? `You own the ${otherLibrary} of this book`
+                    : `Also in the ${otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"} library, not owned yet`
+                }
+              >
+                {otherLibrary === "audiobook" ? "🎧" : "📖"}{" "}
+                {otherLibrary} {ownedOther ? "owned" : "in library"}
+              </span>
+            ) : (
+              <button
+                className="toggle cross-format"
+                title={`This book isn't in the ${otherLibrary} library yet`}
+                onClick={() => {
+                  const mon = confirm(
+                    `Add "${book.title}" to the ${otherLibrary} library.\n\nOK = monitor (search for it automatically) · Cancel = just add`,
+                  );
+                  setMembership(otherLibrary, true, mon);
+                }}
+              >
+                + Add to {otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"}
+              </button>
             )}
           </div>
           {candidates && (
