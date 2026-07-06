@@ -9,8 +9,10 @@ Runs on **Windows** and **Linux** (bare metal or Docker).
 > 🚧 **Pre-alpha, but the loop is closed.** Phases 0–4 are complete: all
 > five media types work end-to-end, from metadata search through automatic
 > grabbing to organized imports —
-> [see what works now](#getting-started-what-works-today). Phase 5 (UI
-> overhaul, upgrade handling, packaging) is what stands between here and 1.0.
+> [see what works now](#getting-started-what-works-today). Phase 5 polish is
+> well underway (Plex-style UI, per-format libraries, grouped settings,
+> upgrade handling, health checks, login, logging are done); what remains
+> before 1.0 is the wanted page, calendar, backups, packaging, and docs.
 
 ---
 
@@ -89,7 +91,9 @@ language, date formats) is planned post-1.0.
 
 1. Build and run the server (see [Development](#development) below), then
    open `http://localhost:7845` and paste the API key from `config.yaml` in
-   your data directory. The UI is Plex-style: a sidebar with **Home** plus
+   your data directory (or set a login account under **Settings → General →
+   Security**, which replaces the key prompt with a sign-in page). The UI
+   is Plex-style: a sidebar with **Home** plus
    one entry per library — and a library only appears once you've set it up
    (added its root folder, or already own content of that type). Home shows
    per-library Recently-added and Wanted rows with cover art; each library
@@ -101,11 +105,12 @@ language, date formats) is planned post-1.0.
    are separate libraries: a book belongs only to the format libraries you
    added it to (or own), and the book detail offers "Add to
    Audiobooks/Ebooks" to cross-add with a monitor prompt.
-2. **Settings → Metadata Provider:** paste your
+2. **Settings → Metadata:** paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
    then **Save** — search goes live immediately, no restart.
-3. **Settings → Root Folders:** add the folder(s) where your media lives —
-   one root per media type (ebook, audiobook, manga, comic, magazine).
+3. **Settings → Media Management → Root Folders:** add the folder(s) where
+   your media lives — one root per media type (ebook, audiobook, manga,
+   comic, magazine).
 4. **Search:** find authors or books on Hardcover and add them to the
    library (adding an author pulls the full bibliography; adding a book
    pulls its editions).
@@ -124,21 +129,23 @@ language, date formats) is planned post-1.0.
    sweeps everything at once, and a background pass does the same every six
    hours. Finished downloads import automatically (checked every minute, or
    via **Import now**), the **Activity** tab shows the live queue and grab
-   history, and format preferences live under **Settings → Quality
-   Profiles**.
+   history, and format preferences live under **Settings → Libraries**
+   (quality profiles).
 
 **Audiobooks:** add an audiobook root folder, and scanning understands both
 `Author/Title.m4b` and multi-file `Author/Title/*.mp3` layouts (each book
-folder is one unit). To acquire a book as an audiobook, open the book,
-monitor one of its audiobook editions, and either wait for the automatic
-sweep or pick **audiobook** in the book's search controls. Audiobook
+folder is one unit). To acquire a book as an audiobook, add it to the
+Audiobooks library — either add the author/book from the Audiobooks page,
+or open the book in Ebooks and hit **+ Add to Audiobooks** (you'll be asked
+whether to monitor it) — then wait for the automatic sweep or use the
+book's Auto grab / Search releases from the Audiobooks side. Audiobook
 searches use each indexer's **Audio categories** (default `3030`), and
 imports land as `Author/Book Title/` folders — Audiobookshelf-ready.
 
-**Manga & comics** are series-first: search with type **Manga** (AniList,
-no key needed) or **Comics** (needs a free ComicVine API key, entered on
-the Metadata settings card), add the series, and every volume/issue lands
-in the **Series** tab with owned/wanted badges and per-volume Auto grab.
+**Manga & comics** are series-first: from the Manga or Comics library page,
+search AniList (no key needed) or ComicVine (needs a free API key, entered
+under **Settings → Metadata**), add the series, and its detail page lists
+every volume/issue with owned/wanted badges and per-volume Auto grab.
 "Monitor future volumes" is the series' monitor toggle — refreshes (manual
 or the daily sweep) discover new volumes and start monitoring them. One
 AniList quirk: *ongoing* manga often have no official volume count yet, so
@@ -149,7 +156,7 @@ Manga/comic searches use each indexer's **Comic categories** (default
 write `ComicInfo.xml` into CBZ archives for Kavita/Komga.
 
 **Magazines** work LazyLibrarian-style — periodicals have no metadata
-provider, so you add one **by name** (Series tab → "Add magazine"). LibriNode
+provider, so you add one **by name** (Magazines library → **+ Add**). LibriNode
 then recognizes issues by date or number in release and file names
 (`The Economist - 2026-07-04.pdf`, `Retro Gamer Issue 261`): scanning a
 magazine root materializes owned issues into the library automatically, and
@@ -167,7 +174,7 @@ LibriNode's native JSON and Readarr v1 resources, and
 `/api/v1/system/status` reports a Readarr-compatible `version` for
 Prowlarr's checks (LibriNode's own version is `appVersion`).
 
-File naming templates live under **Settings → File Naming**. Tokens:
+File naming templates live under **Settings → Media Management**. Tokens:
 `{Author Name}`, `{Author SortName}`, `{Book Title}`, `{Series Title}`,
 `{Series Position}`, `{Release Year}` — tokens without a value drop out
 cleanly, so the default
@@ -225,10 +232,10 @@ scriptable:
 | Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (empty username disables), `POST /auth/apikey/regenerate` |
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
-| Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}`, `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
+| Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}` (`?deleteFiles=true` also removes files), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections) |
-| Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}`, `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
-| Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}`, `PUT /book/{id}/library` (per-format membership + monitored), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
+| Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
+| Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
@@ -375,7 +382,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phases 0–4 complete: all five media types work end-to-end.** Ebooks and audiobooks flow author-first from Hardcover; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Phase 5 (polish & 1.0 — full UI overhaul, upgrade handling, calendar, backups, packaging; external notifications deferred to post-1.0) is next.
+🚧 **Pre-alpha — Phases 0–4 complete and Phase 5 well underway.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). The UI is Plex-style (sidebar libraries, poster grids, detail pages, grouped settings) with health-check banners, an optional login, delete-from-disk options, and a log viewer. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Remaining before 1.0: per-library Wanted page, calendar, indexer backoff, seed goals, pagination, backups, packaging, docs, and OPF sidecars — external notifications are deferred to post-1.0.
 
 ## License
 
