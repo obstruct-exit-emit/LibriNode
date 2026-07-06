@@ -4,6 +4,7 @@ import {
   ApiError,
   getApiKey,
   setApiKey,
+  type AuthStatus,
   type HealthIssue,
   type LibraryStatus,
 } from "./api";
@@ -46,11 +47,21 @@ const libraryIcons: Record<string, string> = {
 
 export default function App() {
   const [key, setKey] = useState(getApiKey());
+  const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [connected, setConnected] = useState(false);
   const [libraries, setLibraries] = useState<LibraryStatus[]>([]);
   const [health, setHealth] = useState<HealthIssue[]>([]);
   const [page, setPage] = useState<Page>({ name: "home" });
   const [error, setError] = useState("");
+
+  // Login sessions replace the API-key prompt once an account is set up
+  // (Settings → General → Security); without one, the key prompt remains.
+  useEffect(() => {
+    api
+      .authStatus()
+      .then(setAuth)
+      .catch(() => setAuth({ authEnabled: false, authenticated: false }));
+  }, []);
 
   const reloadLibraries = useCallback(() => {
     api
@@ -76,7 +87,9 @@ export default function App() {
   }, [connected, reloadHealth]);
 
   useEffect(() => {
-    if (!key) return;
+    if (!auth) return; // auth status still loading
+    const ready = auth.authEnabled ? auth.authenticated : !!key;
+    if (!ready) return;
     setError("");
     api
       .systemStatus()
@@ -88,7 +101,7 @@ export default function App() {
         setConnected(false);
         setError(err instanceof ApiError ? err.message : String(err));
       });
-  }, [key, reloadLibraries]);
+  }, [auth, key, reloadLibraries]);
 
   const active = libraries.filter((l) => l.active);
 
@@ -133,6 +146,19 @@ export default function App() {
             {navButton({ name: "activity" }, "Activity", "⬇️")}
             {navButton({ name: "settings" }, "Settings", "⚙️")}
             {navButton({ name: "system" }, "System", "🖥️")}
+            {auth?.authEnabled && auth.authenticated && (
+              <button
+                className="nav-item"
+                onClick={() => {
+                  api
+                    .logout()
+                    .catch(() => {})
+                    .finally(() => location.reload());
+                }}
+              >
+                <span className="nav-icon">🚪</span> Log out
+              </button>
+            )}
           </nav>
         </aside>
       )}
@@ -140,12 +166,22 @@ export default function App() {
       <main className="content">
         {!connected && <h1 className="brand">🖋️ LibriNode</h1>}
 
-        {!key && (
+        {auth?.authEnabled && !auth.authenticated && (
+          <section className="card">
+            <h2>Sign in</h2>
+            <LoginForm
+              onLoggedIn={() => setAuth({ authEnabled: true, authenticated: true })}
+            />
+          </section>
+        )}
+
+        {auth && !auth.authEnabled && !key && (
           <section className="card">
             <h2>Connect</h2>
             <p>
               Paste the API key from <code>config.yaml</code> in your LibriNode
-              data directory.
+              data directory. (You can set up a login account later under
+              Settings → General.)
             </p>
             <ApiKeyForm onSave={setKey} />
           </section>
@@ -225,6 +261,48 @@ export default function App() {
         {connected && page.name === "system" && <SystemView onError={setError} />}
       </main>
     </div>
+  );
+}
+
+function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!username.trim() || !password) return;
+        setBusy(true);
+        setNotice("");
+        api
+          .login(username.trim(), password)
+          .then(onLoggedIn)
+          .catch((err: unknown) =>
+            setNotice(err instanceof Error ? err.message : String(err)),
+          )
+          .finally(() => setBusy(false));
+      }}
+    >
+      <input
+        placeholder="Username"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        autoFocus
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      <button type="submit" disabled={busy || !username.trim() || !password}>
+        {busy ? "Signing in…" : "Sign in"}
+      </button>
+      {notice && <span className="notice bad">{notice}</span>}
+    </form>
   );
 }
 

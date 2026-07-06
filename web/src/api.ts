@@ -208,6 +208,11 @@ export interface GrabRecord {
   completedAt?: string;
 }
 
+export interface AuthStatus {
+  authEnabled: boolean;
+  authenticated: boolean;
+}
+
 export interface HealthIssue {
   source: string;
   level: "error" | "warning";
@@ -369,6 +374,19 @@ const json = (body: unknown): RequestInit => ({
 
 export const api = {
   systemStatus: () => request<SystemStatus>("/api/v1/system/status"),
+  authStatus: () => request<AuthStatus>("/api/v1/auth/status"),
+  login: (username: string, password: string) =>
+    request<{ ok: boolean }>("/api/v1/auth/login", json({ username, password })),
+  logout: () => request<void>("/api/v1/auth/logout", { method: "POST" }),
+  setCredentials: (username: string, password: string) =>
+    request<{ authEnabled: boolean }>("/api/v1/auth/credentials", {
+      ...json({ username, password }),
+      method: "PUT",
+    }),
+  regenerateApiKey: () =>
+    request<{ apiKey: string }>("/api/v1/auth/apikey/regenerate", {
+      method: "POST",
+    }),
   health: () => request<HealthResult>("/api/v1/health"),
   checkHealth: () =>
     request<HealthResult>("/api/v1/health/check", { method: "POST" }),

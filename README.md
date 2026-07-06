@@ -65,7 +65,7 @@ Settings
 ├── Metadata             (provider choice + API tokens: Hardcover, ComicVine)
 ├── Indexers             (manual Newznab/Torznab or Prowlarr sync; per-type categories under Advanced)
 ├── Download Clients     (qBittorrent, SABnzbd; category mapping under Advanced)
-└── General              (instance info, API key; auth, backups, and logging land before 1.0)
+└── General              (login account, API-key regeneration, instance info; backups and logging land before 1.0)
 ```
 
 Every settings page follows the same pattern: sensible defaults, a **Test**
@@ -222,6 +222,7 @@ scriptable:
 | Area | Endpoints |
 |---|---|
 | System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now) |
+| Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (empty username disables), `POST /auth/apikey/regenerate` |
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}`, `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
@@ -245,6 +246,46 @@ token: paste it under **Settings → Metadata Provider** in the web UI (it
 takes effect immediately — no restart) or set `LIBRINODE_HARDCOVER_TOKEN`.
 Tokens live under the `metadata:` section of `config.yaml`. Without one,
 metadata endpoints return 503.
+
+## Security & remote access
+
+- **Login page:** set a username and password under **Settings → General →
+  Security** and the UI switches from the API-key prompt to a login page.
+  Sessions are 30-day cookies held in memory, so a server restart signs
+  everyone out. Disable login in the same place.
+- **API key:** always works for automation (Prowlarr sync, scripts) via the
+  `X-Api-Key` header or `?apikey=`. Regenerate it under **Settings →
+  General** — the old key stops working immediately, so update Prowlarr and
+  any scripts right after.
+- **Passwords** are stored only as PBKDF2-SHA256 hashes in `config.yaml`;
+  failed login attempts are logged and throttled.
+- **HTTPS:** LibriNode itself serves plain HTTP. For access beyond your LAN,
+  put it behind a TLS-terminating reverse proxy **and enable the login**.
+  Caddy makes it a two-liner (automatic certificates):
+
+  ```
+  librinode.example.com {
+      reverse_proxy 127.0.0.1:7845
+  }
+  ```
+
+  nginx equivalent:
+
+  ```nginx
+  server {
+      listen 443 ssl;
+      server_name librinode.example.com;
+      # ssl_certificate / ssl_certificate_key ...
+      location / {
+          proxy_pass http://127.0.0.1:7845;
+          proxy_set_header Host $host;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+      }
+  }
+  ```
+
+  Never expose the raw HTTP port directly to the internet.
 
 ---
 
@@ -303,7 +344,7 @@ metadata endpoints return 503.
 - [x] Full settings UI as specced above: grouped pages (Media Management / Libraries / Metadata / Indexers / Download Clients / General) with Test buttons on every connection — including saved indexers and download clients — advanced options behind toggles, and a General page with instance info and per-browser API key. UI-preferences page (theme/language/dates) deferred post-1.0
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
 - [x] Health checks: background monitoring every 15 minutes — root folder unreachable, indexer failing its connection check, download client down or misconfigured, metadata provider token invalid, plus warnings when no indexer/download client/provider is set up at all. Issues show as a warning banner on every page and in a System-page Health card with a run-now button (`GET /health`, `POST /health/check`)
-- [ ] Authentication: login page with username/password sessions (replacing the raw API-key prompt), API-key regeneration; SSL/reverse-proxy guidance
+- [x] Authentication: optional login account (Settings → General → Security) switches the UI from the API-key prompt to a username/password login page with 30-day cookie sessions (in-memory — a restart signs everyone out); passwords stored as PBKDF2-SHA256 hashes only; failed logins logged and throttled; the API key keeps working for Prowlarr/scripts and can be regenerated from the UI; SSL/reverse-proxy guidance in the README
 - [ ] Wanted page per library: everything missing, with search buttons
 - [ ] Delete options: removing a book/author/series can optionally delete its files from disk (otherwise the next scan re-finds them as strays)
 - [ ] Log file on disk (with rotation) + log viewer in the UI (System → events)

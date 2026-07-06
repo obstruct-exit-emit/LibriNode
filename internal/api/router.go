@@ -37,6 +37,7 @@ type server struct {
 	importer  *importer.Service
 	search    *autosearch.Service
 	health    *health.Service
+	sessions  *sessionStore
 	webFS     fs.FS // nil when no frontend build is embedded
 	version   string
 }
@@ -62,6 +63,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		importer:  importer.New(store, downloads, org),
 		search:    autosearch.New(store, indexers, downloads),
 		health:    health.New(store, indexers, downloads, providers),
+		sessions:  newSessionStore(),
 		version:   version,
 	}
 	if dist, ok := web.FS(); ok {
@@ -70,6 +72,13 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ping", s.handlePing)
+	// Auth endpoints: status and login are unauthenticated by nature; the
+	// rest require an existing session or the API key.
+	mux.HandleFunc("GET /api/v1/auth/status", s.handleAuthStatus)
+	mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
+	mux.HandleFunc("PUT /api/v1/auth/credentials", s.auth(s.handleSetCredentials))
+	mux.HandleFunc("POST /api/v1/auth/apikey/regenerate", s.auth(s.handleRegenerateAPIKey))
 	mux.HandleFunc("GET /api/v1/system/status", s.auth(s.handleSystemStatus))
 	mux.HandleFunc("GET /api/v1/health", s.auth(s.handleHealth))
 	mux.HandleFunc("POST /api/v1/health/check", s.auth(s.handleHealthCheck))
@@ -159,17 +168,23 @@ func (s *server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.health.Check(r.Context()))
 }
 
+// auth admits requests carrying the API key (scripts, Prowlarr) or a valid
+// login session cookie (the web UI once authentication is enabled).
 func (s *server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("X-Api-Key")
 		if key == "" {
 			key = r.URL.Query().Get("apikey")
 		}
-		if key != s.cfg.APIKey {
-			writeError(w, http.StatusUnauthorized, "invalid or missing API key")
+		if key != "" && key == s.cfg.CurrentAPIKey() {
+			next(w, r)
 			return
 		}
-		next(w, r)
+		if s.hasSession(r) {
+			next(w, r)
+			return
+		}
+		writeError(w, http.StatusUnauthorized, "invalid or missing API key")
 	}
 }
 

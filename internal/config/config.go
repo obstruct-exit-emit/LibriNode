@@ -68,12 +68,24 @@ func defaultNaming() NamingSettings {
 	}
 }
 
+// AuthSettings holds the optional login account. The password is stored
+// only as a PBKDF2 hash; an empty username means authentication is disabled
+// (the UI falls back to the API-key prompt).
+type AuthSettings struct {
+	Username     string `yaml:"username"`
+	PasswordHash string `yaml:"password_hash"`
+}
+
+// Enabled reports whether a login account is configured.
+func (a AuthSettings) Enabled() bool { return a.Username != "" }
+
 type Config struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	APIKey   string `yaml:"api_key"`
 	LogLevel string `yaml:"log_level"` // debug, info, warn, error
 
+	Auth     AuthSettings     `yaml:"auth,omitempty"`
 	Metadata MetadataSettings `yaml:"metadata"`
 	Naming   NamingSettings   `yaml:"naming"`
 
@@ -255,6 +267,42 @@ func (c *Config) MetadataSettings() MetadataSettings {
 		out.Providers[name] = s
 	}
 	return out
+}
+
+// AuthSettings returns the current login account (possibly disabled).
+func (c *Config) AuthSettings() AuthSettings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Auth
+}
+
+// SetAuth replaces the login account and persists the config. An empty
+// username disables authentication.
+func (c *Config) SetAuth(a AuthSettings) error {
+	c.mu.Lock()
+	c.Auth = a
+	c.mu.Unlock()
+	return c.save()
+}
+
+// CurrentAPIKey returns the API key, safe against concurrent regeneration.
+func (c *Config) CurrentAPIKey() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.APIKey
+}
+
+// RegenerateAPIKey replaces the API key with a fresh one and persists it.
+// Existing integrations (Prowlarr, scripts) must be updated to the new key.
+func (c *Config) RegenerateAPIKey() (string, error) {
+	c.mu.Lock()
+	c.APIKey = newAPIKey()
+	key := c.APIKey
+	c.mu.Unlock()
+	if err := c.save(); err != nil {
+		return "", err
+	}
+	return key, nil
 }
 
 func newAPIKey() string {

@@ -3,6 +3,7 @@ import {
   api,
   getApiKey,
   setApiKey,
+  type AuthStatus,
   type DownloadClient,
   type Indexer,
   type MetadataSettings,
@@ -82,13 +83,14 @@ export default function SettingsView({
   );
 }
 
-// General: instance facts plus the API key this browser uses. Server-side
-// general options (host/port, SSL, proxy) live in config.yaml until the
-// authentication work lands.
+// General: instance facts, the login account, and the API key. Server-side
+// options (host/port, SSL, proxy) live in config.yaml — see the README's
+// reverse-proxy section for HTTPS guidance.
 function GeneralCard({ onError }: { onError: (message: string) => void }) {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [key, setKey] = useState(getApiKey());
   const [showKey, setShowKey] = useState(false);
+  const [keyNotice, setKeyNotice] = useState("");
 
   useEffect(() => {
     api
@@ -97,40 +99,33 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
 
+  const regenerate = () => {
+    if (
+      !confirm(
+        "Regenerate the API key?\n\nProwlarr and any scripts using the current key stop working until you update them.",
+      )
+    ) {
+      return;
+    }
+    api
+      .regenerateApiKey()
+      .then((r) => {
+        setApiKey(r.apiKey); // keep this browser working
+        setKey(r.apiKey);
+        setKeyNotice("✓ New key generated — update Prowlarr and any scripts using the old one");
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  };
+
   return (
     <>
-      <section className="card">
-        <h2>Instance</h2>
-        {status ? (
-          <dl>
-            <dt>Version</dt>
-            <dd>{status.appVersion ?? status.version}</dd>
-            <dt>Platform</dt>
-            <dd>
-              {status.os}/{status.arch}
-            </dd>
-            <dt>Data directory</dt>
-            <dd>{status.dataDir}</dd>
-            <dt>Uptime</dt>
-            <dd>{status.uptime}</dd>
-          </dl>
-        ) : (
-          <p className="muted">Loading…</p>
-        )}
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Host, port, and data directory are set in <code>config.yaml</code>{" "}
-          (or <code>LIBRINODE_*</code> environment variables) and need a
-          restart. Login accounts, API-key regeneration, health checks,
-          backups, and a log viewer are planned before 1.0.
-        </p>
-      </section>
+      <SecurityCard onError={onError} />
 
       <section className="card">
         <h2>API Key</h2>
         <p className="muted">
-          The key this browser sends with every request — from{" "}
-          <code>config.yaml</code> in the data directory. Changing it here only
-          changes what this browser uses.
+          Used by scripts and Prowlarr (and by this browser when no login
+          account is set). Regenerating invalidates the old key everywhere.
         </p>
         <div className="settings-form">
           <label>
@@ -156,10 +151,149 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
             >
               Save & reconnect
             </button>
+            <button className="danger" onClick={regenerate}>
+              Regenerate
+            </button>
+            {keyNotice && <span className="notice ok">{keyNotice}</span>}
           </div>
         </div>
       </section>
+
+      <section className="card">
+        <h2>Instance</h2>
+        {status ? (
+          <dl>
+            <dt>Version</dt>
+            <dd>{status.appVersion ?? status.version}</dd>
+            <dt>Platform</dt>
+            <dd>
+              {status.os}/{status.arch}
+            </dd>
+            <dt>Data directory</dt>
+            <dd>{status.dataDir}</dd>
+            <dt>Uptime</dt>
+            <dd>{status.uptime}</dd>
+          </dl>
+        ) : (
+          <p className="muted">Loading…</p>
+        )}
+        <p className="muted" style={{ marginBottom: 0 }}>
+          Host, port, and data directory are set in <code>config.yaml</code>{" "}
+          (or <code>LIBRINODE_*</code> environment variables) and need a
+          restart. For HTTPS, run LibriNode behind a reverse proxy — see the
+          README. Backups and a log viewer are planned before 1.0.
+        </p>
+      </section>
     </>
+  );
+}
+
+// SecurityCard manages the optional login account. When one is set, the UI
+// requires signing in (sessions) instead of pasting the API key; the key
+// keeps working for scripts and Prowlarr.
+function SecurityCard({ onError }: { onError: (message: string) => void }) {
+  const [status, setStatus] = useState<AuthStatus | null>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const reload = useCallback(() => {
+    api
+      .authStatus()
+      .then(setStatus)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  useEffect(reload, [reload]);
+
+  const save = () => {
+    if (password !== confirmPw) {
+      setNotice("✗ Passwords don't match");
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    api
+      .setCredentials(username.trim(), password)
+      .then(() => {
+        setNotice("✓ Login required from now on — this browser is already signed in");
+        setPassword("");
+        setConfirmPw("");
+        reload();
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  const disable = () => {
+    if (!confirm("Disable the login requirement? The UI goes back to the API-key prompt.")) return;
+    setBusy(true);
+    setNotice("");
+    api
+      .setCredentials("", "")
+      .then(() => {
+        setNotice("✓ Login disabled");
+        reload();
+      })
+      .catch((err: unknown) =>
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <section className="card">
+      <h2>Security</h2>
+      <p className="muted">
+        {status?.authEnabled
+          ? "A login account is set — the UI requires signing in. Set new credentials below to change them."
+          : "No login account yet — the UI asks for the raw API key. Set a username and password to switch to a login page (sessions last 30 days; a server restart signs everyone out)."}
+      </p>
+      <div className="settings-form">
+        <label>
+          Username
+          <input value={username} onChange={(e) => setUsername(e.target.value)} />
+        </label>
+        <label>
+          Password (min. 8 characters)
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        <label>
+          Confirm password
+          <input
+            type="password"
+            value={confirmPw}
+            onChange={(e) => setConfirmPw(e.target.value)}
+          />
+        </label>
+        <div className="settings-actions">
+          <button
+            disabled={busy || !username.trim() || password.length < 8}
+            onClick={save}
+          >
+            {status?.authEnabled ? "Update credentials" : "Enable login"}
+          </button>
+          {status?.authEnabled && (
+            <button className="danger" disabled={busy} onClick={disable}>
+              Disable login
+            </button>
+          )}
+          {notice && (
+            <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
+              {notice}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
