@@ -6,13 +6,14 @@ LibriNode monitors your wanted list, searches your indexers, sends releases to y
 
 Runs on **Windows** and **Linux** (bare metal or Docker).
 
-> 🚧 **Pre-alpha, but the loop is closed.** Phases 0–4 are complete: all
-> five media types work end-to-end, from metadata search through automatic
-> grabbing to organized imports —
-> [see what works now](#getting-started-what-works-today). Phase 5 polish is
-> well underway (Plex-style UI, per-format libraries, grouped settings,
-> upgrade handling, health checks, login, logging are done); what remains
-> before 1.0 is the wanted page, calendar, backups, packaging, and docs.
+> 🚧 **Pre-1.0, but feature-complete.** Phases 0–5 are built: all five
+> media types work end-to-end, from metadata search through automatic
+> grabbing to organized imports, wrapped in the Plex-style UI with health
+> checks, login, backups, calendar, and packaging —
+> [see what works now](#getting-started-what-works-today). What stands
+> between here and calling it 1.0 is hardening: real-world burn-in, live
+> verification of the remaining integrations (Prowlarr, download clients,
+> ComicVine), and code-signed release builds.
 
 ---
 
@@ -67,7 +68,7 @@ Settings
 ├── Metadata             (provider choice + API tokens: Hardcover, ComicVine)
 ├── Indexers             (manual Newznab/Torznab or Prowlarr sync; per-type categories under Advanced)
 ├── Download Clients     (qBittorrent, SABnzbd; category mapping under Advanced)
-└── General              (login account, API-key regeneration, instance info; backups and logging land before 1.0)
+└── General              (login account, API-key regeneration, instance info; health, logs, and backups live on the System page)
 ```
 
 Every settings page follows the same pattern: sensible defaults, a **Test**
@@ -84,7 +85,7 @@ language, date formats) is planned post-1.0.
 - **Database:** SQLite via `modernc.org/sqlite` (pure Go, no cgo) with embedded schema migrations
 - **API:** versioned REST API (`/api/v1`) with API-key auth — the same API the UI uses, so everything is scriptable; Prowlarr-compatible surface for app sync
 - **Default port:** `7845`
-- **Distribution:** Windows installer + service, Linux systemd unit, Docker image (linuxserver-style paths/PUID/PGID conventions)
+- **Distribution:** Dockerfile + compose example (PUID/PGID conventions), systemd unit, Windows startup scripts, and a tag-triggered release workflow with version-stamped binaries today; code-signed installers, a native Windows service, and published images land with 1.0
 - **License:** GPL-3.0 (same family as Sonarr/Radarr/Prowlarr)
 
 ## Getting started (what works today)
@@ -131,6 +132,10 @@ language, date formats) is planned post-1.0.
    via **Import now**), the **Activity** tab shows the live queue and grab
    history, and format preferences live under **Settings → Libraries**
    (quality profiles).
+8. Beyond the library pages: every library has a **Wanted** card with
+   per-item search, the **Calendar** page lists dated releases across all
+   libraries, and the **System** page carries health checks, backups (with
+   staged restore), and the log viewer.
 
 **Audiobooks:** add an audiobook root folder, and scanning understands both
 `Author/Title.m4b` and multi-file `Author/Title/*.mp3` layouts (each book
@@ -215,6 +220,9 @@ generated API key — and the SQLite database. Override the location with
 `--data <dir>`; settings can also be set via `LIBRINODE_*` env vars
 (`LIBRINODE_PORT`, `LIBRINODE_API_KEY`, ...).
 
+Full documentation lives in [`docs/`](docs/index.md) (`pip install
+mkdocs-material && mkdocs serve` for the site).
+
 API calls need the key from `config.yaml`:
 
 ```sh
@@ -230,10 +238,11 @@ scriptable:
 |---|---|
 | System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now), `GET /log?lines=N` (tail the log file) |
 | Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (empty username disables), `POST /auth/apikey/regenerate` |
+| Backups | `GET/POST /backup`, `DELETE /backup/{name}`, `POST /backup/{name}/restore` (staged, applied on restart), `GET /backup/{name}/download` |
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}` (`?deleteFiles=true` also removes files), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
-| Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections) |
+| Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
 | Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
 | Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Editions | `PUT /edition/{id}/monitor` |
@@ -242,7 +251,7 @@ scriptable:
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
-| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` |
+| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` (templates for all five media types) |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
 bibliography; `POST /book` takes `{"foreignBookId": "..."}` and pulls one
@@ -352,18 +361,18 @@ metadata endpoints return 503.
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
 - [x] Health checks: background monitoring every 15 minutes — root folder unreachable, indexer failing its connection check, download client down or misconfigured, metadata provider token invalid, plus warnings when no indexer/download client/provider is set up at all. Issues show as a warning banner on every page and in a System-page Health card with a run-now button (`GET /health`, `POST /health/check`)
 - [x] Authentication: optional login account (Settings → General → Security) switches the UI from the API-key prompt to a username/password login page with 30-day cookie sessions (in-memory — a restart signs everyone out); passwords stored as PBKDF2-SHA256 hashes only; failed logins logged and throttled; the API key keeps working for Prowlarr/scripts and can be regenerated from the UI; SSL/reverse-proxy guidance in the README
-- [ ] Wanted page per library: everything missing, with search buttons
+- [x] Wanted page per library: every library page carries a Wanted card — monitored but missing that format's file — with per-item Auto grab (`GET /wanted?library=X`)
 - [x] Delete options: removing an author/series — or taking a book out of a format library — can optionally delete the files from disk via an opt-in checkbox in the removal panel (`?deleteFiles=true` on DELETE endpoints, `deleteFiles` on `PUT /book/{id}/library`; book-level removal deletes only that format's files). Only paths inside a configured root folder are ever touched, emptied folders are pruned up to (never including) the root, and without the option the next scan re-finds the files as strays
 - [x] Log file on disk with size rotation (`<data>/logs/librinode.log`, 5 MB, 3 old files kept) + log viewer on the System page: tail up to 2000 lines with a text filter and refresh (`GET /log?lines=N`)
-- [ ] Calendar view (upcoming releases across all libraries)
+- [x] Calendar view: agenda-style sidebar page — dated releases across all libraries, Upcoming and Recently released, grouped by date with owned/wanted badges (`GET /calendar?past=&days=`)
 - [x] Upgrade handling: profiles with "allow upgrades" keep owned books wanted until the cutoff format (default: the profile's best); upgrade searches only approve strictly better formats, and imports replace the old file on disk and in the library
-- [ ] Per-indexer failure backoff (rest an indexer that keeps erroring instead of hammering it every sweep)
-- [ ] Seed-goal handling: qBittorrent ratio polling + remove-after-seeding
-- [ ] Pagination/virtualized browsing in the new UI (built in from the start, not retrofitted)
-- [ ] Backups + restore
-- [ ] Windows installer/service, Linux packages/systemd, official Docker image — with real version stamping (ldflags) in CI release builds
-- [ ] Docs site + API reference
-- [ ] OPF sidecar files for Calibre/Audiobookshelf; rename/organize support for non-ebook libraries
+- [x] Per-indexer failure backoff: a failing indexer rests 5 minutes, doubling per consecutive failure up to 6 hours, with a resting-until notice in search errors; one success clears it
+- [x] Seed-goal handling: configure ratio/time goals in qBittorrent; when it pauses a finished torrent (goal met), LibriNode removes imported grabs' torrents with their data — foreign torrents in the category are never touched
+- [x] Scalable browsing: library grids over 10 cards get a client-side filter box and incremental rendering (60 cards + Show more), keeping large libraries responsive
+- [x] Backups + restore: System-page card zips a consistent database snapshot (VACUUM INTO) + config.yaml into `<data>/backups`, with download/delete; restore stages the files and applies them on the next start, keeping the replaced ones as `*.pre-restore`
+- [x] Packaging: multi-stage Dockerfile (PUID/PGID entrypoint) + compose example, systemd unit with hardening, Windows install/uninstall scripts (Task-Scheduler startup), and a tag-triggered release workflow building version-stamped binaries (ldflags) for linux amd64/arm64 + windows amd64. *Still for 1.0: code-signed Windows installer with a native service, published Docker images*
+- [x] Docs site + API reference: `docs/` (mkdocs-material) — installation, quickstart, libraries, acquisition, configuration, full API table, development guide
+- [x] OPF sidecar files: imports write `metadata.opf` into audiobook folders (Audiobookshelf) and `<file>.opf` beside ebooks (Calibre) — title, author, description, ISBN/language, calibre:series. Rename/organize now covers every media type: series templates for manga/comics/magazines, multi-file audiobooks moving as whole folders with their sidecars, and per-type templates all editable in Settings → Media Management
 
 ### Post-1.0 ideas
 - [ ] "Missing" view per author: a dropdown in the author area listing media you don't have — bibliography gaps from the metadata provider, organized (by series, then year) — with one-click add/monitor
@@ -382,7 +391,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-alpha — Phases 0–4 complete and Phase 5 well underway.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing, and imports that land in reader-friendly layouts (Audiobookshelf for audio, Kavita/Komga for comics — with `ComicInfo.xml` written into CBZs). The UI is Plex-style (sidebar libraries, poster grids, detail pages, grouped settings) with health-check banners, an optional login, delete-from-disk options, and a log viewer. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. Remaining before 1.0: per-library Wanted page, calendar, indexer backoff, seed goals, pagination, backups, packaging, docs, and OPF sidecars — external notifications are deferred to post-1.0.
+🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. **1.0 waits on**: real-world burn-in, those live verifications, and code-signed installers/published images — external notifications and the per-author Missing view stay post-1.0.
 
 ## License
 
