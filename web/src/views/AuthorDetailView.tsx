@@ -134,6 +134,7 @@ function BookRow({
   const monitored = library === "ebook" ? book.ebookMonitored : book.audiobookMonitored;
   const otherLibrary = library === "ebook" ? "audiobook" : "ebook";
   const inOther = library === "ebook" ? book.inAudiobookLibrary : book.inEbookLibrary;
+  const ownedOther = library === "ebook" ? book.hasAudiobookFile : book.hasEbookFile;
 
   const loadDetail = () => {
     if (!open) {
@@ -219,7 +220,19 @@ function BookRow({
             <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
               Search releases
             </button>
-            {!inOther && (
+            {inOther ? (
+              <span
+                className={ownedOther ? "owned yes" : "owned no"}
+                title={
+                  ownedOther
+                    ? `You own the ${otherLibrary} of this book`
+                    : `Also in the ${otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"} library, not owned yet`
+                }
+              >
+                {otherLibrary === "audiobook" ? "🎧" : "📖"}{" "}
+                {otherLibrary} {ownedOther ? "owned" : "in library"}
+              </span>
+            ) : (
               <button
                 className="toggle"
                 title={`This book isn't in the ${otherLibrary} library yet`}
