@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/librinode/librinode/internal/database"
 )
@@ -260,5 +261,62 @@ func TestSearchAllMergesAndReportsFailures(t *testing.T) {
 	}
 	if len(errs) != 1 || !strings.HasPrefix(errs[0], "dead:") {
 		t.Errorf("errs = %v, want one from 'dead'", errs)
+	}
+}
+
+func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+	now := time.Now()
+	svc.now = func() time.Time { return now }
+
+	dead := &Indexer{Name: "dead", Type: TypeNewznab, BaseURL: "http://127.0.0.1:1",
+		Categories: "7000,7020", Enabled: true, Priority: 25}
+	if err := store.Add(dead); err != nil {
+		t.Fatal(err)
+	}
+
+	// First sweep: real failure recorded.
+	_, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(errs) != 1 || strings.Contains(errs[0], "resting") {
+		t.Fatalf("first sweep errs = %v, want a real failure", errs)
+	}
+
+	// Second sweep inside the rest window: skipped, not retried.
+	_, errs, err = svc.SearchAll(context.Background(), "mort", "ebook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(errs) != 1 || !strings.Contains(errs[0], "resting") {
+		t.Fatalf("second sweep errs = %v, want a resting notice", errs)
+	}
+
+	// Past the first rest (5m): retried again — failure doubles the rest.
+	now = now.Add(6 * time.Minute)
+	_, errs, _ = svc.SearchAll(context.Background(), "mort", "ebook")
+	if len(errs) != 1 || strings.Contains(errs[0], "resting") {
+		t.Fatalf("post-rest sweep errs = %v, want a real failure", errs)
+	}
+	if until, ok := svc.resting(dead.ID); !ok || until.Sub(now) != 10*time.Minute {
+		t.Fatalf("second failure should rest 10m, got %v (resting=%v)", until.Sub(now), ok)
+	}
+
+	// A success clears the slate. Point the indexer at a working server.
+	good := mockIndexer(t, newznabSearchXML, "")
+	defer good.Close()
+	dead.BaseURL = good.URL
+	if err := store.Update(dead); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(11 * time.Minute)
+	_, errs, _ = svc.SearchAll(context.Background(), "mort", "ebook")
+	if len(errs) != 0 {
+		t.Fatalf("recovered sweep errs = %v, want none", errs)
+	}
+	if _, ok := svc.resting(dead.ID); ok {
+		t.Fatal("success should clear the backoff")
 	}
 }
