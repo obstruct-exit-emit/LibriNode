@@ -478,6 +478,16 @@ button.toggle.on {
   text-overflow: ellipsis;
 }
 
+/* --- Settings sub-navigation (grouped pages) --- */
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.6rem;
+}
+
 /* --- Embedded add panel --- */
 .add-panel {
   border: 1px solid var(--border);

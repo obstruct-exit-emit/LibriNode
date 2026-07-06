@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  getApiKey,
+  setApiKey,
   type DownloadClient,
   type Indexer,
   type MetadataSettings,
@@ -8,7 +10,20 @@ import {
   type ProviderSettings,
   type QualityProfile,
   type RootFolder,
+  type SystemStatus,
 } from "../api";
+
+// Settings groups, *arr-style: pages organized by concern instead of one
+// long scroll. Order matches the README spec.
+const settingsGroups = [
+  "Media Management",
+  "Libraries",
+  "Metadata",
+  "Indexers",
+  "Download Clients",
+  "General",
+] as const;
+type SettingsGroup = (typeof settingsGroups)[number];
 
 export default function SettingsView({
   onError,
@@ -17,6 +32,8 @@ export default function SettingsView({
   onError: (message: string) => void;
   onLibrariesChanged?: () => void;
 }) {
+  const [group, setGroup] = useState<SettingsGroup>("Media Management");
+
   // Plex-style gating: type-specific settings render only for libraries
   // that are set up. Root Folders always offers every type — that's how a
   // library gets created in the first place.
@@ -36,12 +53,112 @@ export default function SettingsView({
 
   return (
     <>
-      <MetadataCard onError={onError} />
-      <RootFoldersCard onError={onError} onChanged={librariesChanged} />
-      <IndexersCard onError={onError} />
-      <DownloadClientsCard onError={onError} />
-      <QualityProfilesCard onError={onError} activeTypes={activeTypes} />
-      <NamingCard onError={onError} activeTypes={activeTypes} />
+      <nav className="subnav">
+        {settingsGroups.map((g) => (
+          <button
+            key={g}
+            className={g === group ? "tab active" : "tab"}
+            onClick={() => setGroup(g)}
+          >
+            {g}
+          </button>
+        ))}
+      </nav>
+
+      {group === "Media Management" && (
+        <>
+          <RootFoldersCard onError={onError} onChanged={librariesChanged} />
+          <NamingCard onError={onError} activeTypes={activeTypes} />
+        </>
+      )}
+      {group === "Libraries" && (
+        <QualityProfilesCard onError={onError} activeTypes={activeTypes} />
+      )}
+      {group === "Metadata" && <MetadataCard onError={onError} />}
+      {group === "Indexers" && <IndexersCard onError={onError} />}
+      {group === "Download Clients" && <DownloadClientsCard onError={onError} />}
+      {group === "General" && <GeneralCard onError={onError} />}
+    </>
+  );
+}
+
+// General: instance facts plus the API key this browser uses. Server-side
+// general options (host/port, SSL, proxy) live in config.yaml until the
+// authentication work lands.
+function GeneralCard({ onError }: { onError: (message: string) => void }) {
+  const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [key, setKey] = useState(getApiKey());
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    api
+      .systemStatus()
+      .then(setStatus)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  return (
+    <>
+      <section className="card">
+        <h2>Instance</h2>
+        {status ? (
+          <dl>
+            <dt>Version</dt>
+            <dd>{status.appVersion ?? status.version}</dd>
+            <dt>Platform</dt>
+            <dd>
+              {status.os}/{status.arch}
+            </dd>
+            <dt>Data directory</dt>
+            <dd>{status.dataDir}</dd>
+            <dt>Uptime</dt>
+            <dd>{status.uptime}</dd>
+          </dl>
+        ) : (
+          <p className="muted">Loading…</p>
+        )}
+        <p className="muted" style={{ marginBottom: 0 }}>
+          Host, port, and data directory are set in <code>config.yaml</code>{" "}
+          (or <code>LIBRINODE_*</code> environment variables) and need a
+          restart. Login accounts, API-key regeneration, health checks,
+          backups, and a log viewer are planned before 1.0.
+        </p>
+      </section>
+
+      <section className="card">
+        <h2>API Key</h2>
+        <p className="muted">
+          The key this browser sends with every request — from{" "}
+          <code>config.yaml</code> in the data directory. Changing it here only
+          changes what this browser uses.
+        </p>
+        <div className="settings-form">
+          <label>
+            API key
+            <span className="token-row">
+              <input
+                type={showKey ? "text" : "password"}
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+              />
+              <button type="button" className="toggle" onClick={() => setShowKey(!showKey)}>
+                {showKey ? "hide" : "show"}
+              </button>
+            </span>
+          </label>
+          <div className="settings-actions">
+            <button
+              disabled={!key.trim() || key.trim() === getApiKey()}
+              onClick={() => {
+                setApiKey(key.trim());
+                location.reload();
+              }}
+            >
+              Save & reconnect
+            </button>
+          </div>
+        </div>
+      </section>
     </>
   );
 }
@@ -65,6 +182,7 @@ function DownloadClientsCard({
 }) {
   const [clients, setClients] = useState<DownloadClient[]>([]);
   const [draft, setDraft] = useState(emptyDownloadClient);
+  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -118,6 +236,16 @@ function DownloadClientsCard({
                 </span>
                 <span className="row-actions">
                   <span className="muted file-path">{c.host}</span>
+                  <button
+                    className="toggle"
+                    disabled={busy}
+                    title="Check the saved connection still works"
+                    onClick={() => act(async () => {
+                      await api.testDownloadClient(c);
+                    }, `✓ ${c.name}: connection OK`)}
+                  >
+                    test
+                  </button>
                   <button
                     className={c.enabled ? "toggle on" : "toggle"}
                     disabled={busy}
@@ -190,13 +318,24 @@ function DownloadClientsCard({
             <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
           </label>
         )}
-        <label>
-          Category
-          <input
-            value={draft.category}
-            onChange={(e) => set({ category: e.target.value })}
-          />
-        </label>
+        <button
+          type="button"
+          className="toggle"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => setAdvanced(!advanced)}
+        >
+          {advanced ? "▾ hide advanced" : "▸ advanced (category)"}
+        </button>
+        {advanced && (
+          <label>
+            Category
+            <input
+              title="Downloads are tagged with this category so LibriNode only tracks its own"
+              value={draft.category}
+              onChange={(e) => set({ category: e.target.value })}
+            />
+          </label>
+        )}
         <div className="settings-actions">
           <button
             disabled={busy || !draftValid}
@@ -429,6 +568,7 @@ function IndexersCard({
 }) {
   const [indexers, setIndexers] = useState<Indexer[]>([]);
   const [draft, setDraft] = useState(emptyIndexer);
+  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -502,8 +642,10 @@ function IndexersCard({
       <h2>Indexers</h2>
       <p className="muted">
         Newznab (usenet) and Torznab (torrents — Prowlarr/Jackett feeds work)
-        endpoints. Categories default to books (<code>7000,7020</code>).
-        Prowlarr application sync comes later in Phase 2.
+        endpoints. Add them here by hand, or add LibriNode to Prowlarr as a{" "}
+        <strong>Readarr</strong> application and Prowlarr keeps them in sync.
+        Categories default to books (<code>7000,7020</code>); per-type
+        categories are under advanced.
       </p>
 
       {indexers.length > 0 && (
@@ -516,6 +658,16 @@ function IndexersCard({
                 </span>
                 <span className="row-actions">
                   <span className="muted file-path">{ind.baseUrl}</span>
+                  <button
+                    className="toggle"
+                    disabled={busy}
+                    title="Check the saved connection still works"
+                    onClick={() => run(async () => {
+                      await api.testIndexer(ind);
+                    }, `✓ ${ind.name}: connection OK`)}
+                  >
+                    test
+                  </button>
                   <button
                     className={ind.enabled ? "toggle on" : "toggle"}
                     disabled={busy}
@@ -560,37 +712,50 @@ function IndexersCard({
           API key
           <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
         </label>
-        <label>
-          Categories
-          <input
-            value={draft.categories}
-            onChange={(e) => set({ categories: e.target.value })}
-          />
-        </label>
-        <label>
-          Audio categories
-          <input
-            title="Newznab categories used for audiobook searches (3030 = Audio/Audiobook)"
-            value={draft.audioCategories}
-            onChange={(e) => set({ audioCategories: e.target.value })}
-          />
-        </label>
-        <label>
-          Comic categories
-          <input
-            title="Newznab categories used for manga and comic searches (7030 = Books/Comics)"
-            value={draft.comicCategories}
-            onChange={(e) => set({ comicCategories: e.target.value })}
-          />
-        </label>
-        <label>
-          Magazine categories
-          <input
-            title="Newznab categories used for magazine searches (7010 = Books/Mags)"
-            value={draft.magazineCategories}
-            onChange={(e) => set({ magazineCategories: e.target.value })}
-          />
-        </label>
+        <button
+          type="button"
+          className="toggle"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => setAdvanced(!advanced)}
+        >
+          {advanced ? "▾ hide advanced" : "▸ advanced (per-type categories)"}
+        </button>
+        {advanced && (
+          <>
+            <label>
+              Book categories
+              <input
+                title="Newznab categories used for ebook searches (7000 = Books, 7020 = Books/Ebook)"
+                value={draft.categories}
+                onChange={(e) => set({ categories: e.target.value })}
+              />
+            </label>
+            <label>
+              Audio categories
+              <input
+                title="Newznab categories used for audiobook searches (3030 = Audio/Audiobook)"
+                value={draft.audioCategories}
+                onChange={(e) => set({ audioCategories: e.target.value })}
+              />
+            </label>
+            <label>
+              Comic categories
+              <input
+                title="Newznab categories used for manga and comic searches (7030 = Books/Comics)"
+                value={draft.comicCategories}
+                onChange={(e) => set({ comicCategories: e.target.value })}
+              />
+            </label>
+            <label>
+              Magazine categories
+              <input
+                title="Newznab categories used for magazine searches (7010 = Books/Mags)"
+                value={draft.magazineCategories}
+                onChange={(e) => set({ magazineCategories: e.target.value })}
+              />
+            </label>
+          </>
+        )}
         <div className="settings-actions">
           <button disabled={busy || !draftValid} onClick={testDraft}>
             Test

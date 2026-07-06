@@ -60,16 +60,18 @@ Settings are grouped by concern, not dumped on one page:
 
 ```
 Settings
-├── Media Management     (root folders per type, file naming, import behavior)
-├── Libraries            (per-type: quality, formats, monitoring defaults)
-├── Metadata             (Hardcover account/API, provider priorities, sidecar files)
-├── Indexers             (Prowlarr sync, manual Newznab/Torznab, categories)
-├── Download Clients     (qBittorrent, SABnzbd, category mapping)
-├── General              (host/port, auth, SSL, proxy, logging, backups)
-└── UI                   (theme, language, date formats)
+├── Media Management     (root folders per type, file naming templates)
+├── Libraries            (quality profiles per media type: formats, language, upgrades)
+├── Metadata             (provider choice + API tokens: Hardcover, ComicVine)
+├── Indexers             (manual Newznab/Torznab or Prowlarr sync; per-type categories under Advanced)
+├── Download Clients     (qBittorrent, SABnzbd; category mapping under Advanced)
+└── General              (instance info, API key; auth, backups, and logging land before 1.0)
 ```
 
-Every settings page follows the same pattern: sensible defaults, a **Test** button on every connection, and advanced options hidden behind a toggle.
+Every settings page follows the same pattern: sensible defaults, a **Test**
+button on every connection (both when adding and on every saved entry), and
+advanced options hidden behind a toggle. A UI-preferences page (theme,
+language, date formats) is planned post-1.0.
 
 ---
 
@@ -298,7 +300,7 @@ metadata endpoints return 503.
 ### Phase 5 — Polish & 1.0
 - [x] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own sidebar area with *arr-style browsing — a poster grid (author-first for books, series-first for manga/comics/magazines, owned/total counts on each card) that opens into full detail pages with artwork, description, and per-item controls — plus scoped add-and-search and unmatched files; the Home page is the only place types meet, as stacked per-library sections (Recently added / Wanted with cover art) that never interleave types; type-specific settings render only for active libraries
 - [x] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred. Membership is set by scanning/importing (owning it), by which library you add from, or by cross-add from the book detail ("Add to Audiobooks" with a monitor prompt); each membership has its own monitored flag, replacing edition monitoring as the wanted signal. A library lists only the books you've actually added — monitored or owned in that format; unmonitored, unowned members stay enrolled but hidden (the post-1.0 per-author Missing view will surface them)
-- [ ] Full settings UI as specced above, with Test buttons everywhere
+- [x] Full settings UI as specced above: grouped pages (Media Management / Libraries / Metadata / Indexers / Download Clients / General) with Test buttons on every connection — including saved indexers and download clients — advanced options behind toggles, and a General page with instance info and per-browser API key. UI-preferences page (theme/language/dates) deferred post-1.0
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
 - [ ] Health checks: background monitoring (root folder unreachable, indexer failing repeatedly, download client down, provider token invalid) with a warning banner in the UI
 - [ ] Authentication: login page with username/password sessions (replacing the raw API-key prompt), API-key regeneration; SSL/reverse-proxy guidance
