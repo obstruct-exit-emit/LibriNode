@@ -1,0 +1,80 @@
+name: Release
+
+# Tag a version to cut a release:
+#   git tag v0.9.0 && git push origin v0.9.0
+# Builds version-stamped binaries (linux amd64/arm64, windows amd64), zips
+# them with the packaging scripts, and attaches everything to a GitHub
+# release. The Docker image is built to validate the Dockerfile; pushing to a
+# registry is enabled once registry secrets exist.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Binaries + release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build web UI
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binaries
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          build() {
+            GOOS=$1 GOARCH=$2 go build -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "dist/$3" ./cmd/librinode
+          }
+          build linux amd64 librinode
+          (cd dist && tar czf "librinode-${VERSION}-linux-amd64.tar.gz" librinode && rm librinode)
+          build linux arm64 librinode
+          (cd dist && tar czf "librinode-${VERSION}-linux-arm64.tar.gz" librinode && rm librinode)
+          build windows amd64 librinode.exe
+          cp packaging/windows/*.ps1 dist/
+          (cd dist && zip "librinode-${VERSION}-windows-amd64.zip" librinode.exe *.ps1 && rm librinode.exe *.ps1)
+          cp packaging/systemd/librinode.service dist/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/librinode.service
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          docker build --build-arg VERSION="${VERSION}" -t librinode:${VERSION} .
+      # Push once a registry is configured:
+      # - run: |
+      #     echo "${{ secrets.REGISTRY_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      #     docker tag librinode:${VERSION} ghcr.io/${{ github.repository }}:${VERSION}
+      #     docker push ghcr.io/${{ github.repository }}:${VERSION}

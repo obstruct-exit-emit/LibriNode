@@ -1,0 +1,20 @@
+# Example compose file — copy to docker-compose.yml and adjust paths.
+services:
+  librinode:
+    image: librinode:latest # or build: .
+    container_name: librinode
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ./config:/config
+      - /path/to/ebooks:/media/ebooks
+      - /path/to/audiobooks:/media/audiobooks
+      - /path/to/manga:/media/manga
+      - /path/to/comics:/media/comics
+      - /path/to/magazines:/media/magazines
+      - /path/to/downloads:/downloads # same mount your download client uses
+    ports:
+      - "7845:7845"
+    restart: unless-stopped
