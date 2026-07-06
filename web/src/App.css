@@ -512,6 +512,17 @@ button.toggle.on {
   overflow-wrap: anywhere;
 }
 
+/* --- Grid filter + incremental rendering --- */
+.grid-filter {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+button.show-more {
+  display: block;
+  margin: 1rem auto 0;
+}
+
 /* --- Calendar agenda --- */
 .calendar-day {
   margin-bottom: 0.75rem;

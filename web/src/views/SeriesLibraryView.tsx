@@ -20,6 +20,9 @@ export default function SeriesLibraryView({
   const [showAdd, setShowAdd] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  // Large libraries: filter client-side and render the grid incrementally.
+  const [filter, setFilter] = useState("");
+  const [visible, setVisible] = useState(60);
 
   const reload = useCallback(() => {
     api
@@ -92,22 +95,48 @@ export default function SeriesLibraryView({
             : ` to search for ${mediaType} series.`}
         </p>
       ) : (
-        <div className="poster-grid">
-          {series.map((s) => (
-            <button key={s.id} className="poster-card" onClick={() => onOpenSeries(s.id)}>
-              {s.coverUrl ? (
-                <img className="poster" src={s.coverUrl} alt="" loading="lazy" />
-              ) : (
-                <div className="poster fallback">{s.title.charAt(0)}</div>
+        (() => {
+          const filtered = series.filter((s) =>
+            s.title.toLowerCase().includes(filter.toLowerCase()),
+          );
+          return (
+            <>
+              {series.length > 10 && (
+                <input
+                  className="grid-filter"
+                  placeholder="Filter series…"
+                  value={filter}
+                  onChange={(e) => {
+                    setFilter(e.target.value);
+                    setVisible(60);
+                  }}
+                />
               )}
-              <span className="poster-title">{s.title}</span>
-              <span className="poster-sub">
-                {s.ownedCount}/{s.itemCount} owned
-                {!s.monitored && " · unmonitored"}
-              </span>
-            </button>
-          ))}
-        </div>
+              <div className="poster-grid">
+                {filtered.slice(0, visible).map((s) => (
+                  <button key={s.id} className="poster-card" onClick={() => onOpenSeries(s.id)}>
+                    {s.coverUrl ? (
+                      <img className="poster" src={s.coverUrl} alt="" loading="lazy" />
+                    ) : (
+                      <div className="poster fallback">{s.title.charAt(0)}</div>
+                    )}
+                    <span className="poster-title">{s.title}</span>
+                    <span className="poster-sub">
+                      {s.ownedCount}/{s.itemCount} owned
+                      {!s.monitored && " · unmonitored"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {filtered.length === 0 && <p className="muted">No series match the filter.</p>}
+              {filtered.length > visible && (
+                <button className="toggle show-more" onClick={() => setVisible(visible + 120)}>
+                  Show more ({filtered.length - visible} more)
+                </button>
+              )}
+            </>
+          );
+        })()
       )}
     </section>
 

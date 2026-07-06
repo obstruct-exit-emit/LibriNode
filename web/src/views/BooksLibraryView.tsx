@@ -31,6 +31,9 @@ export default function BooksLibraryView({
   const [notice, setNotice] = useState("");
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  // Large libraries: filter client-side and render the grid incrementally.
+  const [filter, setFilter] = useState("");
+  const [visible, setVisible] = useState(60);
 
   const reload = useCallback(() => {
     Promise.all([api.listAuthors(library), api.listBooks(), api.listUnmatchedFiles()])
@@ -158,21 +161,47 @@ export default function BooksLibraryView({
             author or book, or scan a root folder with existing files.
           </p>
         ) : (
-          <div className="poster-grid">
-            {authors.map((a) => (
-              <button key={a.id} className="poster-card" onClick={() => onOpenAuthor(a.id)}>
-                {a.imageUrl ? (
-                  <img className="poster" src={a.imageUrl} alt="" loading="lazy" />
-                ) : (
-                  <div className="poster fallback">{a.name.charAt(0)}</div>
+          (() => {
+            const filtered = authors.filter((a) =>
+              a.name.toLowerCase().includes(filter.toLowerCase()),
+            );
+            return (
+              <>
+                {authors.length > 10 && (
+                  <input
+                    className="grid-filter"
+                    placeholder="Filter authors…"
+                    value={filter}
+                    onChange={(e) => {
+                      setFilter(e.target.value);
+                      setVisible(60);
+                    }}
+                  />
                 )}
-                <span className="poster-title">{a.name}</span>
-                <span className="poster-sub">
-                  {a.ownedCount}/{a.bookCount ?? 0} owned
-                </span>
-              </button>
-            ))}
-          </div>
+                <div className="poster-grid">
+                  {filtered.slice(0, visible).map((a) => (
+                    <button key={a.id} className="poster-card" onClick={() => onOpenAuthor(a.id)}>
+                      {a.imageUrl ? (
+                        <img className="poster" src={a.imageUrl} alt="" loading="lazy" />
+                      ) : (
+                        <div className="poster fallback">{a.name.charAt(0)}</div>
+                      )}
+                      <span className="poster-title">{a.name}</span>
+                      <span className="poster-sub">
+                        {a.ownedCount}/{a.bookCount ?? 0} owned
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {filtered.length === 0 && <p className="muted">No authors match the filter.</p>}
+                {filtered.length > visible && (
+                  <button className="toggle show-more" onClick={() => setVisible(visible + 120)}>
+                    Show more ({filtered.length - visible} more)
+                  </button>
+                )}
+              </>
+            );
+          })()
         )}
       </section>
 
