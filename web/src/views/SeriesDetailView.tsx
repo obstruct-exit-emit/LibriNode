@@ -45,9 +45,12 @@ export default function SeriesDetailView({
 
   const remove = () => {
     if (!confirm(`Remove ${series.title} and all its ${unitName}s from the library?`)) return;
+    const deleteFiles = confirm(
+      "Also delete its files from disk?\n\nOK = delete files · Cancel = keep files (the next scan re-finds them as unmatched)",
+    );
     setBusy(true);
     api
-      .deleteSeries(series.id)
+      .deleteSeries(series.id, deleteFiles)
       .then(onBack)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusy(false));

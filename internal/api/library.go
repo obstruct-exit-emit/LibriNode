@@ -245,11 +245,20 @@ func (s *server) handleDeleteAuthor(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	deleteFiles := wantsFileDeletion(r)
+	var paths []string
+	if deleteFiles {
+		var err error
+		if paths, err = s.store.FilePathsForAuthor(id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	if err := s.store.DeleteAuthor(id); err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	s.finishDelete(w, deleteFiles, paths)
 }
 
 // --- Books ---
@@ -436,11 +445,20 @@ func (s *server) handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	deleteFiles := wantsFileDeletion(r)
+	var paths []string
+	if deleteFiles {
+		var err error
+		if paths, err = s.store.FilePathsForBook(id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	if err := s.store.DeleteBook(id); err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	s.finishDelete(w, deleteFiles, paths)
 }
 
 // --- Editions ---

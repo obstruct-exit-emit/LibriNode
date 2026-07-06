@@ -60,9 +60,12 @@ export default function AuthorDetailView({
 
   const remove = () => {
     if (!confirm(`Remove ${author.name} and all their books from every library?`)) return;
+    const deleteFiles = confirm(
+      "Also delete their files from disk?\n\nOK = delete files · Cancel = keep files (the next scan re-finds them as unmatched)",
+    );
     setBusy(true);
     api
-      .deleteAuthor(author.id)
+      .deleteAuthor(author.id, deleteFiles)
       .then(onBack)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusy(false));

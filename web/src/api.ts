@@ -419,8 +419,11 @@ export const api = {
       ...json({ monitored }),
       method: "PUT",
     }),
-  deleteAuthor: (id: number) =>
-    request<void>(`/api/v1/author/${id}`, { method: "DELETE" }),
+  deleteAuthor: (id: number, deleteFiles = false) =>
+    request<{ deletedFiles: number; errors: string[] } | undefined>(
+      `/api/v1/author/${id}${deleteFiles ? "?deleteFiles=true" : ""}`,
+      { method: "DELETE" },
+    ),
 
   listBooks: (authorId?: number) =>
     request<Book[]>(authorId ? `/api/v1/book?authorId=${authorId}` : "/api/v1/book"),
@@ -432,8 +435,11 @@ export const api = {
       ...json({ monitored }),
       method: "PUT",
     }),
-  deleteBook: (id: number) =>
-    request<void>(`/api/v1/book/${id}`, { method: "DELETE" }),
+  deleteBook: (id: number, deleteFiles = false) =>
+    request<{ deletedFiles: number; errors: string[] } | undefined>(
+      `/api/v1/book/${id}${deleteFiles ? "?deleteFiles=true" : ""}`,
+      { method: "DELETE" },
+    ),
 
   monitorEdition: (id: number, monitored: boolean) =>
     request(`/api/v1/edition/${id}/monitor`, {
@@ -564,8 +570,11 @@ export const api = {
     }),
   refreshSeries: (id: number) =>
     request<Series>(`/api/v1/series/${id}/refresh`, { method: "POST" }),
-  deleteSeries: (id: number) =>
-    request<void>(`/api/v1/series/${id}`, { method: "DELETE" }),
+  deleteSeries: (id: number, deleteFiles = false) =>
+    request<{ deletedFiles: number; errors: string[] } | undefined>(
+      `/api/v1/series/${id}${deleteFiles ? "?deleteFiles=true" : ""}`,
+      { method: "DELETE" },
+    ),
 
   listRootFolders: () => request<RootFolder[]>("/api/v1/rootfolder"),
   addRootFolder: (mediaType: string, path: string) =>

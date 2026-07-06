@@ -222,6 +222,48 @@ func (s *Store) HasMonitoredEdition(bookID int64, format string) (bool, error) {
 	return n > 0, err
 }
 
+// FilePathsForBook returns the on-disk paths of a book's files (for
+// multi-file audiobooks the path is the book's directory). Used by the
+// delete-files option before the rows go away.
+func (s *Store) FilePathsForBook(bookID int64) ([]string, error) {
+	return s.filePaths(`SELECT path FROM book_files WHERE book_id = ?`, bookID)
+}
+
+// FilePathsForAuthor returns the on-disk paths of every file attached to an
+// author's books.
+func (s *Store) FilePathsForAuthor(authorID int64) ([]string, error) {
+	return s.filePaths(`
+		SELECT f.path FROM book_files f
+		JOIN books b ON b.id = f.book_id
+		WHERE b.author_id = ?`, authorID)
+}
+
+// FilePathsForSeries returns the on-disk paths of every file attached to a
+// series' volumes/issues.
+func (s *Store) FilePathsForSeries(seriesID int64) ([]string, error) {
+	return s.filePaths(`
+		SELECT path FROM book_files
+		WHERE book_id IN (SELECT book_id FROM series_books WHERE series_id = ?)`, seriesID)
+}
+
+func (s *Store) filePaths(query string, arg any) ([]string, error) {
+	rows, err := s.db.Query(query, arg)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	paths := []string{}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths = append(paths, p)
+	}
+	return paths, rows.Err()
+}
+
 func (s *Store) DeleteBookFile(id int64) error {
 	res, err := s.db.Exec(`DELETE FROM book_files WHERE id = ?`, id)
 	if err != nil {

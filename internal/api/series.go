@@ -211,9 +211,18 @@ func (s *server) handleDeleteSeries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	deleteFiles := wantsFileDeletion(r)
+	var paths []string
+	if deleteFiles {
+		var err error
+		if paths, err = s.store.FilePathsForSeries(id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	if err := s.store.DeleteSeries(id); err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	s.finishDelete(w, deleteFiles, paths)
 }
