@@ -42,6 +42,11 @@ const importInterval = time.Minute
 // endpoints cover "right now".
 const wantedSearchInterval = 6 * time.Hour
 
+// healthCheckInterval is how often background health checks re-run (root
+// folders, indexers, download clients, metadata token). The System page can
+// re-run them on demand.
+const healthCheckInterval = 15 * time.Minute
+
 // version is overridden at build time via -ldflags "-X main.version=x.y.z".
 var version = "0.0.1-alpha"
 
@@ -114,9 +119,12 @@ func run(dataDir string) error {
 	go autosearch.New(store, indexer.NewService(indexer.NewStore(db)), downloads).
 		RunPeriodic(bgCtx, wantedSearchInterval)
 
+	handler, healthSvc := api.NewRouter(cfg, db, providers, version)
+	go healthSvc.RunPeriodic(bgCtx, healthCheckInterval)
+
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr(),
-		Handler:           api.NewRouter(cfg, db, providers, version),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

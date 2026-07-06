@@ -478,6 +478,22 @@ button.toggle.on {
   text-overflow: ellipsis;
 }
 
+/* --- Health banner + issue lines --- */
+.health-banner {
+  border-color: #c9a227;
+  padding: 0.75rem 1.25rem;
+}
+
+.health-issue {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+  color: #c9a227;
+}
+
+.health-issue.error {
+  color: var(--danger);
+}
+
 /* --- Settings sub-navigation (grouped pages) --- */
 .subnav {
   display: flex;

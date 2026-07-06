@@ -221,7 +221,7 @@ scriptable:
 
 | Area | Endpoints |
 |---|---|
-| System | `GET /system/status`, `GET /ping` (no auth) |
+| System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now) |
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}`, `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
@@ -302,7 +302,7 @@ metadata endpoints return 503.
 - [x] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred. Membership is set by scanning/importing (owning it), by which library you add from, or by cross-add from the book detail ("Add to Audiobooks" with a monitor prompt); each membership has its own monitored flag, replacing edition monitoring as the wanted signal. A library lists only the books you've actually added — monitored or owned in that format; unmonitored, unowned members stay enrolled but hidden (the post-1.0 per-author Missing view will surface them)
 - [x] Full settings UI as specced above: grouped pages (Media Management / Libraries / Metadata / Indexers / Download Clients / General) with Test buttons on every connection — including saved indexers and download clients — advanced options behind toggles, and a General page with instance info and per-browser API key. UI-preferences page (theme/language/dates) deferred post-1.0
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
-- [ ] Health checks: background monitoring (root folder unreachable, indexer failing repeatedly, download client down, provider token invalid) with a warning banner in the UI
+- [x] Health checks: background monitoring every 15 minutes — root folder unreachable, indexer failing its connection check, download client down or misconfigured, metadata provider token invalid, plus warnings when no indexer/download client/provider is set up at all. Issues show as a warning banner on every page and in a System-page Health card with a run-now button (`GET /health`, `POST /health/check`)
 - [ ] Authentication: login page with username/password sessions (replacing the raw API-key prompt), API-key regeneration; SSL/reverse-proxy guidance
 - [ ] Wanted page per library: everything missing, with search buttons
 - [ ] Delete options: removing a book/author/series can optionally delete its files from disk (otherwise the next scan re-finds them as strays)

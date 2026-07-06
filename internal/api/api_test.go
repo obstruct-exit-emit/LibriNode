@@ -104,7 +104,8 @@ func newTestAPI(t *testing.T, provider metadata.Provider) *testAPI {
 	if provider != nil {
 		mgr.Set(provider)
 	}
-	srv := httptest.NewServer(NewRouter(cfg, db, mgr, "test"))
+	handler, _ := NewRouter(cfg, db, mgr, "test")
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return &testAPI{srv: srv, apiKey: cfg.APIKey, mgr: mgr, t: t}
 }

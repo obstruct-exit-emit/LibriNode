@@ -208,6 +208,17 @@ export interface GrabRecord {
   completedAt?: string;
 }
 
+export interface HealthIssue {
+  source: string;
+  level: "error" | "warning";
+  message: string;
+}
+
+export interface HealthResult {
+  issues: HealthIssue[];
+  checkedAt: string; // zero time before the first background run
+}
+
 export interface LibraryStatus {
   mediaType: string;
   active: boolean;
@@ -358,6 +369,9 @@ const json = (body: unknown): RequestInit => ({
 
 export const api = {
   systemStatus: () => request<SystemStatus>("/api/v1/system/status"),
+  health: () => request<HealthResult>("/api/v1/health"),
+  checkHealth: () =>
+    request<HealthResult>("/api/v1/health/check", { method: "POST" }),
   libraries: () => request<LibraryStatus[]>("/api/v1/libraries"),
   home: () => request<HomeSection[]>("/api/v1/home"),
   setBookLibrary: (id: number, library: string, member: boolean, monitored: boolean) =>

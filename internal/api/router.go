@@ -13,6 +13,7 @@ import (
 	"github.com/librinode/librinode/internal/autosearch"
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/download"
+	"github.com/librinode/librinode/internal/health"
 	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
@@ -35,11 +36,15 @@ type server struct {
 	downloads *download.Service
 	importer  *importer.Service
 	search    *autosearch.Service
+	health    *health.Service
 	webFS     fs.FS // nil when no frontend build is embedded
 	version   string
 }
 
-func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, version string) http.Handler {
+// NewRouter builds the API handler. The returned health service is the
+// caller's to run periodically (main starts it alongside the other
+// background loops); its endpoints are already wired into the handler.
+func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, version string) (http.Handler, *health.Service) {
 	store := library.NewStore(db)
 	org := organize.New(store, cfg)
 	downloads := download.NewService(download.NewStore(db))
@@ -56,6 +61,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		downloads: downloads,
 		importer:  importer.New(store, downloads, org),
 		search:    autosearch.New(store, indexers, downloads),
+		health:    health.New(store, indexers, downloads, providers),
 		version:   version,
 	}
 	if dist, ok := web.FS(); ok {
@@ -65,6 +71,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ping", s.handlePing)
 	mux.HandleFunc("GET /api/v1/system/status", s.auth(s.handleSystemStatus))
+	mux.HandleFunc("GET /api/v1/health", s.auth(s.handleHealth))
+	mux.HandleFunc("POST /api/v1/health/check", s.auth(s.handleHealthCheck))
 	mux.HandleFunc("GET /api/v1/rootfolder", s.auth(s.handleListRootFolders))
 	mux.HandleFunc("POST /api/v1/rootfolder", s.auth(s.handleAddRootFolder))
 	mux.HandleFunc("DELETE /api/v1/rootfolder/{id}", s.auth(s.handleDeleteRootFolder))
@@ -137,7 +145,18 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 
 	mux.HandleFunc("/", s.handleIndex)
 
-	return logRequests(mux)
+	return logRequests(mux), s.health
+}
+
+// handleHealth returns the cached result of the last background health run
+// (checkedAt is the zero time before the first run completes).
+func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.health.Last())
+}
+
+// handleHealthCheck re-runs every check now — the System page's button.
+func (s *server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.health.Check(r.Context()))
 }
 
 func (s *server) auth(next http.HandlerFunc) http.HandlerFunc {

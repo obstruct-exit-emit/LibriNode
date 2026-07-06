@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, getApiKey, setApiKey, type LibraryStatus } from "./api";
+import {
+  api,
+  ApiError,
+  getApiKey,
+  setApiKey,
+  type HealthIssue,
+  type LibraryStatus,
+} from "./api";
 import ActivityView from "./views/ActivityView";
 import AuthorDetailView from "./views/AuthorDetailView";
 import BooksLibraryView from "./views/BooksLibraryView";
@@ -41,6 +48,7 @@ export default function App() {
   const [key, setKey] = useState(getApiKey());
   const [connected, setConnected] = useState(false);
   const [libraries, setLibraries] = useState<LibraryStatus[]>([]);
+  const [health, setHealth] = useState<HealthIssue[]>([]);
   const [page, setPage] = useState<Page>({ name: "home" });
   const [error, setError] = useState("");
 
@@ -50,6 +58,22 @@ export default function App() {
       .then(setLibraries)
       .catch(() => setLibraries([]));
   }, []);
+
+  const reloadHealth = useCallback(() => {
+    api
+      .health()
+      .then((h) => setHealth(h.issues))
+      .catch(() => {}); // the banner is best-effort; never blocks the UI
+  }, []);
+
+  // Checks run server-side every 15 min; poll the cached result so the
+  // banner appears/clears without a reload.
+  useEffect(() => {
+    if (!connected) return;
+    reloadHealth();
+    const timer = setInterval(reloadHealth, 60_000);
+    return () => clearInterval(timer);
+  }, [connected, reloadHealth]);
 
   useEffect(() => {
     if (!key) return;
@@ -124,6 +148,16 @@ export default function App() {
               data directory.
             </p>
             <ApiKeyForm onSave={setKey} />
+          </section>
+        )}
+
+        {connected && health.length > 0 && (
+          <section className="card health-banner">
+            {health.map((issue, i) => (
+              <p key={i} className={issue.level === "error" ? "health-issue error" : "health-issue"}>
+                {issue.level === "error" ? "⛔" : "⚠️"} {issue.message}
+              </p>
+            ))}
           </section>
         )}
 
