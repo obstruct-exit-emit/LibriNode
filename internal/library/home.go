@@ -1,5 +1,7 @@
 package library
 
+import "sort"
+
 // LibraryStatus describes one media-type library for the Plex-style UI: a
 // library is active — and visible — once it's set up (has a root folder) or
 // already holds content.
@@ -148,6 +150,59 @@ func (s *Store) Home(limit int) ([]HomeSection, error) {
 		sections = append(sections, section)
 	}
 	return sections, nil
+}
+
+// Wanted lists a library's wanted items (monitored, missing their format's
+// file) — the per-library Wanted page. Newest additions first.
+func (s *Store) Wanted(mediaType string) ([]HomeItem, error) {
+	return s.homeItems(wantedWhere(mediaType), "books.added_at DESC, books.id DESC", 1000, mediaType)
+}
+
+// CalendarItem is one dated entry on the calendar page.
+type CalendarItem struct {
+	BookID      int64  `json:"bookId"`
+	Title       string `json:"title"`
+	Subtitle    string `json:"subtitle,omitempty"`
+	MediaType   string `json:"mediaType"`
+	ReleaseDate string `json:"releaseDate"`
+	Owned       bool   `json:"owned"`
+}
+
+// Calendar returns items visible in any library whose release date falls in
+// [from, to] (ISO dates), across all media types, ordered by date.
+func (s *Store) Calendar(from, to string) ([]CalendarItem, error) {
+	items := []CalendarItem{}
+	for _, mt := range MediaTypes {
+		rows, err := s.db.Query(`
+			SELECT books.id, books.title, COALESCE(a.name, ''), books.release_date,
+				EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+mt+`')
+			FROM books LEFT JOIN authors a ON a.id = books.author_id
+			WHERE `+itemsWhere(mt)+` AND books.release_date >= ? AND books.release_date <= ?
+			ORDER BY books.release_date`, from, to)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			it := CalendarItem{MediaType: mt}
+			if err := rows.Scan(&it.BookID, &it.Title, &it.Subtitle, &it.ReleaseDate, &it.Owned); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			items = append(items, it)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].ReleaseDate != items[j].ReleaseDate {
+			return items[i].ReleaseDate < items[j].ReleaseDate
+		}
+		return items[i].Title < items[j].Title
+	})
+	return items, nil
 }
 
 // ListAuthorsInLibrary returns authors with at least one book in the given

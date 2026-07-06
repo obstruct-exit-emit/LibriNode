@@ -11,6 +11,7 @@ import {
 import ActivityView from "./views/ActivityView";
 import AuthorDetailView from "./views/AuthorDetailView";
 import BooksLibraryView from "./views/BooksLibraryView";
+import CalendarView from "./views/CalendarView";
 import HomeView from "./views/HomeView";
 import SeriesDetailView from "./views/SeriesDetailView";
 import SeriesLibraryView from "./views/SeriesLibraryView";
@@ -25,6 +26,7 @@ type Page =
   | { name: "library"; mediaType: string }
   | { name: "author"; id: number; library: "ebook" | "audiobook" }
   | { name: "series-detail"; id: number; mediaType: string }
+  | { name: "calendar" }
   | { name: "activity" }
   | { name: "settings" }
   | { name: "system" };
@@ -143,6 +145,7 @@ export default function App() {
               ),
             )}
             <div className="nav-group">App</div>
+            {navButton({ name: "calendar" }, "Calendar", "📅")}
             {navButton({ name: "activity" }, "Activity", "⬇️")}
             {navButton({ name: "settings" }, "Settings", "⚙️")}
             {navButton({ name: "system" }, "System", "🖥️")}
@@ -254,6 +257,7 @@ export default function App() {
             onBack={() => go({ name: "library", mediaType: page.mediaType })}
           />
         )}
+        {connected && page.name === "calendar" && <CalendarView onError={setError} />}
         {connected && page.name === "activity" && <ActivityView onError={setError} />}
         {connected && page.name === "settings" && (
           <SettingsView onError={setError} onLibrariesChanged={reloadLibraries} />

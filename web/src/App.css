@@ -512,6 +512,23 @@ button.toggle.on {
   overflow-wrap: anywhere;
 }
 
+/* --- Calendar agenda --- */
+.calendar-day {
+  margin-bottom: 0.75rem;
+}
+
+.calendar-date {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.calendar-date.today {
+  color: var(--accent);
+}
+
 /* --- Health banner + issue lines --- */
 .health-banner {
   border-color: #c9a227;

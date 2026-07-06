@@ -8,6 +8,7 @@ import {
   type SearchAuthor,
   type SearchBook,
 } from "../api";
+import WantedCard from "../components/WantedCard";
 
 // One format library's area (Ebooks or Audiobooks) — a *arr-style poster
 // grid of authors; clicking one opens their full detail page. Only books
@@ -174,6 +175,8 @@ export default function BooksLibraryView({
           </div>
         )}
       </section>
+
+      <WantedCard key={`wanted-${library}`} library={library} onError={onError} />
 
       {unmatched.length > 0 && (
         <section className="card">

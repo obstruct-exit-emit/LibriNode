@@ -239,6 +239,15 @@ export interface HomeItem {
   hasFile: boolean;
 }
 
+export interface CalendarItem {
+  bookId: number;
+  title: string;
+  subtitle?: string;
+  mediaType: string;
+  releaseDate: string;
+  owned: boolean;
+}
+
 export interface HomeSection {
   mediaType: string;
   items: number;
@@ -394,6 +403,12 @@ export const api = {
     request<HealthResult>("/api/v1/health/check", { method: "POST" }),
   libraries: () => request<LibraryStatus[]>("/api/v1/libraries"),
   home: () => request<HomeSection[]>("/api/v1/home"),
+  wanted: (library: string) =>
+    request<{ items: HomeItem[] }>(`/api/v1/wanted?library=${library}`),
+  calendar: (past = 30, days = 90) =>
+    request<{ items: CalendarItem[]; from: string; to: string }>(
+      `/api/v1/calendar?past=${past}&days=${days}`,
+    ),
   setBookLibrary: (
     id: number,
     library: string,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Series, type SeriesResult } from "../api";
 import { libraryLabels } from "../App";
+import WantedCard from "../components/WantedCard";
 
 // A series-first library area (Manga, Comics, or Magazines) — a *arr-style
 // poster grid of series; clicking one opens its full detail page. Adding is
@@ -62,6 +63,7 @@ export default function SeriesLibraryView({
   if (loading) return <p className="muted">Loading…</p>;
 
   return (
+    <>
     <section className="card">
       <div className="card-head">
         <h2>
@@ -108,6 +110,9 @@ export default function SeriesLibraryView({
         </div>
       )}
     </section>
+
+    <WantedCard key={`wanted-${mediaType}`} library={mediaType} onError={onError} />
+    </>
   );
 }
 

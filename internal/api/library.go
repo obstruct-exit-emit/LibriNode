@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -394,6 +395,45 @@ func (s *server) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sections)
+}
+
+// handleWanted lists one library's wanted items — monitored but missing
+// that format's file — for the per-library Wanted page.
+func (s *server) handleWanted(w http.ResponseWriter, r *http.Request) {
+	mediaType := r.URL.Query().Get("library")
+	if !slices.Contains(library.MediaTypes, mediaType) {
+		writeError(w, http.StatusBadRequest, "library must be one of: "+strings.Join(library.MediaTypes, ", "))
+		return
+	}
+	items, err := s.store.Wanted(mediaType)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// handleCalendar returns dated releases across all libraries. ?past= and
+// ?days= (defaults 30/90) bound the window around today.
+func (s *server) handleCalendar(w http.ResponseWriter, r *http.Request) {
+	intParam := func(name string, def, max int) int {
+		v, err := strconv.Atoi(r.URL.Query().Get(name))
+		if err != nil || v < 0 {
+			return def
+		}
+		return min(v, max)
+	}
+	past := intParam("past", 30, 365)
+	days := intParam("days", 90, 365)
+	now := time.Now().UTC()
+	from := now.AddDate(0, 0, -past).Format("2006-01-02")
+	to := now.AddDate(0, 0, days).Format("2006-01-02")
+	items, err := s.store.Calendar(from, to)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "from": from, "to": to})
 }
 
 // handleRefreshBook re-syncs an existing book's metadata and editions.
