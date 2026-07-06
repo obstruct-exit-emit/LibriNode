@@ -326,6 +326,7 @@ func (c *Config) save() error {
 func (c *Config) filePath() string     { return filepath.Join(c.dataDir, "config.yaml") }
 func (c *Config) DataDir() string      { return c.dataDir }
 func (c *Config) DatabasePath() string { return filepath.Join(c.dataDir, "librinode.db") }
+func (c *Config) LogPath() string      { return filepath.Join(c.dataDir, "logs", "librinode.log") }
 
 func (c *Config) ListenAddr() string {
 	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))

@@ -387,6 +387,8 @@ export const api = {
     request<{ apiKey: string }>("/api/v1/auth/apikey/regenerate", {
       method: "POST",
     }),
+  logTail: (lines = 200) =>
+    request<{ lines: string[]; path: string }>(`/api/v1/log?lines=${lines}`),
   health: () => request<HealthResult>("/api/v1/health"),
   checkHealth: () =>
     request<HealthResult>("/api/v1/health/check", { method: "POST" }),

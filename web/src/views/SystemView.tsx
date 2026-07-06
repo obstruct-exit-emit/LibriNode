@@ -20,6 +20,7 @@ export default function SystemView({
   return (
     <>
       <HealthCard onError={onError} />
+      <LogCard onError={onError} />
       <section className="card">
         <h2>System</h2>
         <dl>
@@ -40,6 +41,63 @@ export default function SystemView({
         </dl>
       </section>
     </>
+  );
+}
+
+// LogCard tails the on-disk log file (System → events): pick how many lines,
+// filter by text (e.g. "ERROR" or a book title), refresh on demand.
+function LogCard({ onError }: { onError: (message: string) => void }) {
+  const [lines, setLines] = useState<string[]>([]);
+  const [count, setCount] = useState(200);
+  const [filter, setFilter] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(() => {
+    setBusy(true);
+    api
+      .logTail(count)
+      .then((r) => setLines(r.lines))
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  }, [count, onError]);
+
+  useEffect(reload, [reload]);
+
+  const shown = filter
+    ? lines.filter((l) => l.toLowerCase().includes(filter.toLowerCase()))
+    : lines;
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Log</h2>
+        <span className="row-actions">
+          <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
+            <option value={100}>100 lines</option>
+            <option value={200}>200 lines</option>
+            <option value={500}>500 lines</option>
+            <option value={2000}>2000 lines</option>
+          </select>
+          <input
+            placeholder="Filter (e.g. ERROR)"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <button disabled={busy} onClick={reload}>
+            {busy ? "Loading…" : "Refresh"}
+          </button>
+        </span>
+      </div>
+      {shown.length === 0 ? (
+        <p className="muted">
+          {lines.length === 0
+            ? "No log entries yet — the file starts with the next server start after updating."
+            : "No lines match the filter."}
+        </p>
+      ) : (
+        <pre className="log-view">{shown.join("\n")}</pre>
+      )}
+    </section>
   );
 }
 

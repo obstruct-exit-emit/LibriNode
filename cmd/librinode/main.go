@@ -5,10 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
+	"github.com/librinode/librinode/internal/logging"
 	"github.com/librinode/librinode/internal/metadata"
 	"github.com/librinode/librinode/internal/metadata/anilist"
 	"github.com/librinode/librinode/internal/metadata/comicvine"
@@ -72,7 +75,18 @@ func run(dataDir string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	// Logs go to stdout and to a size-rotated file (5 MB, 3 old files kept)
+	// that the UI's System → Log viewer reads back.
+	logWriter := io.Writer(os.Stdout)
+	if err := os.MkdirAll(filepath.Dir(cfg.LogPath()), 0o755); err == nil {
+		if lf, err := logging.NewRotatingFile(cfg.LogPath(), 5<<20, 3); err == nil {
+			defer lf.Close()
+			logWriter = io.MultiWriter(os.Stdout, lf)
+		} else {
+			fmt.Fprintf(os.Stderr, "opening log file: %v (logging to stdout only)\n", err)
+		}
+	}
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{
 		Level: cfg.SlogLevel(),
 	}))
 	slog.SetDefault(logger)

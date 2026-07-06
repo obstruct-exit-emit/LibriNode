@@ -478,6 +478,21 @@ button.toggle.on {
   text-overflow: ellipsis;
 }
 
+/* --- Log viewer --- */
+.log-view {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0 0;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* --- Health banner + issue lines --- */
 .health-banner {
   border-color: #c9a227;

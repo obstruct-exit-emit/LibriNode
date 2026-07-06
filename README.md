@@ -221,7 +221,7 @@ scriptable:
 
 | Area | Endpoints |
 |---|---|
-| System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now) |
+| System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now), `GET /log?lines=N` (tail the log file) |
 | Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (empty username disables), `POST /auth/apikey/regenerate` |
 | Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
@@ -347,7 +347,7 @@ metadata endpoints return 503.
 - [x] Authentication: optional login account (Settings → General → Security) switches the UI from the API-key prompt to a username/password login page with 30-day cookie sessions (in-memory — a restart signs everyone out); passwords stored as PBKDF2-SHA256 hashes only; failed logins logged and throttled; the API key keeps working for Prowlarr/scripts and can be regenerated from the UI; SSL/reverse-proxy guidance in the README
 - [ ] Wanted page per library: everything missing, with search buttons
 - [x] Delete options: removing a book/author/series can optionally delete its files from disk (`?deleteFiles=true`; the UI asks after the remove confirmation). Only paths inside a configured root folder are ever touched, emptied folders are pruned up to (never including) the root, and without the option the next scan re-finds the files as strays
-- [ ] Log file on disk (with rotation) + log viewer in the UI (System → events)
+- [x] Log file on disk with size rotation (`<data>/logs/librinode.log`, 5 MB, 3 old files kept) + log viewer on the System page: tail up to 2000 lines with a text filter and refresh (`GET /log?lines=N`)
 - [ ] Calendar view (upcoming releases across all libraries)
 - [x] Upgrade handling: profiles with "allow upgrades" keep owned books wanted until the cutoff format (default: the profile's best); upgrade searches only approve strictly better formats, and imports replace the old file on disk and in the library
 - [ ] Per-indexer failure backoff (rest an indexer that keeps erroring instead of hammering it every sweep)
