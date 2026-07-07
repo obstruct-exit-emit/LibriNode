@@ -3,7 +3,6 @@ import {
   api,
   type Author,
   type Book,
-  type Edition,
   type ReleaseCandidate,
 } from "../api";
 import RemovePanel from "../components/RemovePanel";
@@ -247,52 +246,6 @@ export default function BookDetailView({
           </ul>
         </section>
       )}
-
-      <EditionsCard editions={book.editions ?? []} library={library} />
     </>
-  );
-}
-
-// EditionsCard shows only this library's format as compact metadata —
-// editions are reference info, not controls (library membership, not
-// edition monitoring, decides what gets acquired).
-function EditionsCard({
-  editions,
-  library,
-}: {
-  editions: Edition[];
-  library: "ebook" | "audiobook";
-}) {
-  const relevant = editions.filter(
-    (e) => e.format === library && (e.isbn13 || e.asin || e.publisher),
-  );
-  if (relevant.length === 0) return null;
-
-  const others = editions.length - relevant.length;
-  const shown = relevant.slice(0, 5);
-  return (
-    <section className="card">
-      <h2>
-        Editions ({relevant.length}
-        {others > 0 ? ` ${library}, +${others} other formats` : ""})
-      </h2>
-      <ul className="rows">
-        {shown.map((e) => (
-          <li key={e.id} className="muted">
-            {[
-              e.isbn13 && `ISBN ${e.isbn13}`,
-              e.asin && `ASIN ${e.asin}`,
-              e.publisher,
-              e.language,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </li>
-        ))}
-        {relevant.length > shown.length && (
-          <li className="muted">…and {relevant.length - shown.length} more</li>
-        )}
-      </ul>
-    </section>
   );
 }
