@@ -10,6 +10,7 @@ import {
 } from "./api";
 import ActivityView from "./views/ActivityView";
 import AuthorDetailView from "./views/AuthorDetailView";
+import BookDetailView from "./views/BookDetailView";
 import BooksLibraryView from "./views/BooksLibraryView";
 import CalendarView from "./views/CalendarView";
 import HomeView from "./views/HomeView";
@@ -25,6 +26,7 @@ type Page =
   | { name: "home" }
   | { name: "library"; mediaType: string }
   | { name: "author"; id: number; library: "ebook" | "audiobook" }
+  | { name: "book"; id: number; library: "ebook" | "audiobook"; authorId: number }
   | { name: "series-detail"; id: number; mediaType: string }
   | { name: "calendar" }
   | { name: "activity" }
@@ -247,6 +249,17 @@ export default function App() {
             library={page.library}
             onError={setError}
             onBack={() => go({ name: "library", mediaType: page.library })}
+            onOpenBook={(bookId) =>
+              go({ name: "book", id: bookId, library: page.library, authorId: page.id })
+            }
+          />
+        )}
+        {connected && page.name === "book" && (
+          <BookDetailView
+            id={page.id}
+            library={page.library}
+            onError={setError}
+            onBack={() => go({ name: "author", id: page.authorId, library: page.library })}
           />
         )}
         {connected && page.name === "series-detail" && (
