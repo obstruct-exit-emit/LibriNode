@@ -256,7 +256,8 @@ func (s *Store) ListAuthorsInLibrary(mediaType string) ([]Author, error) {
 			(SELECT COUNT(*) FROM books WHERE books.author_id = authors.id AND ` + itemsWhere(mediaType) + `
 				AND EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '` + mediaType + `'))
 		FROM authors
-		WHERE EXISTS (SELECT 1 FROM books WHERE books.author_id = authors.id AND ` + itemsWhere(mediaType) + `)
+		WHERE authors.` + authorMemberCol(mediaType) + ` = 1
+			OR EXISTS (SELECT 1 FROM books WHERE books.author_id = authors.id AND ` + itemsWhere(mediaType) + `)
 		ORDER BY sort_name`)
 	if err != nil {
 		return nil, err
@@ -267,11 +268,20 @@ func (s *Store) ListAuthorsInLibrary(mediaType string) ([]Author, error) {
 	for rows.Next() {
 		var a Author
 		if err := rows.Scan(&a.ID, &a.Source, &a.ForeignID, &a.Name, &a.SortName,
-			&a.Description, &a.ImageURL, &a.Monitored, &a.AddedAt, &a.UpdatedAt,
+			&a.Description, &a.ImageURL, &a.Monitored,
+			&a.InEbookLibrary, &a.InAudiobookLibrary, &a.AddedAt, &a.UpdatedAt,
 			&a.BookCount, &a.OwnedCount); err != nil {
 			return nil, err
 		}
 		authors = append(authors, a)
 	}
 	return authors, rows.Err()
+}
+
+// authorMemberCol maps a format library to the authors membership column.
+func authorMemberCol(mediaType string) string {
+	if mediaType == "audiobook" {
+		return "in_audiobook_library"
+	}
+	return "in_ebook_library"
 }

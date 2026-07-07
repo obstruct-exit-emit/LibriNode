@@ -61,12 +61,14 @@ func (s *Store) UpsertAuthor(a *Author) error {
 	).Scan(&a.ID)
 }
 
-const authorCols = `id, metadata_source, foreign_id, name, sort_name, description, image_url, monitored, added_at, updated_at`
+const authorCols = `id, metadata_source, foreign_id, name, sort_name, description, image_url, monitored,
+	in_ebook_library, in_audiobook_library, added_at, updated_at`
 
 func scanAuthor(row interface{ Scan(...any) error }) (*Author, error) {
 	var a Author
 	err := row.Scan(&a.ID, &a.Source, &a.ForeignID, &a.Name, &a.SortName,
-		&a.Description, &a.ImageURL, &a.Monitored, &a.AddedAt, &a.UpdatedAt)
+		&a.Description, &a.ImageURL, &a.Monitored,
+		&a.InEbookLibrary, &a.InAudiobookLibrary, &a.AddedAt, &a.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -114,6 +116,48 @@ func (s *Store) DeleteAuthor(id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetAuthorLibrary adds or removes an author from a format library. Book
+// membership is handled separately (SetAuthorBooksLibrary).
+func (s *Store) SetAuthorLibrary(id int64, mediaType string, member bool) error {
+	col, err := libraryColumn(mediaType)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.Exec(
+		`UPDATE authors SET `+col+` = ?, updated_at = datetime('now') WHERE id = ?`, member, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ensureAuthorLibrary marks a book's author as a member of the format
+// library — a book being deliberately added (or owned) there implies its
+// author belongs there too.
+func (s *Store) ensureAuthorLibrary(bookID int64, mediaType string) error {
+	col, err := libraryColumn(mediaType)
+	if err != nil {
+		return nil // non-format media types have no author membership
+	}
+	_, err = s.db.Exec(
+		`UPDATE authors SET `+col+` = 1 WHERE id = (SELECT author_id FROM books WHERE id = ?)`, bookID)
+	return err
+}
+
+// libraryColumn maps a format library to its authors membership column.
+func libraryColumn(mediaType string) (string, error) {
+	switch mediaType {
+	case "ebook":
+		return "in_ebook_library", nil
+	case "audiobook":
+		return "in_audiobook_library", nil
+	}
+	return "", errors.New("library must be ebook or audiobook")
 }
 
 func (s *Store) SetAuthorMonitored(id int64, monitored bool) error {
@@ -181,11 +225,15 @@ func (s *Store) SetBookLibrary(id int64, mediaType string, member, monitored boo
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+	if member {
+		return s.ensureAuthorLibrary(id, mediaType)
+	}
 	return nil
 }
 
-// EnsureBookLibrary makes an owned book a member of the format's library
-// without touching its monitored flag (scan/import: owning it puts it there).
+// EnsureBookLibrary makes an owned book (and its author) a member of the
+// format's library without touching monitored flags (scan/import: owning it
+// puts it there).
 func (s *Store) EnsureBookLibrary(id int64, mediaType string) error {
 	var query string
 	switch mediaType {
@@ -196,23 +244,33 @@ func (s *Store) EnsureBookLibrary(id int64, mediaType string) error {
 	default:
 		return nil
 	}
-	_, err := s.db.Exec(query, id)
-	return err
+	if _, err := s.db.Exec(query, id); err != nil {
+		return err
+	}
+	return s.ensureAuthorLibrary(id, mediaType)
 }
 
-// SetAuthorBooksLibrary bulk-enrolls all of an author's prose books in a
-// format library (used when adding an author from that library's area).
-func (s *Store) SetAuthorBooksLibrary(authorID int64, mediaType string, monitored bool) error {
+// RemoveAuthorBooksLibrary takes all of an author's prose books out of a
+// format library (membership and monitoring; the other format is untouched).
+func (s *Store) RemoveAuthorBooksLibrary(authorID int64, mediaType string) error {
 	var query string
 	switch mediaType {
 	case "ebook":
-		query = `UPDATE books SET in_ebook_library = 1, ebook_monitored = ? WHERE author_id = ? AND media_type = 'book'`
+		query = `UPDATE books SET in_ebook_library = 0, ebook_monitored = 0 WHERE author_id = ? AND media_type = 'book'`
 	case "audiobook":
-		query = `UPDATE books SET in_audiobook_library = 1, audiobook_monitored = ? WHERE author_id = ? AND media_type = 'book'`
+		query = `UPDATE books SET in_audiobook_library = 0, audiobook_monitored = 0 WHERE author_id = ? AND media_type = 'book'`
 	default:
 		return errors.New("library must be ebook or audiobook")
 	}
-	_, err := s.db.Exec(query, monitored, authorID)
+	_, err := s.db.Exec(query, authorID)
+	return err
+}
+
+// DeleteAuthorBookFilesForFormat forgets the file records of one format for
+// all of an author's books (used after their files were deleted from disk).
+func (s *Store) DeleteAuthorBookFilesForFormat(authorID int64, mediaType string) error {
+	_, err := s.db.Exec(`DELETE FROM book_files WHERE media_type = ?
+		AND book_id IN (SELECT id FROM books WHERE author_id = ?)`, mediaType, authorID)
 	return err
 }
 

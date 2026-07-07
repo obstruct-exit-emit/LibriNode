@@ -49,7 +49,20 @@ func (s *Service) Plan(bookID int64) ([]Move, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return s.planFiles(files)
+}
 
+// PlanAuthor is Plan scoped to one author's files (the author page's
+// Organize button — nobody else's files move).
+func (s *Service) PlanAuthor(authorID int64) ([]Move, []string, error) {
+	files, err := s.store.ListMatchedBookFilesForAuthor(authorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.planFiles(files)
+}
+
+func (s *Service) planFiles(files []library.BookFile) ([]Move, []string, error) {
 	roots, err := s.store.ListRootFolders()
 	if err != nil {
 		return nil, nil, err

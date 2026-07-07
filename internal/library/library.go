@@ -21,10 +21,14 @@ type Author struct {
 	Description string `json:"description"`
 	ImageURL    string `json:"imageUrl"`
 	Monitored   bool   `json:"monitored"`
-	AddedAt     string `json:"addedAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	// Per-format library membership: the author was added to (or owns files
+	// in) that library — independent of how many books are visible there.
+	InEbookLibrary     bool   `json:"inEbookLibrary"`
+	InAudiobookLibrary bool   `json:"inAudiobookLibrary"`
+	AddedAt            string `json:"addedAt"`
+	UpdatedAt          string `json:"updatedAt"`
 	// Grid stats, populated by library-scoped listings.
-	BookCount  int `json:"bookCount,omitempty"`
+	BookCount  int `json:"bookCount"`
 	OwnedCount int `json:"ownedCount"`
 	// Populated on detail endpoints, not by ListAuthors.
 	Books []Book `json:"books,omitempty"`

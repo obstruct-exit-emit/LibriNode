@@ -113,8 +113,11 @@ language, date formats) is planned post-1.0.
    your media lives — one root per media type (ebook, audiobook, manga,
    comic, magazine).
 4. **Search:** find authors or books on Hardcover and add them to the
-   library (adding an author pulls the full bibliography; adding a book
-   pulls its editions).
+   library. Adding an author pulls their full bibliography as metadata and
+   makes the author a member of that library, but does **not** monitor every
+   book — new books land in the author's **Missing** section for you to
+   monitor selectively (owning a file enrolls its book automatically).
+   Adding a specific book pulls its editions and monitors just that one.
 5. **Library → Scan files:** match files you already own to library books —
    every book shows an **owned**/**wanted** badge. Strays land in an
    unmatched list and attach automatically the moment you add their book
@@ -243,9 +246,9 @@ scriptable:
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}` (`?deleteFiles=true` also removes files), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
-| Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` |
+| Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files — deletes outright, every library), `PUT /author/{id}/library` (scoped add/remove from ONE format library; `deleteFiles` on remove; auto-deletes the author once they're in no library), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` (never changes membership or monitoring), `GET /author/{id}/missing?library=` (bibliography gaps), `POST /author/{id}/search?library=` (search this author's wanted books only) |
 | Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
-| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
+| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=` or `?authorId=`/`{"authorId":N}` scopes, otherwise everything), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history` |
@@ -253,8 +256,11 @@ scriptable:
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` (templates for all five media types) |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
-bibliography; `POST /book` takes `{"foreignBookId": "..."}` and pulls one
-book with its editions (creating an unmonitored author stub if needed).
+bibliography as metadata (nothing is enrolled or monitored beyond the author
+joining the target library — see Missing above); `POST /book` takes
+`{"foreignBookId": "..."}` and pulls one book with its editions, monitored
+and enrolled in the target library (creating an unmonitored, library-less
+author stub if needed).
 
 Metadata search and add require a [Hardcover](https://hardcover.app) API
 token: paste it under **Settings → Metadata Provider** in the web UI (it
@@ -355,7 +361,7 @@ metadata endpoints return 503.
 
 ### Phase 5 — Polish & 1.0
 - [x] **Plex-style library layout**: a media type appears in the UI only once its library is set up (root folder added, or content already owned); each active library gets its own sidebar area with *arr-style browsing — a poster grid (author-first for books, series-first for manga/comics/magazines, owned/total counts on each card) that opens into full detail pages with artwork, description, and per-item controls — plus scoped add-and-search and unmatched files; the Home page is the only place types meet, as stacked per-library sections (Recently added / Wanted with cover art) that never interleave types; type-specific settings render only for active libraries
-- [x] **Explicit per-format library membership**: a book appears in the Audiobooks library only if you own or deliberately added its audiobook (and vice versa for ebooks) — never inferred. Membership is set by scanning/importing (owning it), by which library you add from, or by cross-add from the book detail ("Add to Audiobooks" with a monitor prompt); each membership has its own monitored flag, replacing edition monitoring as the wanted signal. A library lists only the books you've actually added — monitored or owned in that format; unmonitored, unowned members stay enrolled but hidden (the post-1.0 per-author Missing view will surface them)
+- [x] **Explicit per-format library membership**: both authors and books carry their own independent membership per format library — an author (and their books) appears in Audiobooks only if you added them there or own an audiobook of theirs (and vice versa for ebooks); adding/removing in one format never touches the other. Book membership is set by scanning/importing (owning it), by which library you add from, or by cross-add from the book detail ("Add to Audiobooks" with a monitor prompt); each book membership has its own monitored flag, replacing edition monitoring as the wanted signal. A library's Books grid lists only the books you've actually added — monitored or owned in that format; unmonitored, unowned members stay enrolled but hidden, surfaced instead in the author's Missing section. Refreshing metadata never enrolls, un-enrolls, or re-monitors anything — it only updates descriptions/covers/new-book metadata
 - [x] Full settings UI as specced above: grouped pages (Media Management / Libraries / Metadata / Indexers / Download Clients / General) with Test buttons on every connection — including saved indexers and download clients — advanced options behind toggles, and a General page with instance info and per-browser API key. UI-preferences page (theme/language/dates) deferred post-1.0
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
 - [x] Health checks: background monitoring every 15 minutes — root folder unreachable, indexer failing its connection check, download client down or misconfigured, metadata provider token invalid, plus warnings when no indexer/download client/provider is set up at all. Issues show as a warning banner on every page and in a System-page Health card with a run-now button (`GET /health`, `POST /health/check`)
@@ -372,19 +378,23 @@ metadata endpoints return 503.
 - [x] Packaging: multi-stage Dockerfile (PUID/PGID entrypoint) + compose example, systemd unit with hardening, Windows install/uninstall scripts (Task-Scheduler startup), and a tag-triggered release workflow building version-stamped binaries (ldflags) for linux amd64/arm64 + windows amd64. *Still for 1.0: code-signed Windows installer with a native service, published Docker images*
 - [x] Docs site + API reference: `docs/` (mkdocs-material) — installation, quickstart, libraries, acquisition, configuration, full API table, development guide
 - [x] OPF sidecar files: imports write `metadata.opf` into audiobook folders (Audiobookshelf) and `<file>.opf` beside ebooks (Calibre) — title, author, description, ISBN/language, calibre:series. Rename/organize now covers every media type: series templates for manga/comics/magazines, multi-file audiobooks moving as whole folders with their sidecars, and per-type templates all editable in Settings → Media Management
-- [x] "Missing" view per author *(pulled forward from post-1.0)*: the author page ends with a Missing section listing bibliography gaps from the metadata provider — books neither monitored nor owned in that format library — grouped by series (ordered by position) then standalones by year; rows expand to a compact thumbnail + blurb, and a one-click **+ Monitor** adds the book to the library and starts searching (`GET /author/{id}/missing?library=`)
+- [x] "Missing" view per author *(pulled forward from post-1.0)*: the author page ends with a Missing section listing bibliography gaps from the metadata provider — books neither monitored nor owned in that format library — grouped by series (ordered by position) then standalones by year; rows expand to a compact thumbnail + blurb, and a one-click **+ Monitor** adds the book to the library and starts searching (`GET /author/{id}/missing?library=`). Adding an author pulls their bibliography as metadata only — no book is auto-monitored or auto-enrolled, so a freshly added author's whole bibliography starts here in Missing, and an author with zero visible books still shows (an empty Books grid pointing at Missing) rather than disappearing
+- [x] Author page actions are author-scoped: **Search wanted**, **Organize…**, and **Scan files** in the author header only touch that author's books (`POST /author/{id}/search?library=`, `GET/POST /library/rename?authorId=`/`{"authorId":N}`); **Remove from Ebooks/Audiobooks** takes the author out of one format library only (the other is untouched) with an opt-in delete-files checkbox, auto-deleting the author outright once they're in no library left
 
 ### Post-1.0 ideas
 - [ ] Manga colorized/monochrome variants: own both, with separate root folders per variant — but **one** shared Manga library (unlike ebook/audiobook, no split areas); every volume shows both variants with per-variant owned state, sharing the same series/volume metadata
-- [ ] External notifications (Discord, webhook, email) on grab/import/upgrade/failure
 - [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)
 - [ ] Fuzzy / ISBN- and embedded-metadata-based file matching (scanning is exact-normalized-match today)
 - [ ] `ComicInfo.xml` for CBR archives (needs a RAR writer)
-- [ ] Import lists (Hardcover want-to-read shelf → auto-monitor)
+
 - [ ] Multi-user / permissions
-- [ ] Direct integrations: Calibre, Kavita, Komga, Audiobookshelf notify-on-import
 - [ ] Additional metadata providers (Open Library, Google Books) as fallbacks
 - [ ] Localization
+
+### Maybe ideas
+- [ ] Direct integrations: Calibre, Kavita, Komga, Audiobookshelf notify-on-import
+- [ ] Import lists (Hardcover want-to-read shelf → auto-monitor)
+- [ ] External notifications (Discord, webhook, email) on grab/import/upgrade/failure
 
 ---
 

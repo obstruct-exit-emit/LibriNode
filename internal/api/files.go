@@ -45,15 +45,37 @@ func renameBookID(r *http.Request) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
+func renameAuthorID(r *http.Request) (int64, bool) {
+	v := r.URL.Query().Get("authorId")
+	if v == "" {
+		return 0, true
+	}
+	id, err := strconv.ParseInt(v, 10, 64)
+	return id, err == nil && id > 0
+}
+
+// planRename picks the organize scope: one book, one author, or everything.
+func (s *server) planRename(bookID, authorID int64) ([]organizeMove, []string, error) {
+	if authorID > 0 {
+		return s.organize.PlanAuthor(authorID)
+	}
+	return s.organize.Plan(bookID)
+}
+
 // handleRenamePreview computes what organizing would move, without touching
-// disk. ?bookId=N scopes to one book.
+// disk. ?bookId=N scopes to one book, ?authorId=N to one author's files.
 func (s *server) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := renameBookID(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid bookId")
 		return
 	}
-	moves, skips, err := s.organize.Plan(bookID)
+	authorID, ok := renameAuthorID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid authorId")
+		return
+	}
+	moves, skips, err := s.planRename(bookID, authorID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -62,15 +84,16 @@ func (s *server) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRenameApply plans and executes the moves. The body may scope with
-// {"bookId": N}; empty body organizes everything.
+// {"bookId": N} or {"authorId": N}; empty body organizes everything.
 func (s *server) handleRenameApply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BookID int64 `json:"bookId"`
+		BookID   int64 `json:"bookId"`
+		AuthorID int64 `json:"authorId"`
 	}
 	// Body is optional.
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	moves, skips, err := s.organize.Plan(req.BookID)
+	moves, skips, err := s.planRename(req.BookID, req.AuthorID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

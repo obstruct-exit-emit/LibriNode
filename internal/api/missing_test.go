@@ -16,14 +16,15 @@ func TestAuthorMissing(t *testing.T) {
 	var author library.Author
 	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
 
-	// Adding an author monitors the whole bibliography — no gaps yet.
+	// Adding an author enrolls NO books — the whole bibliography starts as
+	// Missing, for the user to monitor selectively.
 	var missing []library.Book
 	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d/missing?library=ebook", author.ID), nil, &missing), http.StatusOK)
-	if len(missing) != 0 {
-		t.Fatalf("fresh author has %d missing, want 0: %+v", len(missing), missing)
+	if len(missing) != 2 {
+		t.Fatalf("fresh author has %d missing, want the whole bibliography (2)", len(missing))
 	}
 
-	// Every book is missing from the audiobook library (never added there).
+	// Same from the audiobook side.
 	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d/missing?library=audiobook", author.ID), nil, &missing), http.StatusOK)
 	if len(missing) != 2 {
 		t.Fatalf("audiobook missing = %d, want 2", len(missing))
@@ -36,21 +37,21 @@ func TestAuthorMissing(t *testing.T) {
 		t.Errorf("second missing = %+v, want standalone Mort", missing[1])
 	}
 
-	// Unmonitoring an unowned ebook makes it a gap there too.
+	// Monitoring a book (the one-click Monitor button) clears its gap.
 	var books []library.Book
 	a.want(a.call("GET", fmt.Sprintf("/api/v1/book?authorId=%d", author.ID), nil, &books), http.StatusOK)
 	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", books[0].ID),
-		map[string]any{"library": "ebook", "member": true, "monitored": false}, nil), http.StatusOK)
-	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d/missing?library=ebook", author.ID), nil, &missing), http.StatusOK)
-	if len(missing) != 1 || missing[0].ID != books[0].ID {
-		t.Fatalf("after unmonitor, ebook missing = %+v, want just book %d", missing, books[0].ID)
-	}
-
-	// Re-monitoring clears the gap (the one-click Monitor button's call).
-	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", books[0].ID),
 		map[string]any{"library": "ebook", "member": true, "monitored": true}, nil), http.StatusOK)
 	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d/missing?library=ebook", author.ID), nil, &missing), http.StatusOK)
-	if len(missing) != 0 {
-		t.Fatalf("after re-monitor, missing = %+v, want none", missing)
+	if len(missing) != 1 || missing[0].ID == books[0].ID {
+		t.Fatalf("after monitor, ebook missing = %+v, want only the other book", missing)
+	}
+
+	// Unmonitoring the unowned book returns it to Missing.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", books[0].ID),
+		map[string]any{"library": "ebook", "member": true, "monitored": false}, nil), http.StatusOK)
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d/missing?library=ebook", author.ID), nil, &missing), http.StatusOK)
+	if len(missing) != 2 {
+		t.Fatalf("after unmonitor, missing = %d, want 2", len(missing))
 	}
 }

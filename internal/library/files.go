@@ -123,6 +123,13 @@ func (s *Store) ListMatchedBookFiles() ([]BookFile, error) {
 	return s.listBookFiles(`WHERE book_id IS NOT NULL ORDER BY path`)
 }
 
+// ListMatchedBookFilesForAuthor returns the matched files of one author's
+// books — the author-scoped Organize.
+func (s *Store) ListMatchedBookFilesForAuthor(authorID int64) ([]BookFile, error) {
+	return s.listBookFiles(
+		`WHERE book_id IN (SELECT id FROM books WHERE author_id = ?) ORDER BY path`, authorID)
+}
+
 func (s *Store) ListUnmatchedBookFiles() ([]BookFile, error) {
 	return s.listBookFiles(`WHERE book_id IS NULL ORDER BY path`)
 }
@@ -238,6 +245,16 @@ func (s *Store) FilePathsForAuthor(authorID int64) ([]string, error) {
 		SELECT f.path FROM book_files f
 		JOIN books b ON b.id = f.book_id
 		WHERE b.author_id = ?`, authorID)
+}
+
+// FilePathsForAuthorFormat returns the on-disk paths of one format's files
+// across an author's books — the delete-files option when removing an
+// author from a single format library.
+func (s *Store) FilePathsForAuthorFormat(authorID int64, mediaType string) ([]string, error) {
+	return s.filePaths(`
+		SELECT f.path FROM book_files f
+		JOIN books b ON b.id = f.book_id
+		WHERE b.author_id = ? AND f.media_type = ?`, authorID, mediaType)
 }
 
 // FilePathsForSeries returns the on-disk paths of every file attached to a

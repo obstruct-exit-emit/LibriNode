@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Author, type Book } from "../api";
+import { api, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
 
 // Full-page author detail, *arr-style: header with portrait, description and
@@ -23,10 +23,12 @@ export default function AuthorDetailView({
   const [books, setBooks] = useState<Book[]>([]);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
 
   const reload = useCallback(() => {
     // Visible = member of this library AND (monitored here or owned here);
-    // unmonitored, unowned members stay hidden until the post-1.0 Missing view.
+    // everything else in the bibliography lives in the Missing section below.
     const visible = (b: Book) =>
       library === "ebook"
         ? b.inEbookLibrary && (b.ebookMonitored || b.hasEbookFile)
@@ -47,11 +49,68 @@ export default function AuthorDetailView({
     library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile,
   ).length;
 
-  const refresh = () => {
+  // headerAction runs one of the author-scoped buttons and reports back.
+  const headerAction = (action: () => Promise<string>) => {
+    setBusy(true);
+    setNotice("");
+    action()
+      .then((msg) => {
+        setNotice(msg);
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  const refresh = () =>
+    headerAction(async () => {
+      await api.refreshAuthor(author.id);
+      return "✓ Metadata refreshed";
+    });
+
+  const searchWanted = () =>
+    headerAction(async () => {
+      const r = await api.searchAuthorWanted(author.id, library);
+      const details = r.outcomes
+        .filter((o) => !o.grabbed && o.message)
+        .slice(0, 3)
+        .map((o) => `${o.bookTitle}: ${o.message}`)
+        .join("; ");
+      return r.searched === 0
+        ? "Nothing to search — every monitored book here is owned (or pending)."
+        : `Searched ${r.searched} wanted book(s), grabbed ${r.grabbed}.${details ? " " + details : ""}`;
+    });
+
+  const scan = () =>
+    headerAction(async () => {
+      const r = await api.scan();
+      return r.roots === 0
+        ? "No root folders to scan — add one under Settings."
+        : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched.`;
+    });
+
+  const previewRenames = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .renamePreview(author.id)
+      .then((r) => {
+        setRenamePlan(r.moves);
+        if (r.moves.length === 0) setNotice("This author's files already match the naming templates.");
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  const applyRenames = () => {
     setBusy(true);
     api
-      .refreshAuthor(author.id)
-      .then(reload)
+      .renameApply(author.id)
+      .then((r) => {
+        setNotice(`Moved ${r.moves.length} file(s)${r.skips.length ? `, ${r.skips.length} skipped` : ""}.`);
+        setRenamePlan(null);
+        reload();
+      })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusy(false));
   };
@@ -59,7 +118,7 @@ export default function AuthorDetailView({
   const remove = (deleteFiles: boolean) => {
     setBusy(true);
     api
-      .deleteAuthor(author.id, deleteFiles)
+      .removeAuthorFromLibrary(author.id, library, deleteFiles)
       .then(onBack)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusy(false));
@@ -86,19 +145,56 @@ export default function AuthorDetailView({
           <div className="settings-actions">
             <button
               disabled={busy}
-              title="Re-fetch metadata from the provider"
+              title={`Search indexers for this author's wanted ${library}s only`}
+              onClick={searchWanted}
+            >
+              Search wanted
+            </button>
+            <button
+              disabled={busy}
+              title="Preview naming-template moves for this author's files only"
+              onClick={previewRenames}
+            >
+              Organize…
+            </button>
+            <button disabled={busy} title="Scan root folders for new files" onClick={scan}>
+              Scan files
+            </button>
+            <button
+              disabled={busy}
+              title="Re-fetch metadata from the provider (never changes what's monitored)"
               onClick={refresh}
             >
               Refresh metadata
             </button>
             <button className="danger" disabled={busy} onClick={() => setConfirmRemove(!confirmRemove)}>
-              Remove author
+              Remove from {label}
             </button>
           </div>
+          {notice && <p className="muted">{notice}</p>}
+          {renamePlan && renamePlan.length > 0 && (
+            <div className="rename-plan">
+              <p>{renamePlan.length} file(s) would move to match the naming templates:</p>
+              <ul className="rows">
+                {renamePlan.map((m) => (
+                  <li key={m.fileId}>
+                    <div className="move">
+                      <span className="file-path muted">{m.from}</span>
+                      <span className="file-path">→ {m.to}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="settings-actions">
+                <button disabled={busy} onClick={applyRenames}>Apply</button>
+                <button className="toggle" onClick={() => setRenamePlan(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
           {confirmRemove && (
             <RemovePanel
-              message={`Remove ${author.name} and all their books from every library?`}
-              checkboxLabel="Also delete their files from disk (otherwise the next scan re-finds them as unmatched)"
+              message={`Remove ${author.name} from ${label}? The other library is untouched; if this was their last library, the author is deleted entirely.`}
+              checkboxLabel={`Also delete their ${library} files from disk`}
               busy={busy}
               onConfirm={remove}
               onCancel={() => setConfirmRemove(false)}
@@ -110,7 +206,11 @@ export default function AuthorDetailView({
       <section className="card">
         <h2>Books ({books.length})</h2>
         {books.length === 0 ? (
-          <p className="muted">No books in this library.</p>
+          <p className="muted">
+            Nothing here yet — pick books to monitor from{" "}
+            <strong>Missing</strong> below, or scan a root folder with their
+            files.
+          </p>
         ) : (
           <div className="poster-grid">
             {books.map((b) => {

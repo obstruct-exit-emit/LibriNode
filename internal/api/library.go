@@ -121,8 +121,9 @@ func (s *server) handleListAuthors(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAddAuthor syncs an author from the metadata provider with their full
-// bibliography (monitored by default). Editions are pulled in when a specific
-// book is added or refreshed.
+// bibliography and makes the author a member of the chosen format library.
+// Books are NOT auto-enrolled: they land in the author's Missing section for
+// the user to monitor selectively (owning files enrolls them automatically).
 func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ForeignAuthorID string `json:"foreignAuthorId"`
@@ -146,18 +147,93 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	author, err := s.refresh.SyncAuthor(ctx, req.ForeignAuthorID, monitored, lib)
+	author, err := s.refresh.SyncAuthor(ctx, req.ForeignAuthorID, monitored)
 	if err != nil {
 		writeSyncError(w, err)
 		return
 	}
-	// Re-adds enroll existing books too (upserts preserve membership).
-	if err := s.store.SetAuthorBooksLibrary(author.ID, lib, monitored); err != nil {
+	if err := s.store.SetAuthorLibrary(author.ID, lib, true); err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	s.rematchFiles()
 	s.writeAuthorDetail(w, http.StatusCreated, author.ID)
+}
+
+// handleAuthorLibrary removes an author from ONE format library: the author
+// flag and all their books' membership in that format are cleared (the other
+// library is untouched), optionally deleting that format's files. When the
+// author is in no library afterwards, the whole record is deleted.
+func (s *server) handleAuthorLibrary(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Library     string `json:"library"`
+		Member      bool   `json:"member"`
+		DeleteFiles bool   `json:"deleteFiles"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	lib, ok := formatLibrary(req.Library)
+	if !ok || req.Library == "" {
+		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+		return
+	}
+	if req.Member {
+		if err := s.store.SetAuthorLibrary(id, lib, true); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		s.writeAuthorDetail(w, http.StatusOK, id)
+		return
+	}
+
+	var paths []string
+	if req.DeleteFiles {
+		var err error
+		if paths, err = s.store.FilePathsForAuthorFormat(id, lib); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	if err := s.store.SetAuthorLibrary(id, lib, false); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := s.store.RemoveAuthorBooksLibrary(id, lib); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if req.DeleteFiles {
+		if _, errs := s.removeFilesFromDisk(paths); len(errs) > 0 {
+			slog.Warn("deleting files on author library removal", "authorId", id, "errors", strings.Join(errs, "; "))
+		}
+		if err := s.store.DeleteAuthorBookFilesForFormat(id, lib); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	// Gone from both libraries → nothing left to show anywhere; delete the
+	// author record entirely (books cascade).
+	author, err := s.store.GetAuthor(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !author.InEbookLibrary && !author.InAudiobookLibrary {
+		if err := s.store.DeleteAuthor(id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+		return
+	}
+	writeJSON(w, http.StatusOK, author)
 }
 
 // formatLibrary validates the target format library ("" defaults to ebook).
@@ -309,7 +385,7 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	book, err := s.refresh.SyncBook(ctx, req.ForeignBookID, monitored, lib)
+	book, err := s.refresh.SyncBook(ctx, req.ForeignBookID, monitored)
 	if err != nil {
 		writeSyncError(w, err)
 		return
@@ -395,6 +471,55 @@ func (s *server) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sections)
+}
+
+// handleAuthorSearch sweeps ONE author's wanted books in a format library —
+// the author page's Search wanted button (scoped: other authors untouched).
+func (s *server) handleAuthorSearch(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	lib, ok := formatLibrary(r.URL.Query().Get("library"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+		return
+	}
+	books, err := s.store.ListBooks(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+
+	wanted := func(b *library.Book) bool {
+		if lib == "audiobook" {
+			return b.InAudiobookLibrary && b.AudiobookMonitored && !b.HasAudiobookFile
+		}
+		return b.InEbookLibrary && b.EbookMonitored && !b.HasEbookFile
+	}
+	outcomes := []any{}
+	searched, grabbed := 0, 0
+	for i := range books {
+		if !wanted(&books[i]) {
+			continue
+		}
+		searched++
+		o, err := s.search.SearchBook(r.Context(), books[i].ID, lib)
+		if err != nil {
+			outcomes = append(outcomes, map[string]any{
+				"bookId": books[i].ID, "bookTitle": books[i].Title, "grabbed": false, "message": err.Error(),
+			})
+			continue
+		}
+		if o.Grabbed {
+			grabbed++
+		}
+		outcomes = append(outcomes, o)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"searched": searched, "grabbed": grabbed, "outcomes": outcomes,
+	})
 }
 
 // handleAuthorMissing lists an author's bibliography gaps for one format

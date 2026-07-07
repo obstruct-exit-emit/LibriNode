@@ -21,6 +21,8 @@ export interface Author {
   description: string;
   imageUrl: string;
   monitored: boolean;
+  inEbookLibrary: boolean;
+  inAudiobookLibrary: boolean;
   bookCount?: number;
   ownedCount: number;
   books?: Book[];
@@ -467,6 +469,16 @@ export const api = {
     request<Author>(`/api/v1/author/${id}/refresh`, { method: "POST" }),
   authorMissing: (id: number, library: string) =>
     request<Book[]>(`/api/v1/author/${id}/missing?library=${library}`),
+  searchAuthorWanted: (id: number, library: string) =>
+    request<{ searched: number; grabbed: number; outcomes: SearchOutcome[] }>(
+      `/api/v1/author/${id}/search?library=${library}`,
+      { method: "POST" },
+    ),
+  removeAuthorFromLibrary: (id: number, library: string, deleteFiles: boolean) =>
+    request<unknown>(`/api/v1/author/${id}/library`, {
+      ...json({ library, member: false, deleteFiles }),
+      method: "PUT",
+    }),
   monitorAuthor: (id: number, monitored: boolean) =>
     request(`/api/v1/author/${id}/monitor`, {
       ...json({ monitored }),
@@ -497,9 +509,15 @@ export const api = {
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
   listUnmatchedFiles: () =>
     request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
-  renamePreview: () => request<RenameResult>("/api/v1/library/rename"),
-  renameApply: () =>
-    request<RenameResult>("/api/v1/library/rename", { method: "POST" }),
+  renamePreview: (authorId?: number) =>
+    request<RenameResult>(
+      `/api/v1/library/rename${authorId ? `?authorId=${authorId}` : ""}`,
+    ),
+  renameApply: (authorId?: number) =>
+    request<RenameResult>("/api/v1/library/rename", {
+      ...json(authorId ? { authorId } : {}),
+      method: "POST",
+    }),
   matchFile: (fileId: number, bookId: number) =>
     request<{ file: BookFile; skips: string[] }>(
       `/api/v1/bookfile/${fileId}/match`,

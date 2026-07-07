@@ -1104,13 +1104,42 @@ func TestLibrariesHomeAndCrossAdd(t *testing.T) {
 		t.Fatalf("audiobook authors = %+v", authors)
 	}
 
-	// Remove from Ebooks: gone from that library's authors, still in Audiobooks.
+	authorID := authors[0].ID
+
+	// Remove the book from Ebooks: the book leaves the grid, but the AUTHOR
+	// stays in the ebook library (author-level membership) with 0 visible
+	// books — the Missing section is the author's remaining content.
 	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", book.ID),
 		map[string]any{"library": "ebook", "member": false}, &book), http.StatusOK)
+	if book.InEbookLibrary {
+		t.Fatalf("book still in ebook library after removal: %+v", book)
+	}
+	a.want(a.call("GET", "/api/v1/author?library=ebook", nil, &authors), http.StatusOK)
+	if len(authors) != 1 || authors[0].BookCount != 0 {
+		t.Fatalf("ebook authors after book removal = %+v, want the author with 0 books", authors)
+	}
+
+	// Removing the AUTHOR from Ebooks clears that library only.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/author/%d/library", authorID),
+		map[string]any{"library": "ebook", "member": false}, nil), http.StatusOK)
 	a.want(a.call("GET", "/api/v1/author?library=ebook", nil, &authors), http.StatusOK)
 	if len(authors) != 0 {
-		t.Fatalf("ebook authors after removal = %+v", authors)
+		t.Fatalf("ebook authors after author removal = %+v", authors)
 	}
+	a.want(a.call("GET", "/api/v1/author?library=audiobook", nil, &authors), http.StatusOK)
+	if len(authors) != 1 {
+		t.Fatalf("audiobook authors must be untouched, got %+v", authors)
+	}
+	// The book's audiobook membership survived the ebook-side removal.
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", book.ID), nil, &book), http.StatusOK)
+	if !book.InAudiobookLibrary || !book.AudiobookMonitored || book.InEbookLibrary {
+		t.Fatalf("book membership after ebook author removal = %+v", book)
+	}
+
+	// Removing from the last library deletes the author (and books) outright.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/author/%d/library", authorID),
+		map[string]any{"library": "audiobook", "member": false}, nil), http.StatusOK)
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d", authorID), nil, nil), http.StatusNotFound)
 }
 
 func TestRefreshEndpoints(t *testing.T) {
