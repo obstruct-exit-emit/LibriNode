@@ -465,6 +465,8 @@ export const api = {
     request<Author>("/api/v1/author", json({ foreignAuthorId, library })),
   refreshAuthor: (id: number) =>
     request<Author>(`/api/v1/author/${id}/refresh`, { method: "POST" }),
+  authorMissing: (id: number, library: string) =>
+    request<Book[]>(`/api/v1/author/${id}/missing?library=${library}`),
   monitorAuthor: (id: number, monitored: boolean) =>
     request(`/api/v1/author/${id}/monitor`, {
       ...json({ monitored }),

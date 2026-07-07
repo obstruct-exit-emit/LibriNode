@@ -397,6 +397,28 @@ func (s *server) handleHome(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sections)
 }
 
+// handleAuthorMissing lists an author's bibliography gaps for one format
+// library — prose books neither monitored nor owned there (hidden from the
+// Books grid) — for the author page's Missing section.
+func (s *server) handleAuthorMissing(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	lib, ok := formatLibrary(r.URL.Query().Get("library"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+		return
+	}
+	books, err := s.store.MissingForAuthor(id, lib)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, books)
+}
+
 // handleWanted lists one library's wanted items — monitored but missing
 // that format's file — for the per-library Wanted page.
 func (s *server) handleWanted(w http.ResponseWriter, r *http.Request) {

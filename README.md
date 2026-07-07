@@ -372,9 +372,9 @@ metadata endpoints return 503.
 - [x] Packaging: multi-stage Dockerfile (PUID/PGID entrypoint) + compose example, systemd unit with hardening, Windows install/uninstall scripts (Task-Scheduler startup), and a tag-triggered release workflow building version-stamped binaries (ldflags) for linux amd64/arm64 + windows amd64. *Still for 1.0: code-signed Windows installer with a native service, published Docker images*
 - [x] Docs site + API reference: `docs/` (mkdocs-material) — installation, quickstart, libraries, acquisition, configuration, full API table, development guide
 - [x] OPF sidecar files: imports write `metadata.opf` into audiobook folders (Audiobookshelf) and `<file>.opf` beside ebooks (Calibre) — title, author, description, ISBN/language, calibre:series. Rename/organize now covers every media type: series templates for manga/comics/magazines, multi-file audiobooks moving as whole folders with their sidecars, and per-type templates all editable in Settings → Media Management
+- [x] "Missing" view per author *(pulled forward from post-1.0)*: the author page ends with a Missing section listing bibliography gaps from the metadata provider — books neither monitored nor owned in that format library — grouped by series (ordered by position) then standalones by year; rows expand to a compact thumbnail + blurb, and a one-click **+ Monitor** adds the book to the library and starts searching (`GET /author/{id}/missing?library=`)
 
 ### Post-1.0 ideas
-- [ ] "Missing" view per author: a dropdown in the author area listing media you don't have — bibliography gaps from the metadata provider, organized (by series, then year) — with one-click add/monitor
 - [ ] Manga colorized/monochrome variants: own both, with separate root folders per variant — but **one** shared Manga library (unlike ebook/audiobook, no split areas); every volume shows both variants with per-variant owned state, sharing the same series/volume metadata
 - [ ] External notifications (Discord, webhook, email) on grab/import/upgrade/failure
 - [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)

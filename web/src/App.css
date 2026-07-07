@@ -506,6 +506,49 @@ button.show-more {
   color: var(--accent);
 }
 
+/* --- Author Missing section: compact expandable rows --- */
+.group-heading {
+  margin: 0.9rem 0 0.15rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.missing-detail {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0.35rem 0 0.6rem 1.25rem;
+}
+
+.missing-thumb {
+  flex: 0 0 48px;
+  width: 48px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.missing-thumb.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+
+.missing-about {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* --- Health banner + issue lines --- */
 .health-banner {
   border-color: #c9a227;

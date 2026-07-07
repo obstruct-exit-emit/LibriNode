@@ -205,6 +205,47 @@ func (s *Store) Calendar(from, to string) ([]CalendarItem, error) {
 	return items, nil
 }
 
+// MissingForAuthor lists an author's bibliography gaps for one format
+// library: prose books that are NOT visible there (not monitored and not
+// owned in that format). Ordered for the Missing view — series first
+// (alphabetical, by position within), then standalones by release date.
+// Each book carries at most one series link for grouping.
+func (s *Store) MissingForAuthor(authorID int64, mediaType string) ([]Book, error) {
+	seriesTitle := `COALESCE((SELECT se.title FROM series_books sb JOIN series se ON se.id = sb.series_id
+		WHERE sb.book_id = books.id ORDER BY se.title LIMIT 1), '')`
+	seriesPos := `COALESCE((SELECT sb.position FROM series_books sb JOIN series se ON se.id = sb.series_id
+		WHERE sb.book_id = books.id ORDER BY se.title LIMIT 1), 0)`
+	rows, err := s.db.Query(`
+		SELECT `+bookCols+`, `+seriesTitle+` AS series_title, `+seriesPos+` AS series_pos
+		FROM books
+		WHERE books.author_id = ? AND books.media_type = 'book' AND NOT (`+itemsWhere(mediaType)+`)
+		ORDER BY (series_title = ''), series_title, series_pos, books.release_date, books.sort_title`,
+		authorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	books := []Book{}
+	for rows.Next() {
+		var b Book
+		var st string
+		var sp float64
+		if err := rows.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
+			&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
+			&b.InEbookLibrary, &b.EbookMonitored, &b.InAudiobookLibrary, &b.AudiobookMonitored,
+			&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.AddedAt, &b.UpdatedAt,
+			&st, &sp); err != nil {
+			return nil, err
+		}
+		if st != "" {
+			b.Series = []SeriesLink{{Title: st, Position: sp}}
+		}
+		books = append(books, b)
+	}
+	return books, rows.Err()
+}
+
 // ListAuthorsInLibrary returns authors with at least one book in the given
 // format library, with per-author totals for the grid cards (books in this
 // library, and how many are owned in this format).

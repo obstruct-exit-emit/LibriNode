@@ -135,6 +135,128 @@ export default function AuthorDetailView({
           </div>
         )}
       </section>
+
+      <MissingCard authorId={id} library={library} refresh={books} onMonitored={reload} onError={onError} />
     </>
+  );
+}
+
+// MissingCard lists the author's bibliography gaps — books from the
+// metadata provider that are neither monitored nor owned in this library —
+// grouped by series (then standalones by year). Rows expand to a compact
+// thumbnail + blurb; the Monitor button works without expanding.
+function MissingCard({
+  authorId,
+  library,
+  refresh,
+  onMonitored,
+  onError,
+}: {
+  authorId: number;
+  library: "ebook" | "audiobook";
+  refresh: unknown; // changes whenever the parent reloaded its book list
+  onMonitored: () => void;
+  onError: (message: string) => void;
+}) {
+  const label = library === "ebook" ? "Ebooks" : "Audiobooks";
+  const [missing, setMissing] = useState<Book[] | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  const [busyID, setBusyID] = useState<number | null>(null);
+
+  useEffect(() => {
+    api
+      .authorMissing(authorId, library)
+      .then(setMissing)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [authorId, library, refresh, onError]);
+
+  if (!missing) return null;
+
+  const monitor = (b: Book) => {
+    setBusyID(b.id);
+    api
+      .setBookLibrary(b.id, library, true, true)
+      .then(onMonitored) // the book moves up into the Books grid
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusyID(null));
+  };
+
+  // Grouping: the backend orders series (alphabetical, by position), then
+  // standalones by release date — preserve that order while grouping.
+  const groups: { title: string; books: Book[] }[] = [];
+  for (const b of missing) {
+    const title = b.series?.[0]?.title ?? "";
+    const last = groups[groups.length - 1];
+    if (last && last.title === title) {
+      last.books.push(b);
+    } else {
+      groups.push({ title, books: [b] });
+    }
+  }
+  const hasSeries = groups.some((g) => g.title !== "");
+
+  return (
+    <section className="card">
+      <h2>Missing ({missing.length})</h2>
+      {missing.length === 0 ? (
+        <p className="muted">
+          No gaps — every book in the bibliography is in this library or owned.
+        </p>
+      ) : (
+        <>
+          <p className="muted">
+            In the provider's bibliography but not in {label}. Monitor adds the
+            book to this library and searches for it automatically.
+          </p>
+          {groups.map((g, gi) => (
+            <div key={g.title || `standalone-${gi}`}>
+              {hasSeries && (
+                <h3 className="group-heading">{g.title || "Standalone"}</h3>
+              )}
+              <ul className="rows">
+                {g.books.map((b) => (
+                  <li key={b.id}>
+                    <div className="row">
+                      <button
+                        className="link"
+                        onClick={() => setOpen(open === b.id ? null : b.id)}
+                      >
+                        {open === b.id ? "▾" : "▸"} {b.title}
+                        <span className="muted">
+                          {b.series?.[0] ? ` #${b.series[0].position}` : ""}
+                          {b.releaseDate ? ` (${b.releaseDate.slice(0, 4)})` : ""}
+                        </span>
+                      </button>
+                      <span className="row-actions">
+                        {b.rating > 0 && <span className="muted">★ {b.rating.toFixed(1)}</span>}
+                        <button
+                          disabled={busyID !== null}
+                          title={`Add to ${label} and search for it automatically`}
+                          onClick={() => monitor(b)}
+                        >
+                          {busyID === b.id ? "Adding…" : "+ Monitor"}
+                        </button>
+                      </span>
+                    </div>
+                    {open === b.id && (
+                      <div className="missing-detail">
+                        {b.coverUrl ? (
+                          <img className="missing-thumb" src={b.coverUrl} alt="" loading="lazy" />
+                        ) : (
+                          <div className="missing-thumb fallback">{b.title.charAt(0)}</div>
+                        )}
+                        <p className="missing-about">
+                          {b.description || "No description from the metadata provider."}
+                        </p>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </>
+      )}
+    </section>
   );
 }
