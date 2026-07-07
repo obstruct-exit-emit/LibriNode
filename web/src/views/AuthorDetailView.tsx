@@ -9,8 +9,9 @@ import {
 import RemovePanel from "../components/RemovePanel";
 
 // Full-page author detail, *arr-style: header with portrait, description and
-// author-level actions, then this library's books as clean rows. All
-// ownership/monitor/search controls stay scoped to the current format.
+// author-level actions, then this library's books as a cover grid — clicking
+// a card opens its full control panel below. All ownership/monitor/search
+// controls stay scoped to the current format.
 export default function AuthorDetailView({
   id,
   library,
@@ -25,6 +26,7 @@ export default function AuthorDetailView({
   const label = library === "ebook" ? "Ebooks" : "Audiobooks";
   const [author, setAuthor] = useState<Author | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
@@ -50,6 +52,7 @@ export default function AuthorDetailView({
   const owned = books.filter((b) =>
     library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile,
   ).length;
+  const selectedBook = books.find((b) => b.id === selected) ?? null;
 
   const refresh = () => {
     setBusy(true);
@@ -116,30 +119,64 @@ export default function AuthorDetailView({
         {books.length === 0 ? (
           <p className="muted">No books in this library.</p>
         ) : (
-          <ul className="rows">
-            {books.map((b) => (
-              <BookRow key={b.id} book={b} library={library} onChanged={reload} onError={onError} />
-            ))}
-          </ul>
+          <div className="poster-grid">
+            {books.map((b) => {
+              const bookOwned = library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile;
+              const monitored = library === "ebook" ? b.ebookMonitored : b.audiobookMonitored;
+              return (
+                <button
+                  key={b.id}
+                  className={selected === b.id ? "poster-card selected" : "poster-card"}
+                  onClick={() => setSelected(selected === b.id ? null : b.id)}
+                >
+                  {b.coverUrl ? (
+                    <img className="poster" src={b.coverUrl} alt="" loading="lazy" />
+                  ) : (
+                    <div className="poster fallback">{b.title.charAt(0)}</div>
+                  )}
+                  <span className="poster-title">{b.title}</span>
+                  <span className="poster-sub">
+                    {b.releaseDate ? b.releaseDate.slice(0, 4) + " · " : ""}
+                    {bookOwned ? "owned" : "wanted"}
+                    {!monitored && " · unmonitored"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
       </section>
+
+      {selectedBook && (
+        <BookDetailCard
+          key={selectedBook.id}
+          book={selectedBook}
+          library={library}
+          onChanged={reload}
+          onClose={() => setSelected(null)}
+          onError={onError}
+        />
+      )}
     </>
   );
 }
 
-function BookRow({
+// BookDetailCard is the selected book's control panel: per-format status and
+// monitoring, acquisition actions, cross-add, files, and edition info.
+function BookDetailCard({
   book,
   library,
   onChanged,
+  onClose,
   onError,
 }: {
   book: Book;
   library: "ebook" | "audiobook";
   onChanged: () => void;
+  onClose: () => void;
   onError: (message: string) => void;
 }) {
   const [detail, setDetail] = useState<Book | null>(null);
-  const [open, setOpen] = useState(false);
   const [candidates, setCandidates] = useState<ReleaseCandidate[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -151,15 +188,12 @@ function BookRow({
   const inOther = library === "ebook" ? book.inAudiobookLibrary : book.inEbookLibrary;
   const ownedOther = library === "ebook" ? book.hasAudiobookFile : book.hasEbookFile;
 
-  const loadDetail = () => {
-    if (!open) {
-      api
-        .getBook(book.id)
-        .then(setDetail)
-        .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
-    }
-    setOpen(!open);
-  };
+  useEffect(() => {
+    api
+      .getBook(book.id)
+      .then(setDetail)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [book.id, onError]);
 
   const setMembership = (lib: string, member: boolean, mon: boolean, deleteFiles = false) => {
     api
@@ -203,12 +237,12 @@ function BookRow({
   const year = book.releaseDate ? ` (${book.releaseDate.slice(0, 4)})` : "";
 
   return (
-    <li>
-      <div className="row">
-        <button className="link" onClick={loadDetail}>
-          {open ? "▾" : "▸"} {book.title}
+    <section className="card">
+      <div className="card-head">
+        <h2>
+          {book.title}
           <span className="muted">{year}</span>
-        </button>
+        </h2>
         <span className="row-actions">
           <span className={owned ? "owned yes" : "owned no"}>
             {owned ? "owned" : "wanted"}
@@ -221,112 +255,112 @@ function BookRow({
           >
             {monitored ? "monitored" : "unmonitored"}
           </button>
+          <button className="toggle" onClick={onClose} title="Close this panel">
+            ✕
+          </button>
         </span>
       </div>
-      {open && detail && (
-        <div className="book-detail">
-          {detail.series && detail.series.length > 0 && (
-            <p className="muted">{detail.series.map((s) => `${s.title} #${s.position}`).join(", ")}</p>
-          )}
-          <div className="settings-actions">
-            <button disabled={searching} onClick={autoGrab} title="Search indexers and grab the best release">
-              {searching ? "Working…" : "Auto grab"}
-            </button>
-            <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
-              Search releases
-            </button>
-            <button
-              className="danger"
-              title={`Remove from the ${library} library (the other library is untouched)`}
-              onClick={() => setConfirmRemove(!confirmRemove)}
-            >
-              remove from library
-            </button>
-            {grabNotice && (
-              <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
-            )}
-            {inOther ? (
-              <span
-                className={`cross-format ${ownedOther ? "owned yes" : "owned no"}`}
-                title={
-                  ownedOther
-                    ? `You own the ${otherLibrary} of this book`
-                    : `Also in the ${otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"} library, not owned yet`
-                }
-              >
-                {otherLibrary === "audiobook" ? "🎧" : "📖"}{" "}
-                {otherLibrary} {ownedOther ? "owned" : "in library"}
-              </span>
-            ) : (
-              <button
-                className="toggle cross-format"
-                title={`This book isn't in the ${otherLibrary} library yet`}
-                onClick={() => {
-                  const mon = confirm(
-                    `Add "${book.title}" to the ${otherLibrary} library.\n\nOK = monitor (search for it automatically) · Cancel = just add`,
-                  );
-                  setMembership(otherLibrary, true, mon);
-                }}
-              >
-                + Add to {otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"}
-              </button>
-            )}
-          </div>
-          {confirmRemove && (
-            <RemovePanel
-              message={`Remove "${book.title}" from the ${library === "ebook" ? "Ebooks" : "Audiobooks"} library? The other library is untouched.`}
-              checkboxLabel={`Also delete its ${library} file(s) from disk`}
-              busy={searching}
-              onConfirm={(deleteFiles) => setMembership(library, false, false, deleteFiles)}
-              onCancel={() => setConfirmRemove(false)}
-            />
-          )}
-          {candidates && (
-            <ul className="rows nested">
-              {candidates.length === 0 && <li className="muted">No releases found.</li>}
-              {candidates.map((c) => (
-                <li key={c.guid + c.indexer}>
-                  <div className="row">
-                    <span className="file-path">
-                      {c.title}
-                      {!c.approved && c.rejections && (
-                        <span className="notice bad"> — {c.rejections.join(", ")}</span>
-                      )}
-                    </span>
-                    <span className="row-actions">
-                      <span className="muted">
-                        {c.indexer} · {c.protocol}
-                        {c.seeders >= 0 && ` · ${c.seeders} seeders`}
-                        {c.size > 0 && ` · ${(c.size / (1 << 20)).toFixed(1)} MiB`}
-                        {` · score ${c.score}`}
-                      </span>
-                      {c.approved && <button onClick={() => grab(c)}>Grab</button>}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          {detail.files && detail.files.length > 0 && (
-            <ul className="rows nested">
-              {detail.files
-                .filter((f) => f.mediaType === library)
-                .map((f) => (
-                  <li key={f.id}>
-                    <div className="row">
-                      <span className="file-path">📄 {f.path}</span>
-                      <span className="muted">
-                        {f.format} · {(f.size / 1024).toFixed(0)} KiB
-                      </span>
-                    </div>
-                  </li>
-                ))}
-            </ul>
-          )}
-          <EditionsSummary editions={detail.editions ?? []} library={library} />
-        </div>
+
+      {detail?.series && detail.series.length > 0 && (
+        <p className="muted">{detail.series.map((s) => `${s.title} #${s.position}`).join(", ")}</p>
       )}
-    </li>
+      <div className="settings-actions">
+        <button disabled={searching} onClick={autoGrab} title="Search indexers and grab the best release">
+          {searching ? "Working…" : "Auto grab"}
+        </button>
+        <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
+          Search releases
+        </button>
+        <button
+          className="danger"
+          title={`Remove from the ${library} library (the other library is untouched)`}
+          onClick={() => setConfirmRemove(!confirmRemove)}
+        >
+          remove from library
+        </button>
+        {grabNotice && (
+          <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
+        )}
+        {inOther ? (
+          <span
+            className={`cross-format ${ownedOther ? "owned yes" : "owned no"}`}
+            title={
+              ownedOther
+                ? `You own the ${otherLibrary} of this book`
+                : `Also in the ${otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"} library, not owned yet`
+            }
+          >
+            {otherLibrary === "audiobook" ? "🎧" : "📖"}{" "}
+            {otherLibrary} {ownedOther ? "owned" : "in library"}
+          </span>
+        ) : (
+          <button
+            className="toggle cross-format"
+            title={`This book isn't in the ${otherLibrary} library yet`}
+            onClick={() => {
+              const mon = confirm(
+                `Add "${book.title}" to the ${otherLibrary} library.\n\nOK = monitor (search for it automatically) · Cancel = just add`,
+              );
+              setMembership(otherLibrary, true, mon);
+            }}
+          >
+            + Add to {otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"}
+          </button>
+        )}
+      </div>
+      {confirmRemove && (
+        <RemovePanel
+          message={`Remove "${book.title}" from the ${library === "ebook" ? "Ebooks" : "Audiobooks"} library? The other library is untouched.`}
+          checkboxLabel={`Also delete its ${library} file(s) from disk`}
+          busy={searching}
+          onConfirm={(deleteFiles) => setMembership(library, false, false, deleteFiles)}
+          onCancel={() => setConfirmRemove(false)}
+        />
+      )}
+      {candidates && (
+        <ul className="rows nested">
+          {candidates.length === 0 && <li className="muted">No releases found.</li>}
+          {candidates.map((c) => (
+            <li key={c.guid + c.indexer}>
+              <div className="row">
+                <span className="file-path">
+                  {c.title}
+                  {!c.approved && c.rejections && (
+                    <span className="notice bad"> — {c.rejections.join(", ")}</span>
+                  )}
+                </span>
+                <span className="row-actions">
+                  <span className="muted">
+                    {c.indexer} · {c.protocol}
+                    {c.seeders >= 0 && ` · ${c.seeders} seeders`}
+                    {c.size > 0 && ` · ${(c.size / (1 << 20)).toFixed(1)} MiB`}
+                    {` · score ${c.score}`}
+                  </span>
+                  {c.approved && <button onClick={() => grab(c)}>Grab</button>}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {detail?.files && detail.files.length > 0 && (
+        <ul className="rows nested">
+          {detail.files
+            .filter((f) => f.mediaType === library)
+            .map((f) => (
+              <li key={f.id}>
+                <div className="row">
+                  <span className="file-path">📄 {f.path}</span>
+                  <span className="muted">
+                    {f.format} · {(f.size / 1024).toFixed(0)} KiB
+                  </span>
+                </div>
+              </li>
+            ))}
+        </ul>
+      )}
+      <EditionsSummary editions={detail?.editions ?? []} library={library} />
+    </section>
   );
 }
 
