@@ -2,26 +2,48 @@
 
 A library only appears in the sidebar once it's set up — a root folder
 added, or content of that type already owned. Library pages are poster
-grids (authors for prose, series for the rest) with owned/total counts;
-clicking a card opens a detail page with artwork, description, actions, and
-the books/volumes as rows. Grids over 10 cards get a filter box and render
-incrementally.
+grids (authors for prose, series for the rest) with owned/total counts.
+Grids over 10 cards get a filter box and render incrementally.
 
-## Ebooks & Audiobooks (author-first)
+## Ebooks & Audiobooks (author-first, three levels deep)
 
 Prose books flow from Hardcover. **Ebooks and Audiobooks are separate
-libraries with explicit membership**: a book appears in a format library
-only if you own that format or deliberately added it there — never
-inferred. Each membership has its own monitored flag; a library lists only
-books that are monitored or owned in that format.
+libraries with explicit membership** — for both authors and books:
 
-- Add from the Ebooks page → the book is in the Ebooks library.
-- Cross-add from the book detail (**+ Add to Audiobooks/Ebooks**, with a
-  monitor prompt); once a book is in both, the detail shows the other
-  format's status badge instead.
-- Scanning/importing a format's file auto-enrolls the book there.
-- Removing from a library (optionally deleting that format's files — an
-  opt-in checkbox) leaves the other library untouched.
+- An **author** appears in Audiobooks only if added there or you own an
+  audiobook of theirs (and vice versa for ebooks); adding/removing an
+  author in one format never touches the other.
+- A **book** appears in a format library only if you own that format or
+  deliberately added it there — never inferred. Each book membership has
+  its own monitored flag; a library's Books grid lists only books that are
+  monitored or owned in that format.
+
+Browsing: library grid (authors) → **author page** → **book page**.
+
+The author page has a portrait, bio, and author-scoped actions (**Search
+wanted**, **Organize…**, **Scan files**, **Refresh metadata**, **Remove
+from Ebooks/Audiobooks** — all touch only this author's books), a poster
+grid of their monitored-or-owned books, and a **Missing** section below it:
+the rest of the bibliography, grouped by series (then standalones by year),
+each row expandable to a thumbnail + blurb with a one-click **+ Monitor**
+that enrolls the book and starts searching. Adding an author pulls their
+bibliography as metadata only — nothing is auto-monitored, so a freshly
+added author's whole bibliography starts in Missing; an author with zero
+visible books still shows, with an empty grid pointing at Missing, instead
+of disappearing.
+
+The book page has cover art, description, the monitor toggle, **Auto
+grab**/**Search releases**, remove-from-library (with an opt-in
+delete-files checkbox), and cross-add to the other format — once a book is
+in both, this switches to a status badge instead of a button.
+
+- Add from the Ebooks page → the author/book joins the Ebooks library.
+- Cross-add from the book page (**+ Add to Audiobooks/Ebooks**, with a
+  monitor prompt).
+- Scanning/importing a format's file auto-enrolls the book (and its
+  author) there.
+- Refreshing metadata never enrolls, un-enrolls, or re-monitors anything —
+  only descriptions/covers/new-book metadata update.
 
 Audiobook scanning understands `Author/Title.m4b` and multi-file
 `Author/Title/*.mp3` layouts; imports land as `Author/Book Title/` folders
@@ -49,10 +71,12 @@ issues (capped per pass). Imports land as `Magazine/Magazine - date.pdf`.
 
 ## Organizing files
 
-**Organize…** on any library page previews, then applies, moves that bring
-files in line with the naming templates (**Settings → Media Management**) —
-all five media types, multi-file audiobooks moving as whole folders with
-their sidecars. Emptied folders are swept up to (never including) the root.
+**Organize…** previews, then applies, moves that bring files in line with
+the naming templates (**Settings → Media Management**) — all five media
+types, multi-file audiobooks moving as whole folders with their sidecars.
+Emptied folders are swept up to (never including) the root. Available on
+every library page (everything) and on the author page (that author's
+files only).
 
 ## Wanted, Home, and Calendar
 

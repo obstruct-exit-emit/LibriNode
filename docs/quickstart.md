@@ -16,9 +16,11 @@
    library appear in the sidebar.
 
 4. **Add something.** On a library page, hit **+ Add** and search. Adding an
-   author pulls the full bibliography; adding a book pulls its editions;
-   adding a manga/comic series pulls its volumes; magazines are added by
-   name.
+   author pulls their full bibliography as metadata and joins the library,
+   but monitors nothing yet — every book starts in that author's **Missing**
+   section for you to monitor selectively. Adding a specific book pulls its
+   editions and monitors just that one. Adding a manga/comic series pulls
+   its volumes; magazines are added by name.
 
 5. **Scan what you own.** **Scan files** on a library page matches existing
    files to your books — every item gets an owned/wanted badge. Strays land
