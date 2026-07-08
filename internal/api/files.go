@@ -45,8 +45,8 @@ func renameBookID(r *http.Request) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-func renameAuthorID(r *http.Request) (int64, bool) {
-	v := r.URL.Query().Get("authorId")
+func renameIDParam(r *http.Request, name string) (int64, bool) {
+	v := r.URL.Query().Get(name)
 	if v == "" {
 		return 0, true
 	}
@@ -54,8 +54,12 @@ func renameAuthorID(r *http.Request) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-// planRename picks the organize scope: one book, one author, or everything.
-func (s *server) planRename(bookID, authorID int64) ([]organizeMove, []string, error) {
+// planRename picks the organize scope: one book, one series, one author, or
+// everything.
+func (s *server) planRename(bookID, authorID, seriesID int64) ([]organizeMove, []string, error) {
+	if seriesID > 0 {
+		return s.organize.PlanSeries(seriesID)
+	}
 	if authorID > 0 {
 		return s.organize.PlanAuthor(authorID)
 	}
@@ -63,19 +67,25 @@ func (s *server) planRename(bookID, authorID int64) ([]organizeMove, []string, e
 }
 
 // handleRenamePreview computes what organizing would move, without touching
-// disk. ?bookId=N scopes to one book, ?authorId=N to one author's files.
+// disk. ?bookId=N scopes to one book, ?authorId=N to one author, ?seriesId=N
+// to one series.
 func (s *server) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
 	bookID, ok := renameBookID(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid bookId")
 		return
 	}
-	authorID, ok := renameAuthorID(r)
+	authorID, ok := renameIDParam(r, "authorId")
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid authorId")
 		return
 	}
-	moves, skips, err := s.planRename(bookID, authorID)
+	seriesID, ok := renameIDParam(r, "seriesId")
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid seriesId")
+		return
+	}
+	moves, skips, err := s.planRename(bookID, authorID, seriesID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -84,16 +94,17 @@ func (s *server) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRenameApply plans and executes the moves. The body may scope with
-// {"bookId": N} or {"authorId": N}; empty body organizes everything.
+// {"bookId": N}, {"authorId": N}, or {"seriesId": N}; empty organizes all.
 func (s *server) handleRenameApply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		BookID   int64 `json:"bookId"`
 		AuthorID int64 `json:"authorId"`
+		SeriesID int64 `json:"seriesId"`
 	}
 	// Body is optional.
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	moves, skips, err := s.planRename(req.BookID, req.AuthorID)
+	moves, skips, err := s.planRename(req.BookID, req.AuthorID, req.SeriesID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

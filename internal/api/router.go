@@ -118,6 +118,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/series/{id}", s.auth(s.handleGetSeries))
 	mux.HandleFunc("PUT /api/v1/series/{id}/monitor", s.auth(s.handleMonitorSeries))
 	mux.HandleFunc("POST /api/v1/series/{id}/refresh", s.auth(s.handleRefreshSeries))
+	mux.HandleFunc("POST /api/v1/series/{id}/search", s.auth(s.handleSeriesSearch))
 	mux.HandleFunc("DELETE /api/v1/series/{id}", s.auth(s.handleDeleteSeries))
 	mux.HandleFunc("POST /api/v1/library/scan", s.auth(s.handleScan))
 	mux.HandleFunc("GET /api/v1/library/rename", s.auth(s.handleRenamePreview))

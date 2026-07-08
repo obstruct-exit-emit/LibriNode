@@ -205,6 +205,49 @@ func (s *server) handleRefreshSeries(w http.ResponseWriter, r *http.Request) {
 	s.writeSeriesDetail(w, http.StatusOK, id)
 }
 
+// handleSeriesSearch sweeps ONE series' wanted volumes/issues (monitored,
+// missing their file) — the series page's Search wanted button.
+func (s *server) handleSeriesSearch(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	series, err := s.store.GetSeries(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	volumes, err := s.store.ListVolumes(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	outcomes := []any{}
+	searched, grabbed := 0, 0
+	for i := range volumes {
+		v := &volumes[i]
+		if !v.Monitored || v.HasFile {
+			continue
+		}
+		searched++
+		o, err := s.search.SearchBook(r.Context(), v.ID, series.MediaType)
+		if err != nil {
+			outcomes = append(outcomes, map[string]any{
+				"bookId": v.ID, "bookTitle": v.Title, "grabbed": false, "message": err.Error(),
+			})
+			continue
+		}
+		if o.Grabbed {
+			grabbed++
+		}
+		outcomes = append(outcomes, o)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"searched": searched, "grabbed": grabbed, "outcomes": outcomes,
+	})
+}
+
 func (s *server) handleDeleteSeries(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {

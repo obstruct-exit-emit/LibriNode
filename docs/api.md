@@ -16,10 +16,10 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 | Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` |
 | Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true`, every library), `PUT /author/{id}/library` (add/remove from ONE format library; `deleteFiles`; auto-deletes the author once in no library), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` (metadata only — never touches membership/monitoring), `GET /author/{id}/missing?library=` (bibliography gaps), `POST /author/{id}/search?library=` (this author's wanted books only) |
-| Books | `GET/POST /book`, `GET/DELETE /book/{id}` (`?deleteFiles=true`), `PUT /book/{id}/library` (membership + monitored + `deleteFiles`), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
-| Series | `GET/POST /series`, `GET/DELETE /series/{id}` (`?deleteFiles=true`), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
+| Books | `GET/POST /book`, `GET/DELETE /book/{id}` (`?deleteFiles=true`), `PUT /book/{id}/library` (membership + monitored + `deleteFiles`; `library:"manga"` adds/removes a volume, `member:false` forgets its file records so it drops to Missing), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
+| Series | `GET/POST /series`, `GET/DELETE /series/{id}` (`?deleteFiles=true`), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh`, `POST /series/{id}/search` (this series' wanted volumes only) |
 | Libraries | `GET /libraries`, `GET /home`, `GET /wanted?library=X`, `GET /calendar?past=30&days=90` |
-| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=` or `?authorId=`/`{"authorId":N}` scopes, otherwise everything), `GET /bookfile?unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
+| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /indexer/schema`, `GET /release?term=` or `?bookId=N&mediaType=` |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab`, `GET /queue`, `GET /history`, `POST /library/import`, `GET /blocklist`, `DELETE /blocklist/{id}` |

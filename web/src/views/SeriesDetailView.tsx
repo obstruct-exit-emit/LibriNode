@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Book, type Series } from "../api";
+import {
+  api,
+  type Book,
+  type ReleaseCandidate,
+  type RenameMove,
+  type Series,
+} from "../api";
 import { libraryLabels } from "../App";
 import RemovePanel from "../components/RemovePanel";
 
 // Full-page series detail, *arr-style: header with cover, description and
-// series-level actions, then volumes/issues as clean rows. Manga volumes
-// expand to show their owned variants and file locations (see
-// MangaVolumeRow); other types stay flat.
+// series-level actions, then volumes/issues as rows. Manga volumes expand to
+// show owned variants, file locations, and per-volume monitor/remove
+// controls; a Missing section lists volumes not in the library (neither
+// monitored nor owned), each with a one-click Monitor — mirroring the
+// per-author Missing view. Other media types stay flat.
 export default function SeriesDetailView({
   id,
   mediaType,
@@ -22,6 +30,7 @@ export default function SeriesDetailView({
   const [series, setSeries] = useState<Series | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [notice, setNotice] = useState("");
 
   const reload = useCallback(() => {
@@ -38,6 +47,12 @@ export default function SeriesDetailView({
   const volumes = series.volumes ?? [];
   const owned = volumes.filter((v) => v.hasFile).length;
   const unitName = mediaType === "magazine" ? "issue" : "volume";
+  const isManga = mediaType === "manga";
+
+  // Manga splits into the library (monitored or owned) and Missing (neither),
+  // like books/authors; other types show every volume/issue in one list.
+  const inLibrary = isManga ? volumes.filter((v) => v.monitored || v.hasFile) : volumes;
+  const missing = isManga ? volumes.filter((v) => !v.monitored && !v.hasFile) : [];
 
   const run = (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -72,6 +87,67 @@ export default function SeriesDetailView({
       .finally(() => setBusy(false));
   };
 
+  // Series-scoped header actions — like the author page, but only this
+  // series' volumes are touched.
+  const searchWanted = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .searchSeriesWanted(series.id)
+      .then((r) =>
+        setNotice(
+          r.searched === 0
+            ? "Nothing to search — every monitored volume is owned (or pending)."
+            : `Searched ${r.searched} wanted volume(s), grabbed ${r.grabbed}.`,
+        ),
+      )
+      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setBusy(false));
+  };
+
+  const scan = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .scan()
+      .then((r) => {
+        setNotice(
+          r.roots === 0
+            ? "No root folders to scan — add one under Settings."
+            : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched.`,
+        );
+        reload();
+      })
+      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setBusy(false));
+  };
+
+  const previewRenames = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .renamePreview(undefined, series.id)
+      .then((r) => {
+        setRenamePlan(r.moves);
+        if (r.moves.length === 0) setNotice("This series' files already match the naming templates.");
+      })
+      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setBusy(false));
+  };
+
+  const applyRenames = () => {
+    setBusy(true);
+    api
+      .renameApply(undefined, series.id)
+      .then((r) => {
+        setNotice(`Moved ${r.moves.length} file(s)${r.skips.length ? `, ${r.skips.length} skipped` : ""}.`);
+        setRenamePlan(null);
+        reload();
+      })
+      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setBusy(false));
+  };
+
   return (
     <>
       <button className="link back" onClick={onBack}>
@@ -102,6 +178,19 @@ export default function SeriesDetailView({
             >
               {series.monitored ? "monitored" : "unmonitored"}
             </button>
+            <button
+              disabled={busy}
+              title={`Search indexers for this series' wanted ${unitName}s`}
+              onClick={searchWanted}
+            >
+              Search wanted
+            </button>
+            <button disabled={busy} title="Preview naming-template moves for this series' files" onClick={previewRenames}>
+              Organize…
+            </button>
+            <button disabled={busy} title="Scan root folders for new files" onClick={scan}>
+              Scan files
+            </button>
             {series.metadataSource !== "manual" && (
               <button
                 disabled={busy}
@@ -128,31 +217,46 @@ export default function SeriesDetailView({
               onCancel={() => setConfirmRemove(false)}
             />
           )}
+          {renamePlan && renamePlan.length > 0 && (
+            <div className="rename-plan">
+              <p>{renamePlan.length} file(s) would move to match the naming templates:</p>
+              <ul className="rows">
+                {renamePlan.map((m) => (
+                  <li key={m.fileId}>
+                    <div className="move">
+                      <span className="file-path muted">{m.from}</span>
+                      <span className="file-path">→ {m.to}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="settings-actions">
+                <button disabled={busy} onClick={applyRenames}>Apply</button>
+                <button className="toggle" onClick={() => setRenamePlan(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
       <section className="card">
         <h2>
-          {mediaType === "magazine" ? "Issues" : "Volumes"} ({volumes.length})
+          {mediaType === "magazine" ? "Issues" : "Volumes"} ({inLibrary.length})
         </h2>
         {notice && <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>}
-        {volumes.length === 0 ? (
+        {inLibrary.length === 0 ? (
           <p className="muted">
             {mediaType === "magazine"
               ? "No issues yet — they appear when grabbed or scanned."
-              : "No volumes."}
+              : isManga
+                ? "Nothing in the library — monitor volumes from Missing below."
+                : "No volumes."}
           </p>
         ) : (
           <ul className="rows">
-            {volumes.map((v) =>
-              mediaType === "manga" ? (
-                <MangaVolumeRow
-                  key={v.id}
-                  volume={v}
-                  busy={busy}
-                  onAutoGrab={autoGrab}
-                  onError={onError}
-                />
+            {inLibrary.map((v) =>
+              isManga ? (
+                <MangaVolumeRow key={v.id} volume={v} onChanged={reload} onError={onError} />
               ) : (
                 <li key={v.id}>
                   <div className="row">
@@ -178,6 +282,21 @@ export default function SeriesDetailView({
           </ul>
         )}
       </section>
+
+      {isManga && missing.length > 0 && (
+        <section className="card">
+          <h2>Missing ({missing.length})</h2>
+          <p className="muted">
+            Volumes in the series you're not tracking — neither monitored nor
+            owned. Monitor adds one back to the library and searches for it.
+          </p>
+          <ul className="rows">
+            {missing.map((v) => (
+              <MangaMissingRow key={v.id} volume={v} onChanged={reload} onError={onError} />
+            ))}
+          </ul>
+        </section>
+      )}
     </>
   );
 }
@@ -185,23 +304,44 @@ export default function SeriesDetailView({
 const variantLabel = (variant?: string) =>
   variant === "color" ? "colorized" : variant === "mono" ? "monochrome" : "";
 
+// coverAbout renders the compact thumbnail + blurb shared by the volume and
+// Missing rows (same look as the per-author Missing view).
+function coverAbout(volume: Book) {
+  return (
+    <div className="volume-about">
+      {volume.coverUrl ? (
+        <img className="missing-thumb" src={volume.coverUrl} alt="" loading="lazy" />
+      ) : (
+        <div className="missing-thumb fallback">{volume.title.charAt(0)}</div>
+      )}
+      <p className="missing-about">
+        {volume.description || "No description from the metadata provider."}
+      </p>
+    </div>
+  );
+}
+
 // MangaVolumeRow keeps the list compact for series with hundreds of volumes:
-// collapsed it's just the title + an owned/wanted badge (Auto grab when
-// wanted). Owned volumes expand to reveal which variants are owned and where
-// each file lives on disk — details that would otherwise crowd the row.
+// collapsed it's just the title + an owned/wanted badge. Expanding reveals
+// the cover + blurb, which variants are owned and where each file lives, plus
+// the same per-item controls an individual book gets — monitor, Auto grab,
+// Search releases, and remove-from-library.
 function MangaVolumeRow({
   volume,
-  busy,
-  onAutoGrab,
+  onChanged,
   onError,
 }: {
   volume: Book;
-  busy: boolean;
-  onAutoGrab: (v: Book) => void;
+  onChanged: () => void;
   onError: (message: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Book | null>(null);
+  const [rowBusy, setRowBusy] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [candidates, setCandidates] = useState<ReleaseCandidate[] | null>(null);
+  const [grabNotice, setGrabNotice] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const toggle = () => {
     if (!open && !detail) {
@@ -213,70 +353,207 @@ function MangaVolumeRow({
     setOpen(!open);
   };
 
+  const act = (action: () => Promise<unknown>) => {
+    setRowBusy(true);
+    action()
+      .then(onChanged)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setRowBusy(false));
+  };
+
+  const autoGrab = () => {
+    setSearching(true);
+    setGrabNotice("");
+    api
+      .autoSearchBook(volume.id, "manga")
+      .then((o) => {
+        setGrabNotice(o.grabbed ? `✓ Grabbed "${o.release}" via ${o.client}` : `✗ ${o.message ?? "nothing grabbed"}`);
+        onChanged();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setSearching(false));
+  };
+
+  const interactiveSearch = () => {
+    setSearching(true);
+    setGrabNotice("");
+    api
+      .searchReleasesForBook(volume.id, "manga")
+      .then((r) => {
+        setCandidates(r.releases);
+        if (r.errors.length) setGrabNotice(`Some indexers failed: ${r.errors.join("; ")}`);
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setSearching(false));
+  };
+
+  const grab = (c: ReleaseCandidate) => {
+    api
+      .grabRelease(c.title, c.downloadUrl, c.protocol, volume.id, "manga", c.guid)
+      .then((r) => setGrabNotice(`✓ Sent "${c.title}" to ${r.client}`))
+      .catch((err: unknown) => setGrabNotice(`✗ ${err instanceof Error ? err.message : String(err)}`));
+  };
+
   const files = (detail?.files ?? []).filter((f) => f.mediaType === "manga");
 
   return (
     <li>
       <div className="row">
-        {volume.hasFile ? (
-          <button className="link" onClick={toggle}>
-            {open ? "▾" : "▸"} {volume.title}
-          </button>
-        ) : (
-          <span>{volume.title}</span>
-        )}
+        <button className="link" onClick={toggle}>
+          {open ? "▾" : "▸"} {volume.title}
+        </button>
         <span className="row-actions">
           <span className={volume.hasFile ? "owned yes" : "owned no"}>
             {volume.hasFile ? "owned" : "wanted"}
           </span>
-          {!volume.hasFile && (
-            <button
-              disabled={busy}
-              title="Search indexers and grab the best release for this volume"
-              onClick={() => onAutoGrab(volume)}
-            >
-              Auto grab
-            </button>
-          )}
         </span>
       </div>
-      {open && volume.hasFile && (
+      {open && (
         <div className="book-detail">
+          {coverAbout(volume)}
+          {volume.hasFile && (
+            <div className="settings-actions">
+              {volume.hasColorFile && (
+                <span className="owned yes" title="Colorized copy owned">
+                  🎨 colorized
+                </span>
+              )}
+              {volume.hasMonoFile && (
+                <span className="owned yes" title="Monochrome copy owned">
+                  ◻️ monochrome
+                </span>
+              )}
+            </div>
+          )}
+          {volume.hasFile &&
+            (detail === null ? (
+              <p className="muted">Loading files…</p>
+            ) : files.length === 0 ? (
+              <p className="muted">No files recorded.</p>
+            ) : (
+              <ul className="rows nested">
+                {files.map((f) => (
+                  <li key={f.id}>
+                    <div className="row">
+                      <span className="file-path">
+                        📄 {variantLabel(f.variant) && `${variantLabel(f.variant)} · `}
+                        {f.path}
+                      </span>
+                      <span className="muted">
+                        {f.format} · {(f.size / 1024).toFixed(0)} KiB
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ))}
           <div className="settings-actions">
-            {volume.hasColorFile && (
-              <span className="owned yes" title="Colorized copy owned">
-                🎨 colorized
-              </span>
-            )}
-            {volume.hasMonoFile && (
-              <span className="owned yes" title="Monochrome copy owned">
-                ◻️ monochrome
-              </span>
+            <button
+              className={volume.monitored ? "toggle on" : "toggle"}
+              disabled={rowBusy}
+              title="Whether this volume is searched for automatically"
+              onClick={() => act(() => api.monitorBook(volume.id, !volume.monitored))}
+            >
+              {volume.monitored ? "monitored" : "unmonitored"}
+            </button>
+            <button disabled={searching} onClick={autoGrab} title="Search indexers and grab the best release">
+              {searching ? "Working…" : "Auto grab"}
+            </button>
+            <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
+              Search releases
+            </button>
+            <button
+              className="danger"
+              disabled={rowBusy}
+              title="Remove this volume from the library"
+              onClick={() => setConfirmRemove(!confirmRemove)}
+            >
+              Remove from library
+            </button>
+            {grabNotice && (
+              <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
             )}
           </div>
-          {detail === null ? (
-            <p className="muted">Loading files…</p>
-          ) : files.length === 0 ? (
-            <p className="muted">No files recorded.</p>
-          ) : (
+          {candidates && (
             <ul className="rows nested">
-              {files.map((f) => (
-                <li key={f.id}>
+              {candidates.length === 0 && <li className="muted">No releases found.</li>}
+              {candidates.map((c) => (
+                <li key={c.guid + c.indexer}>
                   <div className="row">
                     <span className="file-path">
-                      📄 {variantLabel(f.variant) && `${variantLabel(f.variant)} · `}
-                      {f.path}
+                      {c.title}
+                      {!c.approved && c.rejections && (
+                        <span className="notice bad"> — {c.rejections.join(", ")}</span>
+                      )}
                     </span>
-                    <span className="muted">
-                      {f.format} · {(f.size / 1024).toFixed(0)} KiB
+                    <span className="row-actions">
+                      <span className="muted">
+                        {c.indexer} · {c.protocol}
+                        {c.seeders >= 0 && ` · ${c.seeders} seeders`}
+                        {c.size > 0 && ` · ${(c.size / (1 << 20)).toFixed(1)} MiB`}
+                        {` · score ${c.score}`}
+                      </span>
+                      {c.approved && <button onClick={() => grab(c)}>Grab</button>}
                     </span>
                   </div>
                 </li>
               ))}
             </ul>
           )}
+          {confirmRemove && (
+            <RemovePanel
+              message={`Remove "${volume.title}" from the library? It moves to Missing, where you can add it back.`}
+              checkboxLabel="Also delete its files from disk (otherwise the next scan re-finds them)"
+              busy={rowBusy}
+              onConfirm={(deleteFiles) =>
+                act(() => api.setBookLibrary(volume.id, "manga", false, false, deleteFiles))
+              }
+              onCancel={() => setConfirmRemove(false)}
+            />
+          )}
         </div>
       )}
+    </li>
+  );
+}
+
+// MangaMissingRow is a series bibliography gap: a volume neither monitored nor
+// owned. Compact by default (title + one-click Monitor); expands to the cover
+// and blurb, mirroring the per-author Missing view.
+function MangaMissingRow({
+  volume,
+  onChanged,
+  onError,
+}: {
+  volume: Book;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const monitor = () => {
+    setBusy(true);
+    api
+      .monitorBook(volume.id, true)
+      .then(onChanged)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <li>
+      <div className="row">
+        <button className="link" onClick={() => setOpen(!open)}>
+          {open ? "▾" : "▸"} {volume.title}
+        </button>
+        <span className="row-actions">
+          <button disabled={busy} title="Add to the library and search for it" onClick={monitor}>
+            {busy ? "Adding…" : "+ Monitor"}
+          </button>
+        </span>
+      </div>
+      {open && <div className="book-detail">{coverAbout(volume)}</div>}
     </li>
   );
 }

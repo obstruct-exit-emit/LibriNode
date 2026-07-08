@@ -53,14 +53,25 @@ with a `metadata.opf` sidecar — Audiobookshelf-ready. Ebooks get a
 ## Manga & Comics (series-first)
 
 Search AniList (manga) or ComicVine (comics), add the series, and every
-volume/issue appears on its detail page with owned/wanted badges and
-per-volume Auto grab. The series monitor toggle doubles as "monitor future
-volumes": refreshes (manual or daily) discover new volumes and monitor them
-automatically. Imports write `ComicInfo.xml` into CBZ archives and use
-Kavita/Komga-friendly `Series/Series Vol. N.cbz` layouts.
+volume/issue appears on its page with owned/wanted badges. The series
+monitor toggle doubles as "monitor future volumes": refreshes (manual or
+daily) discover new volumes and monitor them automatically. Imports write
+`ComicInfo.xml` into CBZ archives and use Kavita/Komga-friendly
+`Series/Series Vol. N.cbz` layouts.
 
 Ongoing manga often have no official volume count on AniList yet — they add
 with zero volumes and fill in as AniList publishes totals.
+
+Manga series get the full author/book treatment. The series page carries
+series-scoped **Search wanted**, **Organize…**, **Scan files**, and
+**Refresh** (each touches only this series). The volume list stays compact
+— title + owned/wanted badge — and every volume expands to a cover, blurb,
+and the same controls an individual book has: a monitor toggle, **Auto
+grab**, **Search releases**, and **Remove from library** (opt-in
+delete-files). A per-series **Missing** section lists volumes you're not
+tracking — neither monitored nor owned — each with a one-click **Monitor**;
+removing a volume forgets its file records so it drops into Missing, and the
+next scan re-finds any files left on disk.
 
 ### Colorized & monochrome variants
 

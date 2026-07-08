@@ -521,6 +521,14 @@ button.show-more {
   margin: 0.35rem 0 0.6rem 1.25rem;
 }
 
+/* Cover + about at the top of an expanded manga volume (reuses the
+   .missing-thumb / .missing-about styling). */
+.volume-about {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
 .missing-thumb {
   flex: 0 0 48px;
   width: 48px;

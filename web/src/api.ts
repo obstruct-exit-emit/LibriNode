@@ -513,13 +513,15 @@ export const api = {
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
   listUnmatchedFiles: () =>
     request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
-  renamePreview: (authorId?: number) =>
+  renamePreview: (authorId?: number, seriesId?: number) =>
     request<RenameResult>(
-      `/api/v1/library/rename${authorId ? `?authorId=${authorId}` : ""}`,
+      `/api/v1/library/rename${
+        seriesId ? `?seriesId=${seriesId}` : authorId ? `?authorId=${authorId}` : ""
+      }`,
     ),
-  renameApply: (authorId?: number) =>
+  renameApply: (authorId?: number, seriesId?: number) =>
     request<RenameResult>("/api/v1/library/rename", {
-      ...json(authorId ? { authorId } : {}),
+      ...json(seriesId ? { seriesId } : authorId ? { authorId } : {}),
       method: "POST",
     }),
   matchFile: (fileId: number, bookId: number) =>
@@ -634,6 +636,11 @@ export const api = {
     }),
   refreshSeries: (id: number) =>
     request<Series>(`/api/v1/series/${id}/refresh`, { method: "POST" }),
+  searchSeriesWanted: (id: number) =>
+    request<{ searched: number; grabbed: number; outcomes: SearchOutcome[] }>(
+      `/api/v1/series/${id}/search`,
+      { method: "POST" },
+    ),
   deleteSeries: (id: number, deleteFiles = false) =>
     request<{ deletedFiles: number; errors: string[] } | undefined>(
       `/api/v1/series/${id}${deleteFiles ? "?deleteFiles=true" : ""}`,

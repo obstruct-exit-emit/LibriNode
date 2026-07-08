@@ -62,6 +62,16 @@ func (s *Service) PlanAuthor(authorID int64) ([]Move, []string, error) {
 	return s.planFiles(files)
 }
 
+// PlanSeries is Plan scoped to one series' volume/issue files (the series
+// page's Organize button).
+func (s *Service) PlanSeries(seriesID int64) ([]Move, []string, error) {
+	files, err := s.store.ListMatchedBookFilesForSeries(seriesID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.planFiles(files)
+}
+
 func (s *Service) planFiles(files []library.BookFile) ([]Move, []string, error) {
 	roots, err := s.store.ListRootFolders()
 	if err != nil {

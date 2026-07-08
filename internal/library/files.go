@@ -136,6 +136,13 @@ func (s *Store) ListMatchedBookFilesForAuthor(authorID int64) ([]BookFile, error
 		`WHERE book_id IN (SELECT id FROM books WHERE author_id = ?) ORDER BY path`, authorID)
 }
 
+// ListMatchedBookFilesForSeries returns the matched files of one series'
+// volumes/issues — the series-scoped Organize.
+func (s *Store) ListMatchedBookFilesForSeries(seriesID int64) ([]BookFile, error) {
+	return s.listBookFiles(
+		`WHERE book_id IN (SELECT book_id FROM series_books WHERE series_id = ?) ORDER BY path`, seriesID)
+}
+
 func (s *Store) ListUnmatchedBookFiles() ([]BookFile, error) {
 	return s.listBookFiles(`WHERE book_id IS NULL ORDER BY path`)
 }

@@ -332,6 +332,146 @@ func TestSeriesFlow(t *testing.T) {
 		map[string]any{"mediaType": "manga", "foreignSeriesId": "999"}, nil), http.StatusNotFound)
 }
 
+// TestMangaVolumeLibrary: a manga volume is in the library when monitored or
+// owned; PUT /book/{id}/library with library=manga removes it (unmonitor,
+// moving it to the series' Missing section) or adds it back (monitor). A
+// volume's own monitor toggle works the same way.
+func TestMangaVolumeLibrary(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 3
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+	if len(series.Volumes) != 3 {
+		t.Fatalf("volumes = %d, want 3", len(series.Volumes))
+	}
+	v1 := series.Volumes[0].ID
+
+	// Adding a series monitors every volume — nothing is Missing yet.
+	if !series.Volumes[0].Monitored {
+		t.Fatal("freshly added volume should be monitored")
+	}
+
+	// Remove volume 1 from the library: it unmonitors (unowned → it belongs
+	// in Missing now).
+	var book library.Book
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "manga", "member": false}, &book), http.StatusOK)
+	if book.Monitored {
+		t.Fatalf("removed volume still monitored: %+v", book)
+	}
+
+	// Monitor it back from Missing (member=true).
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "manga", "member": true}, &book), http.StatusOK)
+	if !book.Monitored {
+		t.Fatalf("re-added volume not monitored: %+v", book)
+	}
+
+	// The per-volume monitor toggle flips the same flag.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/monitor", v1),
+		map[string]bool{"monitored": false}, nil), http.StatusOK)
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", v1), nil, &book), http.StatusOK)
+	if book.Monitored {
+		t.Fatalf("volume still monitored after monitor toggle: %+v", book)
+	}
+}
+
+// TestMangaVolumeRemoveOwned: removing an OWNED volume forgets its file
+// records so it's no longer owned (it moves to Missing), even without
+// deleting the file from disk — the previous behavior left it showing as
+// owned.
+func TestMangaVolumeRemoveOwned(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 3
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+	v1 := series.Volumes[0].ID
+
+	// A monochrome manga root with volume 1 on disk.
+	root := t.TempDir()
+	cbz := filepath.Join(root, "Berserk", "Berserk v01.cbz")
+	if err := os.MkdirAll(filepath.Dir(cbz), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cbz, []byte("pages"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "manga", "variant": "mono", "path": root}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	var book library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", v1), nil, &book), http.StatusOK)
+	if !book.HasFile || !book.HasMonoFile {
+		t.Fatalf("volume 1 not owned after scan: %+v", book)
+	}
+
+	// Remove from library WITHOUT deleting files: it must stop being owned
+	// (records forgotten) and unmonitor — but the file stays on disk.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "manga", "member": false}, &book), http.StatusOK)
+	if book.HasFile || book.HasMonoFile || book.Monitored {
+		t.Fatalf("removed volume still owned/monitored: %+v", book)
+	}
+	if _, err := os.Stat(cbz); err != nil {
+		t.Fatalf("file should remain on disk when delete-files is off: %v", err)
+	}
+
+	// A scan re-finds the on-disk file (owned again) — like any other library.
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", v1), nil, &book), http.StatusOK)
+	if !book.HasFile {
+		t.Fatal("scan should re-find the on-disk file")
+	}
+
+	// Now remove WITH delete-files: the file leaves disk too.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "manga", "member": false, "deleteFiles": true}, &book), http.StatusOK)
+	if book.HasFile {
+		t.Fatalf("volume still owned after delete-files removal: %+v", book)
+	}
+	if _, err := os.Stat(cbz); !os.IsNotExist(err) {
+		t.Fatalf("file should be deleted from disk: %v", err)
+	}
+}
+
+// TestSeriesSearchWanted: the series page's Search wanted sweeps only that
+// series' monitored, unowned volumes.
+func TestSeriesSearchWanted(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 3
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+
+	// All 3 volumes are monitored and unowned → all wanted. No indexers are
+	// configured, so nothing is grabbed, but every wanted volume is searched.
+	var res struct {
+		Searched int `json:"searched"`
+		Grabbed  int `json:"grabbed"`
+	}
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/search", series.ID), nil, &res), http.StatusOK)
+	if res.Searched != 3 || res.Grabbed != 0 {
+		t.Fatalf("series search = %+v, want searched 3 grabbed 0", res)
+	}
+
+	// Unmonitor one volume → it's no longer wanted, so only 2 are searched.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/monitor", series.Volumes[0].ID),
+		map[string]bool{"monitored": false}, nil), http.StatusOK)
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/search", series.ID), nil, &res), http.StatusOK)
+	if res.Searched != 2 {
+		t.Fatalf("after unmonitor, searched = %d, want 2", res.Searched)
+	}
+}
+
 func TestScanFlow(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

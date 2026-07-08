@@ -419,6 +419,36 @@ func (s *server) handleBookLibrary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
+	// Manga volumes have no per-format membership column — a volume is in the
+	// library when it's monitored or owned. member=true monitors it (adds it
+	// back from the series' Missing section); member=false removes it: it
+	// unmonitors, and its file records are forgotten so it's no longer owned
+	// and drops into Missing (optionally deleting the files from disk first —
+	// otherwise the next scan re-finds them, like any other library).
+	if req.Library == "manga" {
+		if !req.Member {
+			if req.DeleteFiles {
+				paths, err := s.store.FilePathsForBookFormat(id, "manga")
+				if err != nil {
+					writeStoreError(w, err)
+					return
+				}
+				if _, errs := s.removeFilesFromDisk(paths); len(errs) > 0 {
+					slog.Warn("deleting manga files on removal", "bookId", id, "errors", strings.Join(errs, "; "))
+				}
+			}
+			if err := s.store.DeleteBookFilesForFormat(id, "manga"); err != nil {
+				writeStoreError(w, err)
+				return
+			}
+		}
+		if err := s.store.SetBookMonitored(id, req.Member); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		s.writeBookDetail(w, http.StatusOK, id)
+		return
+	}
 	lib, ok := formatLibrary(req.Library)
 	if !ok || req.Library == "" {
 		writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
