@@ -4,7 +4,9 @@ import { libraryLabels } from "../App";
 import RemovePanel from "../components/RemovePanel";
 
 // Full-page series detail, *arr-style: header with cover, description and
-// series-level actions, then volumes/issues as clean rows.
+// series-level actions, then volumes/issues as clean rows. Manga volumes
+// expand to show their owned variants and file locations (see
+// MangaVolumeRow); other types stay flat.
 export default function SeriesDetailView({
   id,
   mediaType,
@@ -142,42 +144,139 @@ export default function SeriesDetailView({
           </p>
         ) : (
           <ul className="rows">
-            {volumes.map((v) => (
-              <li key={v.id}>
-                <div className="row">
-                  <span>{v.title}</span>
-                  <span className="row-actions">
-                    <span className={v.hasFile ? "owned yes" : "owned no"}>
-                      {v.hasFile ? "owned" : "wanted"}
+            {volumes.map((v) =>
+              mediaType === "manga" ? (
+                <MangaVolumeRow
+                  key={v.id}
+                  volume={v}
+                  busy={busy}
+                  onAutoGrab={autoGrab}
+                  onError={onError}
+                />
+              ) : (
+                <li key={v.id}>
+                  <div className="row">
+                    <span>{v.title}</span>
+                    <span className="row-actions">
+                      <span className={v.hasFile ? "owned yes" : "owned no"}>
+                        {v.hasFile ? "owned" : "wanted"}
+                      </span>
+                      {!v.hasFile && mediaType !== "magazine" && (
+                        <button
+                          disabled={busy}
+                          title="Search indexers and grab the best release for this volume"
+                          onClick={() => autoGrab(v)}
+                        >
+                          Auto grab
+                        </button>
+                      )}
                     </span>
-                    {/* Manga volumes are one shared row; a variant flag shows
-                        only when that copy actually exists on disk. */}
-                    {mediaType === "manga" && v.hasColorFile && (
-                      <span className="owned yes" title="Colorized copy owned">
-                        🎨 colorized
-                      </span>
-                    )}
-                    {mediaType === "manga" && v.hasMonoFile && (
-                      <span className="owned yes" title="Monochrome copy owned">
-                        ◻️ monochrome
-                      </span>
-                    )}
-                    {!v.hasFile && mediaType !== "magazine" && (
-                      <button
-                        disabled={busy}
-                        title="Search indexers and grab the best release for this volume"
-                        onClick={() => autoGrab(v)}
-                      >
-                        Auto grab
-                      </button>
-                    )}
-                  </span>
-                </div>
-              </li>
-            ))}
+                  </div>
+                </li>
+              ),
+            )}
           </ul>
         )}
       </section>
     </>
+  );
+}
+
+const variantLabel = (variant?: string) =>
+  variant === "color" ? "colorized" : variant === "mono" ? "monochrome" : "";
+
+// MangaVolumeRow keeps the list compact for series with hundreds of volumes:
+// collapsed it's just the title + an owned/wanted badge (Auto grab when
+// wanted). Owned volumes expand to reveal which variants are owned and where
+// each file lives on disk — details that would otherwise crowd the row.
+function MangaVolumeRow({
+  volume,
+  busy,
+  onAutoGrab,
+  onError,
+}: {
+  volume: Book;
+  busy: boolean;
+  onAutoGrab: (v: Book) => void;
+  onError: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState<Book | null>(null);
+
+  const toggle = () => {
+    if (!open && !detail) {
+      api
+        .getBook(volume.id)
+        .then(setDetail)
+        .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+    }
+    setOpen(!open);
+  };
+
+  const files = (detail?.files ?? []).filter((f) => f.mediaType === "manga");
+
+  return (
+    <li>
+      <div className="row">
+        {volume.hasFile ? (
+          <button className="link" onClick={toggle}>
+            {open ? "▾" : "▸"} {volume.title}
+          </button>
+        ) : (
+          <span>{volume.title}</span>
+        )}
+        <span className="row-actions">
+          <span className={volume.hasFile ? "owned yes" : "owned no"}>
+            {volume.hasFile ? "owned" : "wanted"}
+          </span>
+          {!volume.hasFile && (
+            <button
+              disabled={busy}
+              title="Search indexers and grab the best release for this volume"
+              onClick={() => onAutoGrab(volume)}
+            >
+              Auto grab
+            </button>
+          )}
+        </span>
+      </div>
+      {open && volume.hasFile && (
+        <div className="book-detail">
+          <div className="settings-actions">
+            {volume.hasColorFile && (
+              <span className="owned yes" title="Colorized copy owned">
+                🎨 colorized
+              </span>
+            )}
+            {volume.hasMonoFile && (
+              <span className="owned yes" title="Monochrome copy owned">
+                ◻️ monochrome
+              </span>
+            )}
+          </div>
+          {detail === null ? (
+            <p className="muted">Loading files…</p>
+          ) : files.length === 0 ? (
+            <p className="muted">No files recorded.</p>
+          ) : (
+            <ul className="rows nested">
+              {files.map((f) => (
+                <li key={f.id}>
+                  <div className="row">
+                    <span className="file-path">
+                      📄 {variantLabel(f.variant) && `${variantLabel(f.variant)} · `}
+                      {f.path}
+                    </span>
+                    <span className="muted">
+                      {f.format} · {(f.size / 1024).toFixed(0)} KiB
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
   );
 }

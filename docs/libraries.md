@@ -70,12 +70,13 @@ monochrome/colorized selector appears when the media type is manga
 (monochrome is the default, and pre-existing manga roots are treated as
 monochrome). Files scanned or imported under a root inherit its variant.
 
-A volume is one metadata row that tracks each variant independently: the
-series page shows a single owned/wanted badge, plus a `🎨 colorized` and/or
-`◻️ monochrome` flag for whichever copies actually exist on disk. Grabbing
-is variant-agnostic (a release doesn't reveal whether it's color or mono);
-per-variant ownership is recorded by the scanner as files land under their
-variant root.
+A volume is one metadata row that tracks each variant independently. The
+volume list stays compact for long series — each row is the title and a
+single owned/wanted badge — and an owned volume expands to show which
+variants it owns (`🎨 colorized` / `◻️ monochrome`) and where each file
+lives on disk. Grabbing is variant-agnostic (a release doesn't reveal
+whether it's color or mono); per-variant ownership is recorded by the
+scanner as files land under their variant root.
 
 ## Magazines (provider-less)
 

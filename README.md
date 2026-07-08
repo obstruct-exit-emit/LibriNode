@@ -174,9 +174,11 @@ Manga can be owned in **colorized and monochrome** variants at once: it
 stays one library, but you add a separate root folder per variant (a
 monochrome/colorized selector appears when adding a manga root under
 **Settings → Media Management**). Each volume tracks both variants
-independently — the series page shows one owned/wanted badge plus a
-`🎨 colorized` and/or `◻️ monochrome` flag for whichever copies are on disk
-— while sharing a single series/volume metadata row.
+independently while sharing a single series/volume metadata row. The
+volume list stays compact for series with hundreds of entries — each row
+is just the title and an owned/wanted badge — and an owned volume expands
+to reveal which variants it owns (`🎨 colorized` / `◻️ monochrome`) and
+where each file lives on disk.
 
 **Magazines** work LazyLibrarian-style — periodicals have no metadata
 provider, so you add one **by name** (Magazines library → **+ Add**). LibriNode
@@ -396,7 +398,7 @@ metadata endpoints return 503.
 - [x] OPF sidecar files: imports write `metadata.opf` into audiobook folders (Audiobookshelf) and `<file>.opf` beside ebooks (Calibre) — title, author, description, ISBN/language, calibre:series. Rename/organize now covers every media type: series templates for manga/comics/magazines, multi-file audiobooks moving as whole folders with their sidecars, and per-type templates all editable in Settings → Media Management
 - [x] "Missing" view per author *(pulled forward from post-1.0)*: the author page ends with a Missing section listing bibliography gaps from the metadata provider — books neither monitored nor owned in that format library — grouped by series (ordered by position) then standalones by year; rows expand to a compact thumbnail + blurb, and a one-click **+ Monitor** adds the book to the library and starts searching (`GET /author/{id}/missing?library=`). Adding an author pulls their bibliography as metadata only — no book is auto-monitored or auto-enrolled, so a freshly added author's whole bibliography starts here in Missing, and an author with zero visible books still shows (an empty Books grid pointing at Missing) rather than disappearing
 - [x] Author page actions are author-scoped: **Search wanted**, **Organize…**, and **Scan files** in the author header only touch that author's books (`POST /author/{id}/search?library=`, `GET/POST /library/rename?authorId=`/`{"authorId":N}`); **Remove from Ebooks/Audiobooks** takes the author out of one format library only (the other is untouched) with an opt-in delete-files checkbox, auto-deleting the author outright once they're in no library left
-- [x] Manga colorized/monochrome variants *(pulled forward from post-1.0)*: manga stays **one** library (unlike the ebook/audiobook split) with a variant as a sub-dimension of its files. Each manga root folder is tagged colorized or monochrome (a variant selector appears when adding a manga root; monochrome is the default and existing roots backfill there), and a volume tracks each variant's ownership independently while sharing one series/volume metadata row — the series page shows one owned/wanted badge plus a colorized and/or monochrome flag for whichever copies are on disk. Imports stay variant-agnostic (a release doesn't reveal its variant); the scanner records per-variant ownership as files land under their variant root
+- [x] Manga colorized/monochrome variants *(pulled forward from post-1.0)*: manga stays **one** library (unlike the ebook/audiobook split) with a variant as a sub-dimension of its files. Each manga root folder is tagged colorized or monochrome (a variant selector appears when adding a manga root; monochrome is the default and existing roots backfill there), and a volume tracks each variant's ownership independently while sharing one series/volume metadata row. The volume list stays compact (title + owned/wanted badge); an owned volume expands to show which variants it owns (colorized/monochrome) and each file's on-disk location. Imports stay variant-agnostic (a release doesn't reveal its variant); the scanner records per-variant ownership as files land under their variant root
 
 ### Post-1.0 ideas
 - [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)
