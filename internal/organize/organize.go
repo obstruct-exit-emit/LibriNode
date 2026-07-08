@@ -214,12 +214,17 @@ func (s *Service) tokenData(book *library.Book) (naming.TokenData, error) {
 // (Audiobookshelf layout) and FileName names single-file books inside it.
 type Placement struct {
 	RootFolderID int64
+	Variant      string // the chosen root's manga variant ('' otherwise)
 	Dir          string
 	FileName     string // includes extension
 }
 
 // PlaceFile computes where a newly imported item for book belongs: the
 // first root folder of the media type plus that type's naming templates.
+// For manga with both a colorized and a monochrome root, this picks
+// whichever was added first — a grabbed file's variant isn't known from the
+// release, so imports are variant-agnostic; the scanner is what records
+// per-variant ownership once the file lands under a variant root.
 func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Placement, error) {
 	roots, err := s.store.ListRootFolders()
 	if err != nil {
@@ -234,40 +239,26 @@ func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Plac
 			return nil, err
 		}
 		ns := s.cfg.NamingSettings()
+		p := &Placement{RootFolderID: root.ID, Variant: root.Variant}
 		switch mediaType {
 		case "audiobook":
 			bookDir := naming.Format(ns.AudiobookFile, data)
-			return &Placement{
-				RootFolderID: root.ID,
-				Dir:          filepath.Join(root.Path, naming.Format(ns.AudiobookFolder, data), bookDir),
-				FileName:     bookDir + "." + format,
-			}, nil
+			p.Dir = filepath.Join(root.Path, naming.Format(ns.AudiobookFolder, data), bookDir)
+			p.FileName = bookDir + "." + format
 		case "manga":
-			return &Placement{
-				RootFolderID: root.ID,
-				Dir:          filepath.Join(root.Path, naming.Format(ns.MangaFolder, data)),
-				FileName:     naming.Format(ns.MangaFile, data) + "." + format,
-			}, nil
+			p.Dir = filepath.Join(root.Path, naming.Format(ns.MangaFolder, data))
+			p.FileName = naming.Format(ns.MangaFile, data) + "." + format
 		case "comic":
-			return &Placement{
-				RootFolderID: root.ID,
-				Dir:          filepath.Join(root.Path, naming.Format(ns.ComicFolder, data)),
-				FileName:     naming.Format(ns.ComicFile, data) + "." + format,
-			}, nil
+			p.Dir = filepath.Join(root.Path, naming.Format(ns.ComicFolder, data))
+			p.FileName = naming.Format(ns.ComicFile, data) + "." + format
 		case "magazine":
-			return &Placement{
-				RootFolderID: root.ID,
-				Dir:          filepath.Join(root.Path, naming.Format(ns.MagazineFolder, data)),
-				FileName:     naming.Format(ns.MagazineFile, data) + "." + format,
-			}, nil
+			p.Dir = filepath.Join(root.Path, naming.Format(ns.MagazineFolder, data))
+			p.FileName = naming.Format(ns.MagazineFile, data) + "." + format
 		default:
-			file := naming.Format(ns.EbookFile, data) + "." + format
-			return &Placement{
-				RootFolderID: root.ID,
-				Dir:          filepath.Join(root.Path, naming.Format(ns.EbookFolder, data)),
-				FileName:     file,
-			}, nil
+			p.Dir = filepath.Join(root.Path, naming.Format(ns.EbookFolder, data))
+			p.FileName = naming.Format(ns.EbookFile, data) + "." + format
 		}
+		return p, nil
 	}
 	return nil, fmt.Errorf("no %s root folder configured", mediaType)
 }

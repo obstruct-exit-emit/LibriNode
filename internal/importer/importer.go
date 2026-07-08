@@ -300,6 +300,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		RootFolderID: place.RootFolderID,
 		BookID:       book.ID,
 		MediaType:    mediaType,
+		Variant:      place.Variant, // manga colorized/monochrome; '' otherwise
 		Path:         target,
 		Size:         size,
 		Format:       format,

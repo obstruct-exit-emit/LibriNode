@@ -62,6 +62,21 @@ Kavita/Komga-friendly `Series/Series Vol. N.cbz` layouts.
 Ongoing manga often have no official volume count on AniList yet — they add
 with zero volumes and fill in as AniList publishes totals.
 
+### Colorized & monochrome variants
+
+Manga can be owned in both a colorized and a monochrome edition without
+splitting the library. Add a **separate root folder per variant** — a
+monochrome/colorized selector appears when the media type is manga
+(monochrome is the default, and pre-existing manga roots are treated as
+monochrome). Files scanned or imported under a root inherit its variant.
+
+A volume is one metadata row that tracks each variant independently: the
+series page shows a single owned/wanted badge, plus a `🎨 colorized` and/or
+`◻️ monochrome` flag for whichever copies actually exist on disk. Grabbing
+is variant-agnostic (a release doesn't reveal whether it's color or mono);
+per-variant ownership is recorded by the scanner as files land under their
+variant root.
+
 ## Magazines (provider-less)
 
 Add a magazine **by name**; LibriNode recognizes issues by date or number in

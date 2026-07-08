@@ -59,8 +59,12 @@ type Book struct {
 	HasFile            bool   `json:"hasFile"` // any media type
 	HasEbookFile       bool   `json:"hasEbookFile"`
 	HasAudiobookFile   bool   `json:"hasAudiobookFile"`
-	AddedAt            string `json:"addedAt"`
-	UpdatedAt          string `json:"updatedAt"`
+	// Per-variant ownership for manga volumes (colorized/monochrome share one
+	// volume row); both false for non-manga.
+	HasColorFile bool   `json:"hasColorFile"`
+	HasMonoFile  bool   `json:"hasMonoFile"`
+	AddedAt      string `json:"addedAt"`
+	UpdatedAt    string `json:"updatedAt"`
 	// Populated on detail endpoints.
 	Editions []Edition    `json:"editions,omitempty"`
 	Series   []SeriesLink `json:"series,omitempty"`

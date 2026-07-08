@@ -1200,6 +1200,7 @@ function RootFoldersCard({
 }) {
   const [folders, setFolders] = useState<RootFolder[]>([]);
   const [mediaType, setMediaType] = useState<string>("ebook");
+  const [variant, setVariant] = useState<string>("mono");
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -1220,7 +1221,7 @@ function RootFoldersCard({
     setBusy(true);
     setNotice("");
     api
-      .addRootFolder(mediaType, trimmed)
+      .addRootFolder(mediaType, trimmed, mediaType === "manga" ? variant : undefined)
       .then(() => {
         setPath("");
         reload();
@@ -1231,6 +1232,9 @@ function RootFoldersCard({
       )
       .finally(() => setBusy(false));
   };
+
+  const variantLabel = (v?: string) =>
+    v === "color" ? "colorized" : v === "mono" ? "monochrome" : "";
 
   const remove = (f: RootFolder) => {
     if (!confirm(`Remove root folder ${f.path}? Files on disk are not touched.`)) return;
@@ -1250,6 +1254,9 @@ function RootFoldersCard({
         Where your libraries live on disk. The scanner walks these to match
         files you already own; note the path must exist on the machine running
         LibriNode (in WSL, Windows drives are under <code>/mnt/c/…</code>).
+        Manga stays one library, but you add a <strong>separate root per
+        variant</strong> — colorized and monochrome — so each volume can own
+        one, the other, or both.
       </p>
 
       {folders.length > 0 && (
@@ -1262,7 +1269,10 @@ function RootFoldersCard({
                   {!f.accessible && <span className="notice bad"> (not accessible)</span>}
                 </span>
                 <span className="row-actions">
-                  <span className="muted">{f.mediaType}</span>
+                  <span className="muted">
+                    {f.mediaType}
+                    {f.variant && ` · ${variantLabel(f.variant)}`}
+                  </span>
                   <button className="danger" onClick={() => remove(f)}>
                     remove
                   </button>
@@ -1281,6 +1291,12 @@ function RootFoldersCard({
             </option>
           ))}
         </select>
+        {mediaType === "manga" && (
+          <select value={variant} onChange={(e) => setVariant(e.target.value)}>
+            <option value="mono">monochrome</option>
+            <option value="color">colorized</option>
+          </select>
+        )}
         <input
           placeholder="/data/ebooks or /mnt/c/Users/…/Ebooks"
           value={path}

@@ -373,6 +373,85 @@ func TestScanComicRoot(t *testing.T) {
 	}
 }
 
+// TestScanMangaVariants: colorized and monochrome manga live in separate
+// root folders but ONE library; a volume tracks each variant's ownership
+// independently, sharing the single volume metadata row.
+func TestScanMangaVariants(t *testing.T) {
+	f := fixture(t)
+
+	series := &library.Series{Source: "anilist", ForeignID: "600", Title: "Berserk",
+		MediaType: "manga", Monitored: true}
+	if err := f.store.UpsertSeries(series); err != nil {
+		t.Fatal(err)
+	}
+	author := &library.Author{Source: "anilist", ForeignID: "creator:m", Name: "Miura"}
+	if err := f.store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 2; i++ {
+		vol := &library.Book{AuthorID: author.ID, Source: "anilist", MediaType: "manga",
+			ForeignID: "600-v" + string(rune('0'+i)), Title: "Berserk Vol. " + string(rune('0'+i)), Monitored: true}
+		if err := f.store.UpsertBook(vol); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.LinkBookSeries(vol.ID, series.ID, float64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeInto := func(dir, rel string) {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("pages"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Colorized root has vol 1 only; monochrome root has both volumes.
+	colorRoot := t.TempDir()
+	monoRoot := t.TempDir()
+	writeInto(colorRoot, "Berserk/Berserk v01.cbz")
+	writeInto(monoRoot, "Berserk/Berserk v01.cbz")
+	writeInto(monoRoot, "Berserk/Berserk v02.cbz")
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, variant, path) VALUES ('manga', 'color', ?)`, colorRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, variant, path) VALUES ('manga', 'mono', ?)`, monoRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	volumes, _ := f.store.ListVolumes(series.ID)
+	if len(volumes) != 2 {
+		t.Fatalf("volumes = %d, want 2", len(volumes))
+	}
+	// Vol 1: owned in both variants. Vol 2: monochrome only.
+	v1, v2 := volumes[0], volumes[1]
+	if !v1.HasColorFile || !v1.HasMonoFile {
+		t.Errorf("vol 1 variants: color=%v mono=%v, want both owned", v1.HasColorFile, v1.HasMonoFile)
+	}
+	if v2.HasColorFile || !v2.HasMonoFile {
+		t.Errorf("vol 2 variants: color=%v mono=%v, want mono only", v2.HasColorFile, v2.HasMonoFile)
+	}
+	// The variants share ONE volume row — vol 1 has two files, one per variant.
+	files, _ := f.store.ListBookFiles(v1.ID)
+	if len(files) != 2 {
+		t.Fatalf("vol 1 files = %d, want 2 (one per variant)", len(files))
+	}
+	gotVariants := map[string]bool{}
+	for _, bf := range files {
+		gotVariants[bf.Variant] = true
+	}
+	if !gotVariants["color"] || !gotVariants["mono"] {
+		t.Errorf("vol 1 file variants = %v, want color+mono", gotVariants)
+	}
+}
+
 func TestScanMatchesOwnTemplateOutput(t *testing.T) {
 	// Files organized by the default naming template
 	// ("{Series Title} {Series Position} - {Book Title}") must re-match

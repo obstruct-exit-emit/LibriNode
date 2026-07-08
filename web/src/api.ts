@@ -46,6 +46,8 @@ export interface Book {
   hasFile: boolean;
   hasEbookFile: boolean;
   hasAudiobookFile: boolean;
+  hasColorFile: boolean;
+  hasMonoFile: boolean;
   editions?: Edition[];
   series?: SeriesLink[];
   files?: BookFile[];
@@ -77,6 +79,7 @@ export interface BookFile {
   rootFolderId: number;
   bookId?: number;
   mediaType: string;
+  variant?: string;
   path: string;
   size: number;
   format: string;
@@ -87,6 +90,7 @@ export interface BookFile {
 export interface RootFolder {
   id: number;
   mediaType: string;
+  variant?: string;
   path: string;
   accessible: boolean;
 }
@@ -637,8 +641,8 @@ export const api = {
     ),
 
   listRootFolders: () => request<RootFolder[]>("/api/v1/rootfolder"),
-  addRootFolder: (mediaType: string, path: string) =>
-    request<RootFolder>("/api/v1/rootfolder", json({ mediaType, path })),
+  addRootFolder: (mediaType: string, path: string, variant?: string) =>
+    request<RootFolder>("/api/v1/rootfolder", json({ mediaType, path, variant })),
   deleteRootFolder: (id: number) =>
     request<void>(`/api/v1/rootfolder/${id}`, { method: "DELETE" }),
 

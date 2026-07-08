@@ -170,6 +170,14 @@ Manga/comic searches use each indexer's **Comic categories** (default
 `7030`), scans understand `Series/Series v05.cbz` layouts, and imports
 write `ComicInfo.xml` into CBZ archives for Kavita/Komga.
 
+Manga can be owned in **colorized and monochrome** variants at once: it
+stays one library, but you add a separate root folder per variant (a
+monochrome/colorized selector appears when adding a manga root under
+**Settings → Media Management**). Each volume tracks both variants
+independently — the series page shows one owned/wanted badge plus a
+`🎨 colorized` and/or `◻️ monochrome` flag for whichever copies are on disk
+— while sharing a single series/volume metadata row.
+
 **Magazines** work LazyLibrarian-style — periodicals have no metadata
 provider, so you add one **by name** (Magazines library → **+ Add**). LibriNode
 then recognizes issues by date or number in release and file names
@@ -249,7 +257,7 @@ scriptable:
 | System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now), `GET /log?lines=N` (tail the log file) |
 | Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (empty username disables), `POST /auth/apikey/regenerate` |
 | Backups | `GET/POST /backup`, `DELETE /backup/{name}`, `POST /backup/{name}/restore` (staged, applied on restart), `GET /backup/{name}/download` |
-| Root folders | `GET/POST /rootfolder`, `DELETE /rootfolder/{id}` |
+| Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}` |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}` (`?deleteFiles=true` also removes files), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh` |
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
@@ -388,9 +396,9 @@ metadata endpoints return 503.
 - [x] OPF sidecar files: imports write `metadata.opf` into audiobook folders (Audiobookshelf) and `<file>.opf` beside ebooks (Calibre) — title, author, description, ISBN/language, calibre:series. Rename/organize now covers every media type: series templates for manga/comics/magazines, multi-file audiobooks moving as whole folders with their sidecars, and per-type templates all editable in Settings → Media Management
 - [x] "Missing" view per author *(pulled forward from post-1.0)*: the author page ends with a Missing section listing bibliography gaps from the metadata provider — books neither monitored nor owned in that format library — grouped by series (ordered by position) then standalones by year; rows expand to a compact thumbnail + blurb, and a one-click **+ Monitor** adds the book to the library and starts searching (`GET /author/{id}/missing?library=`). Adding an author pulls their bibliography as metadata only — no book is auto-monitored or auto-enrolled, so a freshly added author's whole bibliography starts here in Missing, and an author with zero visible books still shows (an empty Books grid pointing at Missing) rather than disappearing
 - [x] Author page actions are author-scoped: **Search wanted**, **Organize…**, and **Scan files** in the author header only touch that author's books (`POST /author/{id}/search?library=`, `GET/POST /library/rename?authorId=`/`{"authorId":N}`); **Remove from Ebooks/Audiobooks** takes the author out of one format library only (the other is untouched) with an opt-in delete-files checkbox, auto-deleting the author outright once they're in no library left
+- [x] Manga colorized/monochrome variants *(pulled forward from post-1.0)*: manga stays **one** library (unlike the ebook/audiobook split) with a variant as a sub-dimension of its files. Each manga root folder is tagged colorized or monochrome (a variant selector appears when adding a manga root; monochrome is the default and existing roots backfill there), and a volume tracks each variant's ownership independently while sharing one series/volume metadata row — the series page shows one owned/wanted badge plus a colorized and/or monochrome flag for whichever copies are on disk. Imports stay variant-agnostic (a release doesn't reveal its variant); the scanner records per-variant ownership as files land under their variant root
 
 ### Post-1.0 ideas
-- [ ] Manga colorized/monochrome variants: own both, with separate root folders per variant — but **one** shared Manga library (unlike ebook/audiobook, no split areas); every volume shows both variants with per-variant owned state, sharing the same series/volume metadata
 - [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)
 - [ ] Fuzzy / ISBN- and embedded-metadata-based file matching (scanning is exact-normalized-match today)
 - [ ] `ComicInfo.xml` for CBR archives (needs a RAR writer)
@@ -407,7 +415,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included); magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. **1.0 waits on**: real-world burn-in, those live verifications, and code-signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
+🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included) and manga ownable in colorized and monochrome variants at once; magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. **1.0 waits on**: real-world burn-in, those live verifications, and code-signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
 
 ## License
 

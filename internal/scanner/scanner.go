@@ -328,6 +328,7 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 			RootFolderID: root.ID,
 			BookID:       bookID,
 			MediaType:    root.MediaType,
+			Variant:      root.Variant, // colorized/monochrome for manga; '' otherwise
 			Path:         path,
 			Format:       strings.TrimPrefix(ext, "."),
 		}

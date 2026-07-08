@@ -6,22 +6,27 @@ import (
 )
 
 // RootFolder mirrors the root_folders table (managed by the rootfolder API);
-// the scanner needs them to know where to look.
+// the scanner needs them to know where to look. Variant is 'color'/'mono'
+// for manga roots (the colorized/monochrome split) and '' for everything
+// else — files scanned from a root inherit it.
 type RootFolder struct {
 	ID        int64  `json:"id"`
 	MediaType string `json:"mediaType"`
 	Path      string `json:"path"`
+	Variant   string `json:"variant,omitempty"`
 }
 
 // BookFile is a file found on disk by a library scan. BookID is nil-like (0)
 // when the scanner could not match it to a library book. For multi-file
 // audiobooks, Path is the book's directory and Size the total of its audio
-// files.
+// files. Variant carries the manga colorized/monochrome distinction (''
+// for non-manga files).
 type BookFile struct {
 	ID           int64  `json:"id"`
 	RootFolderID int64  `json:"rootFolderId"`
 	BookID       int64  `json:"bookId,omitempty"`
 	MediaType    string `json:"mediaType"`
+	Variant      string `json:"variant,omitempty"`
 	Path         string `json:"path"`
 	Size         int64  `json:"size"`
 	Format       string `json:"format"`
@@ -30,7 +35,7 @@ type BookFile struct {
 }
 
 func (s *Store) ListRootFolders() ([]RootFolder, error) {
-	rows, err := s.db.Query(`SELECT id, media_type, path FROM root_folders ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, media_type, path, variant FROM root_folders ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +44,7 @@ func (s *Store) ListRootFolders() ([]RootFolder, error) {
 	folders := []RootFolder{}
 	for rows.Next() {
 		var f RootFolder
-		if err := rows.Scan(&f.ID, &f.MediaType, &f.Path); err != nil {
+		if err := rows.Scan(&f.ID, &f.MediaType, &f.Path, &f.Variant); err != nil {
 			return nil, err
 		}
 		folders = append(folders, f)
@@ -56,17 +61,18 @@ func (s *Store) UpsertBookFile(f *BookFile) error {
 		f.MediaType = "ebook"
 	}
 	err := s.db.QueryRow(`
-		INSERT INTO book_files (root_folder_id, book_id, media_type, path, size, format, modified_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO book_files (root_folder_id, book_id, media_type, variant, path, size, format, modified_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
 			root_folder_id = excluded.root_folder_id,
 			book_id = excluded.book_id,
 			media_type = excluded.media_type,
+			variant = excluded.variant,
 			size = excluded.size,
 			format = excluded.format,
 			modified_at = excluded.modified_at
 		RETURNING id`,
-		f.RootFolderID, bookID, f.MediaType, f.Path, f.Size, f.Format, f.ModifiedAt,
+		f.RootFolderID, bookID, f.MediaType, f.Variant, f.Path, f.Size, f.Format, f.ModifiedAt,
 	).Scan(&f.ID)
 	if err != nil {
 		return err
@@ -79,11 +85,11 @@ func (s *Store) UpsertBookFile(f *BookFile) error {
 	return nil
 }
 
-const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), media_type, path, size, format, modified_at, added_at`
+const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), media_type, variant, path, size, format, modified_at, added_at`
 
 func scanBookFile(row interface{ Scan(...any) error }) (*BookFile, error) {
 	var f BookFile
-	err := row.Scan(&f.ID, &f.RootFolderID, &f.BookID, &f.MediaType, &f.Path, &f.Size, &f.Format, &f.ModifiedAt, &f.AddedAt)
+	err := row.Scan(&f.ID, &f.RootFolderID, &f.BookID, &f.MediaType, &f.Variant, &f.Path, &f.Size, &f.Format, &f.ModifiedAt, &f.AddedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

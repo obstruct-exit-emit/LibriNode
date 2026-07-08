@@ -234,8 +234,8 @@ func (s *Store) MissingForAuthor(authorID int64, mediaType string) ([]Book, erro
 		if err := rows.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
 			&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
 			&b.InEbookLibrary, &b.EbookMonitored, &b.InAudiobookLibrary, &b.AudiobookMonitored,
-			&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.AddedAt, &b.UpdatedAt,
-			&st, &sp); err != nil {
+			&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.HasColorFile, &b.HasMonoFile,
+			&b.AddedAt, &b.UpdatedAt, &st, &sp); err != nil {
 			return nil, err
 		}
 		if st != "" {

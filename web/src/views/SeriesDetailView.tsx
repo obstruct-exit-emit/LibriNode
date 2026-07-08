@@ -150,6 +150,18 @@ export default function SeriesDetailView({
                     <span className={v.hasFile ? "owned yes" : "owned no"}>
                       {v.hasFile ? "owned" : "wanted"}
                     </span>
+                    {/* Manga volumes are one shared row; a variant flag shows
+                        only when that copy actually exists on disk. */}
+                    {mediaType === "manga" && v.hasColorFile && (
+                      <span className="owned yes" title="Colorized copy owned">
+                        🎨 colorized
+                      </span>
+                    )}
+                    {mediaType === "manga" && v.hasMonoFile && (
+                      <span className="owned yes" title="Monochrome copy owned">
+                        ◻️ monochrome
+                      </span>
+                    )}
                     {!v.hasFile && mediaType !== "magazine" && (
                       <button
                         disabled={busy}
