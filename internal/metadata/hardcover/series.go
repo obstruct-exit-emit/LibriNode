@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/librinode/librinode/internal/metadata"
 )
@@ -107,16 +108,6 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 	s := env.Series[0]
 
 	// Keep only entries with a book, in the order Hardcover returned them.
-	type entry struct {
-		pos  float64
-		book struct {
-			ID          json.Number
-			Title       string
-			Description string
-			ReleaseDate string
-			CachedImage json.RawMessage
-		}
-	}
 	entries := []entry{}
 	for _, bs := range s.BookSeries {
 		if bs.Book == nil || bs.Book.ID.String() == "" {
@@ -134,10 +125,11 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 
 	// Hardcover series mix the real numbered volumes (position >= 1) with
 	// spin-offs and alternate editions (position 0), and carry several
-	// editions per volume — usually only the English one has a description.
-	// When the series has positioned volumes, keep one edition per position
-	// (the richest description wins) and drop the position-0 extras; a series
-	// with no positive positions is numbered sequentially.
+	// editions per volume — reissues, box sets, omnibus and foreign printings
+	// alongside the standard release. When the series has positioned volumes,
+	// keep one edition per position (see betterEdition: prefer the standard
+	// release, then the richest description) and drop the position-0 extras; a
+	// series with no positive positions is numbered sequentially.
 	hasPositive := false
 	for _, e := range entries {
 		if e.pos >= 1 {
@@ -153,7 +145,7 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 			if e.pos < 1 {
 				continue
 			}
-			if cur, ok := byPos[e.pos]; !ok || len(e.book.Description) > len(cur.book.Description) {
+			if cur, ok := byPos[e.pos]; !ok || betterEdition(e, cur) {
 				byPos[e.pos] = e
 			}
 		}
@@ -197,4 +189,52 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 		})
 	}
 	return result, nil
+}
+
+// entry is one edition linked to a series at a given volume position.
+type entry struct {
+	pos  float64
+	book struct {
+		ID          json.Number
+		Title       string
+		Description string
+		ReleaseDate string
+		CachedImage json.RawMessage
+	}
+}
+
+// editionMarkers flag a variant printing (reissue, box set, deluxe, foreign
+// omnibus, one-shot) rather than the standard volume release. Hardcover puts
+// these all at the same position, so we sniff the title and description — the
+// reissue's own blurb usually announces itself ("now reissued in a collector's
+// edition…"), which is exactly the long text we must not mistake for a synopsis.
+var editionMarkers = []string{
+	"reissue", "collector", "deluxe", "omnibus", "all-in-one", "all in one",
+	"box set", "boxed set", "black edition", "special edition",
+	"anniversary edition", "complete collection", "complete edition",
+	"one-shot", "one shot",
+}
+
+func specialEdition(e entry) bool {
+	s := strings.ToLower(e.book.Title + " " + e.book.Description)
+	for _, kw := range editionMarkers {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// betterEdition reports whether a should represent the volume instead of b.
+// Prefer the standard release over reissues/box sets ("non-reissued if
+// possible"), then an edition that actually carries a description, then the
+// richer description.
+func betterEdition(a, b entry) bool {
+	if sa, sb := specialEdition(a), specialEdition(b); sa != sb {
+		return !sa // a wins when it is the standard (non-special) edition
+	}
+	if da, db := a.book.Description != "", b.book.Description != ""; da != db {
+		return da // a wins when it has a description and b doesn't
+	}
+	return len(a.book.Description) > len(b.book.Description)
 }

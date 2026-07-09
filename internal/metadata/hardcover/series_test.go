@@ -93,19 +93,21 @@ func TestSeriesMessyPositionsFallBackToSequential(t *testing.T) {
 }
 
 // A real Hardcover manga series (e.g. Death Note, 7310) mixes position-0
-// spin-offs with numbered volumes, and carries several editions per volume
-// where usually only the English one has a description. GetSeries must drop the
-// spin-offs, keep one edition per position, and prefer the richest description.
-func TestSeriesDropsSpinOffsAndPicksRichestEdition(t *testing.T) {
+// spin-offs with numbered volumes, and carries several editions per volume:
+// reissues/box sets alongside the standard release. GetSeries must drop the
+// spin-offs and, per position, keep the standard edition — even when a reissue
+// has a longer (marketing) blurb.
+func TestSeriesDropsSpinOffsAndPrefersStandardEdition(t *testing.T) {
 	c := mockAPI(t, map[string]string{
 		"Series": `{"data":{"series":[{
 			"id":7310,"name":"Death Note","books_count":9,
 			"book_series":[
 				{"position":0,"book":{"id":900,"title":"Another Note (novel)","description":"A prequel spin-off novel."}},
 				{"position":0,"book":{"id":901,"title":"How to Read 13","description":"Guidebook extras."}},
-				{"position":1,"book":{"id":100,"title":"DEATH NOTE 完全版 1","description":""}},
+				{"position":1,"book":{"id":100,"title":"Death Note, Vol. 1","description":"Best selling series now reissued in an amazing collector's edition with deluxe hardcover binding, larger trim, and bonus material for die-hard fans everywhere."}},
 				{"position":1,"book":{"id":101,"title":"Death Note, Vol. 1: Boredom","description":"Light finds the notebook and tests it.","cached_image":{"url":"https://img/en1.jpg"}}},
-				{"position":2,"book":{"id":102,"title":"Death Note, Vol. 2: Confluence","description":"L closes in on Kira."}}
+				{"position":1,"book":{"id":102,"title":"DEATH NOTE 完全版 1","description":""}},
+				{"position":2,"book":{"id":103,"title":"Death Note, Vol. 2: Confluence","description":"L closes in on Kira."}}
 			]
 		}]}}`,
 	})
@@ -118,14 +120,15 @@ func TestSeriesDropsSpinOffsAndPicksRichestEdition(t *testing.T) {
 	if s.IssueCount != 2 || len(s.Issues) != 2 {
 		t.Fatalf("issue count = %d, want 2 (spin-offs at position 0 dropped)", len(s.Issues))
 	}
-	// Volume 1 must be the English edition (has a description), not the JP one.
+	// Volume 1 must be the standard edition (id 101), NOT the longer-blurbed
+	// reissue (id 100) nor the description-less Japanese printing (id 102).
 	if s.Issues[0].Number != 1 || s.Issues[0].ForeignID != "101" {
-		t.Fatalf("volume 1 = %+v, want the described English edition (id 101)", s.Issues[0])
+		t.Fatalf("volume 1 = %+v, want the standard edition (id 101), not the reissue", s.Issues[0])
 	}
 	if s.Issues[0].Description == "" || s.Issues[0].CoverURL != "https://img/en1.jpg" {
 		t.Fatalf("volume 1 lost its description/cover: %+v", s.Issues[0])
 	}
-	if s.Issues[1].Number != 2 || s.Issues[1].ForeignID != "102" {
-		t.Fatalf("volume 2 = %+v, want position-2 edition (id 102)", s.Issues[1])
+	if s.Issues[1].Number != 2 || s.Issues[1].ForeignID != "103" {
+		t.Fatalf("volume 2 = %+v, want position-2 edition (id 103)", s.Issues[1])
 	}
 }
