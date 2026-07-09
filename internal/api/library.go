@@ -657,6 +657,12 @@ func (s *server) handleBookCover(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	// When the user prefers provider art, don't extract from the file — 404
+	// lets the UI fall back to the provider cover.
+	if s.cfg.UseProviderCovers() {
+		writeError(w, http.StatusNotFound, "provider covers preferred")
+		return
+	}
 	files, err := s.store.ListBookFiles(id)
 	if err != nil {
 		writeStoreError(w, err)

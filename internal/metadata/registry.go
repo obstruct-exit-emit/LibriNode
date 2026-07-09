@@ -103,9 +103,10 @@ func BuildSeries(name string, s Settings) (SeriesProvider, error) {
 // zero-ish state (no provider) makes metadata operations return
 // ErrNotConfigured.
 type Manager struct {
-	mu     sync.RWMutex
-	active Provider
-	series map[string]SeriesProvider // keyed by media type (manga, comic)
+	mu           sync.RWMutex
+	active       Provider
+	series       map[string]SeriesProvider // selected provider per media type
+	seriesByName map[string]SeriesProvider // every configured provider, by name
 }
 
 func NewManager() *Manager {
@@ -147,20 +148,63 @@ func (m *Manager) Configure(name string, settings map[string]Settings) error {
 }
 
 // ConfigureSeries (re)builds every registered series provider from settings;
-// providers reporting ErrNotConfigured are simply left inactive. The last
-// configured provider per media type wins.
-func (m *Manager) ConfigureSeries(settings map[string]Settings) {
-	built := map[string]SeriesProvider{}
-	for _, name := range SeriesAvailable() {
+// providers reporting ErrNotConfigured are left inactive. For each media type,
+// selection[mediaType] names the preferred provider; when it's unset or that
+// provider isn't configured, the first available one (by sorted name) wins.
+func (m *Manager) ConfigureSeries(settings map[string]Settings, selection map[string]string) {
+	byType := map[string][]SeriesProvider{}
+	byName := map[string]SeriesProvider{}
+	for _, name := range SeriesAvailable() { // sorted, so [0] is a stable default
 		p, err := BuildSeries(name, settings[name])
 		if err != nil {
-			continue // not configured or misconfigured — inactive
+			continue
 		}
-		built[p.MediaType()] = p
+		byType[p.MediaType()] = append(byType[p.MediaType()], p)
+		byName[name] = p
+	}
+
+	built := map[string]SeriesProvider{}
+	for mt, providers := range byType {
+		chosen := providers[0]
+		for _, p := range providers {
+			if p.Name() == selection[mt] {
+				chosen = p
+				break
+			}
+		}
+		built[mt] = chosen
 	}
 	m.mu.Lock()
 	m.series = built
+	m.seriesByName = byName
 	m.mu.Unlock()
+}
+
+// SeriesProviderByName returns a configured series provider by its stable
+// name — used to refresh an existing series through the provider that
+// created it, even when a different provider is now selected for that media
+// type.
+func (m *Manager) SeriesProviderByName(name string) SeriesProvider {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.seriesByName[name]
+}
+
+// AvailableSeriesProviders lists the registered series-provider names that
+// serve a media type (configured or not), sorted — for the settings UI.
+func AvailableSeriesProviders(mediaType string) []string {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	names := []string{}
+	for name, f := range seriesFactories {
+		// Build with an empty setting only to read MediaType; providers that
+		// need a token still report their media type via a throwaway instance.
+		if p, err := f(Settings{Token: "probe"}); err == nil && p.MediaType() == mediaType {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // SeriesFor returns the active series provider for a media type, or nil.
@@ -176,6 +220,10 @@ func (m *Manager) SetSeries(p SeriesProvider) {
 	if m.series == nil {
 		m.series = map[string]SeriesProvider{}
 	}
+	if m.seriesByName == nil {
+		m.seriesByName = map[string]SeriesProvider{}
+	}
 	m.series[p.MediaType()] = p
+	m.seriesByName[p.Name()] = p
 	m.mu.Unlock()
 }

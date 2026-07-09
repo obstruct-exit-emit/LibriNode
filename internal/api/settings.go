@@ -21,6 +21,12 @@ type metadataSettingsResponse struct {
 	Available       []string                     `json:"available"`
 	SeriesAvailable []string                     `json:"seriesAvailable"`
 	Providers       map[string]metadata.Settings `json:"providers"`
+	// MangaProviders lists the providers that can serve manga (for the
+	// selector); MangaProvider is the chosen one.
+	MangaProviders []string `json:"mangaProviders"`
+	MangaProvider  string   `json:"mangaProvider"`
+	// CoverSource: "file" or "provider".
+	CoverSource string `json:"coverSource"`
 }
 
 func (s *server) metadataSettingsResponse() metadataSettingsResponse {
@@ -30,6 +36,9 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 		Available:       metadata.Available(),
 		SeriesAvailable: metadata.SeriesAvailable(),
 		Providers:       ms.Providers,
+		MangaProviders:  metadata.AvailableSeriesProviders("manga"),
+		MangaProvider:   s.cfg.MangaSeriesProvider(),
+		CoverSource:     coverSourceOrDefault(ms.CoverSource),
 	}
 	// Every registered provider shows up in the form, configured or not.
 	for _, name := range append(append([]string{}, resp.Available...), resp.SeriesAvailable...) {
@@ -40,6 +49,13 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 	return resp
 }
 
+func coverSourceOrDefault(v string) string {
+	if v == "provider" {
+		return "provider"
+	}
+	return "file"
+}
+
 func (s *server) handleGetMetadataSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.metadataSettingsResponse())
 }
@@ -48,8 +64,10 @@ func (s *server) handleGetMetadataSettings(w http.ResponseWriter, r *http.Reques
 // config.yaml, and hot-swaps the active provider — no restart needed.
 func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Active    string                       `json:"active"`
-		Providers map[string]metadata.Settings `json:"providers"`
+		Active        string                       `json:"active"`
+		Providers     map[string]metadata.Settings `json:"providers"`
+		MangaProvider string                       `json:"mangaProvider"`
+		CoverSource   string                       `json:"coverSource"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -59,20 +77,33 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "unknown provider: "+req.Active)
 		return
 	}
+	if req.MangaProvider != "" && !slices.Contains(metadata.AvailableSeriesProviders("manga"), req.MangaProvider) {
+		writeError(w, http.StatusBadRequest, "unknown manga provider: "+req.MangaProvider)
+		return
+	}
+	if req.CoverSource != "" && req.CoverSource != "file" && req.CoverSource != "provider" {
+		writeError(w, http.StatusBadRequest, "coverSource must be file or provider")
+		return
+	}
 	if req.Providers == nil {
 		req.Providers = map[string]metadata.Settings{}
 	}
 
-	ms := config.MetadataSettings{Active: req.Active, Providers: req.Providers}
+	ms := config.MetadataSettings{
+		Active:        req.Active,
+		Providers:     req.Providers,
+		MangaProvider: req.MangaProvider,
+		CoverSource:   req.CoverSource,
+	}
 	if err := s.metadata.Configure(ms.Active, ms.Providers); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.metadata.ConfigureSeries(ms.Providers)
 	if err := s.cfg.SetMetadata(ms); err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}
+	s.metadata.ConfigureSeries(ms.Providers, s.cfg.SeriesSelection())
 	writeJSON(w, http.StatusOK, s.metadataSettingsResponse())
 }
 

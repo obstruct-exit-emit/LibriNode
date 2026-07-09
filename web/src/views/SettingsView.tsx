@@ -1039,6 +1039,8 @@ function MetadataCard({
   const [active, setActive] = useState("");
   const [providers, setProviders] = useState<Record<string, ProviderSettings>>({});
   const [showToken, setShowToken] = useState(false);
+  const [mangaProvider, setMangaProvider] = useState("");
+  const [coverSource, setCoverSource] = useState("file");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [cacheNotice, setCacheNotice] = useState("");
@@ -1069,6 +1071,8 @@ function MetadataCard({
         setSettings(s);
         setActive(s.active);
         setProviders(s.providers);
+        setMangaProvider(s.mangaProvider);
+        setCoverSource(s.coverSource);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
@@ -1098,11 +1102,13 @@ function MetadataCard({
     setBusy(true);
     setNotice("");
     api
-      .saveMetadataSettings(active, providers)
+      .saveMetadataSettings(active, providers, { mangaProvider, coverSource })
       .then((s) => {
         setSettings(s);
         setActive(s.active);
         setProviders(s.providers);
+        setMangaProvider(s.mangaProvider);
+        setCoverSource(s.coverSource);
         const hasToken = s.active && s.providers[s.active]?.token;
         setNotice(
           hasToken
@@ -1170,8 +1176,8 @@ function MetadataCard({
         )}
 
         <p className="muted">
-          Manga metadata comes from AniList (no key needed). Comics need a
-          free <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noreferrer">ComicVine API key</a>:
+          Comics need a free{" "}
+          <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noreferrer">ComicVine API key</a>:
         </p>
         <label>
           ComicVine API key
@@ -1187,6 +1193,39 @@ function MetadataCard({
               setNotice("");
             }}
           />
+        </label>
+
+        <label>
+          Manga provider
+          <select
+            value={mangaProvider || settings.mangaProviders[0] || "anilist"}
+            onChange={(e) => {
+              setMangaProvider(e.target.value);
+              setNotice("");
+            }}
+          >
+            {settings.mangaProviders.map((name) => (
+              <option key={name} value={name}>
+                {name[0].toUpperCase() + name.slice(1)}
+                {name === "anilist" ? " (no key)" : ""}
+                {name === "hardcover" ? " (uses your Hardcover token)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Manga/comic volume covers
+          <select
+            value={coverSource}
+            onChange={(e) => {
+              setCoverSource(e.target.value);
+              setNotice("");
+            }}
+          >
+            <option value="file">Extract from the owned file (first page)</option>
+            <option value="provider">Use the provider's cover art</option>
+          </select>
         </label>
 
         <div className="settings-actions">

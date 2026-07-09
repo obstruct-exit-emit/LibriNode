@@ -54,7 +54,7 @@ An author/series can exist in multiple libraries at once (e.g. own the ebook *an
 
 ### 🏷️ Metadata via Hardcover
 - **Hardcover.app** as the primary metadata provider for books and audiobooks (authors, series, editions, covers, descriptions, release dates)
-- Pluggable provider architecture: **AniList** (manga, no key needed) and **ComicVine** (comics) already slot in behind the series-provider interface; more sources can follow
+- Pluggable provider architecture: manga comes from **AniList** (no key) or **Hardcover** (selectable), comics from **ComicVine**, all behind the series-provider interface; more sources can follow
 - Metadata refresh on schedule + manual refresh
 - Writes sidecar metadata for readers: `ComicInfo.xml` into imported CBZs (Kavita/Komga), and OPF sidecars for ebooks (Calibre) and audiobooks (Audiobookshelf)
 - Caches provider cover/portrait art locally (downloaded on add/refresh), so the UI serves images from LibriNode instead of the provider CDN — and they survive the provider's link rot
@@ -159,14 +159,16 @@ searches use each indexer's **Audio categories** (default `3030`), and
 imports land as `Author/Book Title/` folders — Audiobookshelf-ready.
 
 **Manga & comics** are series-first: from the Manga or Comics library page,
-search AniList (no key needed) or ComicVine (needs a free API key, entered
-under **Settings → Metadata**), add the series, and its page lists every
-volume/issue with owned/wanted badges. "Monitor future volumes" is the
-series' monitor toggle — refreshes (manual or the daily sweep) discover new
-volumes and start monitoring them. One AniList quirk: *ongoing* manga often
-have no official volume count yet, so they add with zero volumes and fill in
-once AniList publishes totals — completed series (e.g. Death Note) arrive
-with all volumes immediately. Manga/comic searches use each indexer's
+search the provider, add the series, and its page lists every volume/issue
+with owned/wanted badges. Manga metadata can come from **AniList** (no key)
+or **Hardcover** (reuses your Hardcover token) — pick the manga provider
+under **Settings → Metadata**; comics use **ComicVine** (free API key).
+"Monitor future volumes" is the series' monitor toggle — refreshes (manual
+or the daily sweep) discover new volumes and start monitoring them. Provider
+quirks: *ongoing* manga on AniList often report no volume count yet (they add
+with zero volumes and fill in on later refresh), while Hardcover's manga
+series sometimes lack clean volume numbers, so LibriNode numbers them
+sequentially by the provider's order. Manga/comic searches use each indexer's
 **Comic categories** (default `7030`), scans understand `Series/Series
 v05.cbz` layouts, and imports write `ComicInfo.xml` into CBZ archives for
 Kavita/Komga.
@@ -177,9 +179,11 @@ series-scoped **Search wanted**, **Organize…**, **Scan files**, and
 compact — title + owned/wanted badge — and every volume expands to a cover,
 blurb, and the same controls an individual book has: a monitor toggle,
 **Auto grab**, **Search releases**, and **Remove from library** (with an
-opt-in delete-files). The cover is pulled straight from the owned file — the
-archive's first page — for both CBZ and CBR (read via pure-Go rardecode),
-falling back to the provider's art. Below the list, a per-series **Missing**
+opt-in delete-files). By default the cover is pulled straight from the owned
+file — the archive's first page — for both CBZ and CBR (read via pure-Go
+rardecode), falling back to the provider's art; a **Settings → Metadata**
+toggle switches this to always use the provider's cover instead. Below the
+list, a per-series **Missing**
 section lists volumes you're not tracking — neither monitored nor owned —
 each with a one-click **Monitor** to add it back, mirroring the per-author
 Missing view.

@@ -29,6 +29,38 @@ import (
 type MetadataSettings struct {
 	Active    string                       `yaml:"active"`
 	Providers map[string]metadata.Settings `yaml:"providers"`
+	// MangaProvider chooses the manga series provider ("anilist" or
+	// "hardcover"); empty defaults to anilist.
+	MangaProvider string `yaml:"manga_provider,omitempty"`
+	// CoverSource picks manga/comic volume cover art: "file" (extract the
+	// first page of the owned archive) or "provider" (use the provider's
+	// cover); empty defaults to file.
+	CoverSource string `yaml:"cover_source,omitempty"`
+}
+
+// MangaSeriesProvider returns the configured manga provider name, defaulting
+// to anilist.
+func (c *Config) MangaSeriesProvider() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Metadata.MangaProvider == "" {
+		return "anilist"
+	}
+	return c.Metadata.MangaProvider
+}
+
+// UseProviderCovers reports whether volume covers should come from the
+// metadata provider instead of the owned file.
+func (c *Config) UseProviderCovers() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Metadata.CoverSource == "provider"
+}
+
+// SeriesSelection maps each series media type to its chosen provider, for
+// metadata.Manager.ConfigureSeries.
+func (c *Config) SeriesSelection() map[string]string {
+	return map[string]string{"manga": c.MangaSeriesProvider()}
 }
 
 // NamingSettings holds the file-organization templates (per media type as
@@ -260,8 +292,10 @@ func (c *Config) MetadataSettings() MetadataSettings {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := MetadataSettings{
-		Active:    c.Metadata.Active,
-		Providers: make(map[string]metadata.Settings, len(c.Metadata.Providers)),
+		Active:        c.Metadata.Active,
+		MangaProvider: c.Metadata.MangaProvider,
+		CoverSource:   c.Metadata.CoverSource,
+		Providers:     make(map[string]metadata.Settings, len(c.Metadata.Providers)),
 	}
 	for name, s := range c.Metadata.Providers {
 		out.Providers[name] = s

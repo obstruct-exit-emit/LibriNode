@@ -119,13 +119,14 @@ func run(dataDir string) error {
 	// pick them up automatically.
 	metadata.Register("hardcover", hardcover.Factory)
 	metadata.RegisterSeries("anilist", anilist.Factory)
+	metadata.RegisterSeries("hardcover", hardcover.SeriesFactory)
 	metadata.RegisterSeries("comicvine", comicvine.Factory)
 
 	providers := metadata.NewManager()
 	if err := providers.Configure(cfg.Metadata.Active, cfg.Metadata.Providers); err != nil {
 		logger.Warn("activating metadata provider failed", "provider", cfg.Metadata.Active, "error", err)
 	}
-	providers.ConfigureSeries(cfg.Metadata.Providers)
+	providers.ConfigureSeries(cfg.Metadata.Providers, cfg.SeriesSelection())
 	if p := providers.Current(); p != nil {
 		logger.Info("metadata provider active", "provider", p.Name())
 	} else {

@@ -19,6 +19,14 @@ func (s *Service) SyncSeries(ctx context.Context, mediaType, foreignID string, m
 	if p == nil {
 		return nil, metadata.ErrNotConfigured
 	}
+	return s.syncSeriesWith(ctx, p, mediaType, foreignID, monitored, monitorNew, newVolumesMonitored)
+}
+
+// syncSeriesWith persists a series using the given provider — the caller picks
+// it (the media type's active provider when adding, or the series' own source
+// provider when refreshing, so a manga added from AniList keeps refreshing
+// from AniList even after the manga provider is switched to Hardcover).
+func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider, mediaType, foreignID string, monitored, monitorNew, newVolumesMonitored bool) (*library.Series, error) {
 	remote, err := p.GetSeries(ctx, foreignID)
 	if err != nil {
 		return nil, err
@@ -67,15 +75,25 @@ func (s *Service) SyncSeries(ctx context.Context, mediaType, foreignID string, m
 		if existing, err := s.store.GetBookByForeignID(source, issue.ForeignID); err == nil {
 			volMonitored = existing.Monitored // preserved by upsert anyway
 		}
+		// Prefer the volume's own description/cover; fall back to the issue
+		// title (older providers set only that) and the series cover.
+		description := issue.Description
+		if description == "" {
+			description = issue.Title
+		}
+		coverURL := issue.CoverURL
+		if coverURL == "" {
+			coverURL = remote.CoverURL
+		}
 		book := &library.Book{
 			AuthorID:    author.ID,
 			Source:      source,
 			MediaType:   mediaType,
 			ForeignID:   issue.ForeignID,
 			Title:       fmt.Sprintf("%s %s%v", remote.Title, numberPrefix, trimFloat(issue.Number)),
-			Description: issue.Title,
+			Description: description,
 			ReleaseDate: issue.ReleaseDate,
-			CoverURL:    remote.CoverURL,
+			CoverURL:    coverURL,
 			Monitored:   volMonitored,
 		}
 		if err := s.store.UpsertBook(book); err != nil {
@@ -107,7 +125,13 @@ func (s *Service) RefreshSeries(ctx context.Context, id int64) error {
 	if series.Source == "manual" {
 		return nil
 	}
-	_, err = s.SyncSeries(ctx, series.MediaType, series.ForeignID,
+	// Refresh through the provider that created the series, not whatever is
+	// currently selected for the media type — their ids aren't interchangeable.
+	p := s.providers.SeriesProviderByName(series.Source)
+	if p == nil {
+		return nil // source provider not configured — leave the series as-is
+	}
+	_, err = s.syncSeriesWith(ctx, p, series.MediaType, series.ForeignID,
 		series.Monitored, series.MonitorNew, series.MonitorNew)
 	return err
 }
@@ -115,9 +139,6 @@ func (s *Service) RefreshSeries(ctx context.Context, id int64) error {
 // refreshAllSeries re-syncs every manga/comic series (called from RefreshAll).
 func (s *Service) refreshAllSeries(ctx context.Context) {
 	for _, mediaType := range []string{"manga", "comic"} {
-		if s.providers.SeriesFor(mediaType) == nil {
-			continue
-		}
 		seriesList, err := s.store.ListSeries(mediaType)
 		if err != nil {
 			continue

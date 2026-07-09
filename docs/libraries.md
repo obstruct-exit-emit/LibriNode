@@ -52,8 +52,12 @@ with a `metadata.opf` sidecar — Audiobookshelf-ready. Ebooks get a
 
 ## Manga & Comics (series-first)
 
-Search AniList (manga) or ComicVine (comics), add the series, and every
-volume/issue appears on its page with owned/wanted badges. The series
+Search the provider, add the series, and every volume/issue appears on its
+page with owned/wanted badges. Manga metadata comes from **AniList** (no
+key) or **Hardcover** (reuses your Hardcover token) — choose the manga
+provider under **Settings → Metadata**; comics use **ComicVine**. Hardcover's
+manga series sometimes lack clean volume numbers, so volumes are numbered
+sequentially by the provider's order. The series
 monitor toggle doubles as "monitor future volumes": refreshes (manual or
 daily) discover new volumes and monitor them automatically. Imports write
 `ComicInfo.xml` into CBZ archives and use Kavita/Komga-friendly
@@ -68,9 +72,11 @@ series-scoped **Search wanted**, **Organize…**, **Scan files**, and
 — title + owned/wanted badge — and every volume expands to a cover, blurb,
 and the same controls an individual book has: a monitor toggle, **Auto
 grab**, **Search releases**, and **Remove from library** (opt-in
-delete-files). An owned volume's cover is extracted from the archive's first
-page (CBZ or CBR, the latter read via pure-Go rardecode), falling back to
-the provider's art. A per-series **Missing** section lists volumes you're not
+delete-files). By default an owned volume's cover is extracted from the
+archive's first page (CBZ or CBR, the latter read via pure-Go rardecode),
+falling back to the provider's art; **Settings → Metadata** has a toggle to
+always use the provider's cover instead. A per-series **Missing** section
+lists volumes you're not
 tracking — neither monitored nor owned — each with a one-click **Monitor**;
 removing a volume forgets its file records so it drops into Missing, and the
 next scan re-finds any files left on disk.

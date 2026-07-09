@@ -92,6 +92,8 @@ type Issue struct {
 	ForeignID   string  `json:"foreignIssueId"`
 	Number      float64 `json:"number"`
 	Title       string  `json:"title,omitempty"`
+	Description string  `json:"description,omitempty"`
+	CoverURL    string  `json:"coverUrl,omitempty"`
 	ReleaseDate string  `json:"releaseDate,omitempty"`
 }
 
