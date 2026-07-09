@@ -75,17 +75,13 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 		if existing, err := s.store.GetBookByForeignID(source, issue.ForeignID); err == nil {
 			volMonitored = existing.Monitored // preserved by upsert anyway
 		}
-		// Prefer the volume's own description; fall back to the series
-		// description for context rather than the volume title (which just
-		// repeats the "Vol. N" line). Comics keep the issue name, which reads
-		// as a reasonable per-issue blurb.
+		// Use the volume's own description. Comics rarely carry a per-issue
+		// synopsis, so the issue name stands in there; manga volumes are left
+		// blank when the provider has none (AniList synthesizes volumes with
+		// no descriptions) rather than repeating the series blurb on every one.
 		description := issue.Description
-		if description == "" {
-			if mediaType == "comic" {
-				description = issue.Title
-			} else {
-				description = remote.Description
-			}
+		if description == "" && mediaType == "comic" {
+			description = issue.Title
 		}
 		coverURL := issue.CoverURL
 		if coverURL == "" {
