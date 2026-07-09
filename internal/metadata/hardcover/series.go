@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/librinode/librinode/internal/metadata"
@@ -12,8 +13,11 @@ import (
 // SeriesClient adapts the Hardcover book API to metadata.SeriesProvider for
 // manga: a Hardcover *series* is the manga, and the books linked to it via
 // book_series are its volumes. Hardcover's manga series are messier than
-// AniList's (spin-offs mixed in, positions often 0), so volume numbers fall
-// back to sequential order when the positions aren't a clean 1..N sequence.
+// AniList's — spin-offs sit at position 0 and each numbered volume carries
+// several editions (English/Japanese/collector's) — so GetSeries keeps the
+// positioned volumes (dropping the position-0 extras), collapses each position
+// to its richest edition, and only numbers sequentially when a series has no
+// positive positions at all.
 type SeriesClient struct {
 	*Client
 }
@@ -128,31 +132,56 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 		entries = append(entries, e)
 	}
 
-	// Use the provider positions only when they form clean, distinct volume
-	// numbers; otherwise number sequentially by order.
-	clean := len(entries) > 0
-	seen := map[float64]bool{}
+	// Hardcover series mix the real numbered volumes (position >= 1) with
+	// spin-offs and alternate editions (position 0), and carry several
+	// editions per volume — usually only the English one has a description.
+	// When the series has positioned volumes, keep one edition per position
+	// (the richest description wins) and drop the position-0 extras; a series
+	// with no positive positions is numbered sequentially.
+	hasPositive := false
 	for _, e := range entries {
-		if e.pos < 1 || seen[e.pos] {
-			clean = false
+		if e.pos >= 1 {
+			hasPositive = true
 			break
 		}
-		seen[e.pos] = true
+	}
+
+	var chosen []entry
+	if hasPositive {
+		byPos := map[float64]entry{}
+		for _, e := range entries {
+			if e.pos < 1 {
+				continue
+			}
+			if cur, ok := byPos[e.pos]; !ok || len(e.book.Description) > len(cur.book.Description) {
+				byPos[e.pos] = e
+			}
+		}
+		positions := make([]float64, 0, len(byPos))
+		for p := range byPos {
+			positions = append(positions, p)
+		}
+		sort.Float64s(positions)
+		for _, p := range positions {
+			chosen = append(chosen, byPos[p])
+		}
+	} else {
+		chosen = entries
 	}
 
 	result := &metadata.SeriesResult{
 		ForeignID:   s.ID.String(),
 		Title:       s.Name,
 		Description: s.Description,
-		IssueCount:  len(entries),
+		IssueCount:  len(chosen),
 	}
 	if s.Author != nil {
 		result.AuthorName = s.Author.Name
 	}
-	for i, e := range entries {
-		num := float64(i + 1)
-		if clean {
-			num = e.pos
+	for i, e := range chosen {
+		num := e.pos
+		if !hasPositive {
+			num = float64(i + 1)
 		}
 		cover := imageURL(e.book.CachedImage)
 		if i == 0 {
