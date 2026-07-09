@@ -1041,6 +1041,20 @@ function MetadataCard({
   const [showToken, setShowToken] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [cacheNotice, setCacheNotice] = useState("");
+
+  const runClear = (fn: () => Promise<{ removed: number; freedBytes: number }>) => {
+    setCacheNotice("");
+    fn()
+      .then((r) =>
+        setCacheNotice(
+          r.removed === 0
+            ? "Cache was already empty."
+            : `✓ Cleared ${r.removed} image(s), freed ${(r.freedBytes / (1 << 20)).toFixed(1)} MiB.`,
+        ),
+      )
+      .catch((err: unknown) => setCacheNotice(`✗ ${err instanceof Error ? err.message : String(err)}`));
+  };
 
   useEffect(() => {
     api
@@ -1181,6 +1195,30 @@ function MetadataCard({
           {notice && (
             <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
               {notice}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="settings-form" style={{ marginTop: "1.25rem" }}>
+        <p className="muted" style={{ margin: 0 }}>
+          Cached cover images live under the data directory and rebuild on
+          demand. <strong>Provider art</strong> is downloaded from the metadata
+          provider (author portraits, cover images); <strong>extracted
+          covers</strong> are pulled from the first page of your owned
+          manga/comic archives. Clearing either reclaims disk or forces a
+          rebuild.
+        </p>
+        <div className="settings-actions">
+          <button className="danger" onClick={() => runClear(api.clearMetadataCache)}>
+            Clear provider art
+          </button>
+          <button className="danger" onClick={() => runClear(api.clearCoverCache)}>
+            Clear extracted covers
+          </button>
+          {cacheNotice && (
+            <span className={cacheNotice.startsWith("✗") ? "notice bad" : "notice ok"}>
+              {cacheNotice}
             </span>
           )}
         </div>

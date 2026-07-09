@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  proxiedImage,
   type Author,
   type Book,
   type BookFile,
@@ -180,7 +181,7 @@ export default function BooksLibraryView({
                   {filtered.slice(0, visible).map((a) => (
                     <button key={a.id} className="poster-card" onClick={() => onOpenAuthor(a.id)}>
                       {a.imageUrl ? (
-                        <img className="poster" src={a.imageUrl} alt="" loading="lazy" />
+                        <img className="poster" src={proxiedImage(a.imageUrl)} alt="" loading="lazy" />
                       ) : (
                         <div className="poster fallback">{a.name.charAt(0)}</div>
                       )}

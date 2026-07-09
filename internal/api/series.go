@@ -129,6 +129,7 @@ func (s *server) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rematchFiles()
+	s.prefetchSeriesImages(series.ID)
 	s.writeSeriesDetail(w, http.StatusCreated, series.ID)
 }
 
@@ -202,6 +203,7 @@ func (s *server) handleRefreshSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rematchFiles()
+	s.prefetchSeriesImages(id)
 	s.writeSeriesDetail(w, http.StatusOK, id)
 }
 

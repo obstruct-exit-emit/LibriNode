@@ -168,3 +168,15 @@ func (s *server) handleTestMetadataProvider(w http.ResponseWriter, r *http.Reque
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "provider": req.Provider})
 }
+
+// handleClearMetadataCache deletes the downloaded provider images (author
+// portraits and cover art). They re-download from the provider as pages are
+// viewed; this just reclaims disk (or forces fresh art).
+func (s *server) handleClearMetadataCache(w http.ResponseWriter, r *http.Request) {
+	removed, freed, err := s.images.Clear()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"removed": removed, "freedBytes": freed})
+}

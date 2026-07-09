@@ -57,6 +57,7 @@ An author/series can exist in multiple libraries at once (e.g. own the ebook *an
 - Pluggable provider architecture: **AniList** (manga, no key needed) and **ComicVine** (comics) already slot in behind the series-provider interface; more sources can follow
 - Metadata refresh on schedule + manual refresh
 - Writes sidecar metadata for readers: `ComicInfo.xml` into imported CBZs (Kavita/Komga), and OPF sidecars for ebooks (Calibre) and audiobooks (Audiobookshelf)
+- Caches provider cover/portrait art locally (downloaded on add/refresh), so the UI serves images from LibriNode instead of the provider CDN — and they survive the provider's link rot
 
 ### ⚙️ Clean, organized settings
 Settings are grouped by concern, not dumped on one page:
@@ -176,9 +177,12 @@ series-scoped **Search wanted**, **Organize…**, **Scan files**, and
 compact — title + owned/wanted badge — and every volume expands to a cover,
 blurb, and the same controls an individual book has: a monitor toggle,
 **Auto grab**, **Search releases**, and **Remove from library** (with an
-opt-in delete-files). Below the list, a per-series **Missing** section lists
-volumes you're not tracking — neither monitored nor owned — each with a
-one-click **Monitor** to add it back, mirroring the per-author Missing view.
+opt-in delete-files). The cover is pulled straight from the owned file — the
+archive's first page — for both CBZ and CBR (read via pure-Go rardecode),
+falling back to the provider's art. Below the list, a per-series **Missing**
+section lists volumes you're not tracking — neither monitored nor owned —
+each with a one-click **Monitor** to add it back, mirroring the per-author
+Missing view.
 
 Manga can also be owned in **colorized and monochrome** variants at once: it
 stays one library, but you add a separate root folder per variant (a
@@ -264,7 +268,7 @@ scriptable:
 
 | Area | Endpoints |
 |---|---|
-| System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now), `GET /log?lines=N` (tail the log file) |
+| System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now), `GET /log?lines=N` (tail the log file), `GET /image?url=` (cached provider-image proxy; redirects to origin on miss+failure) |
 | Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (empty username disables), `POST /auth/apikey/regenerate` |
 | Backups | `GET/POST /backup`, `DELETE /backup/{name}`, `POST /backup/{name}/restore` (staged, applied on restart), `GET /backup/{name}/download` |
 | Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}` |
@@ -272,13 +276,13 @@ scriptable:
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}` (`?deleteFiles=true` also removes files), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh`, `POST /series/{id}/search` (search this series' wanted volumes only) |
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
 | Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files — deletes outright, every library), `PUT /author/{id}/library` (scoped add/remove from ONE format library; `deleteFiles` on remove; auto-deletes the author once they're in no library), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` (never changes membership or monitoring), `GET /author/{id}/missing?library=` (bibliography gaps), `POST /author/{id}/search?library=` (search this author's wanted books only) |
-| Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave; `library:"manga"` adds/removes a volume from its series — `member:false` forgets its file records so it drops to Missing), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
-| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}` |
+| Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `GET /book/{id}/cover` (cover image extracted from the owned CBZ/CBR's first page; cached under `<data>/covers`, refreshed when the file changes), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave; `library:"manga"` adds/removes a volume from its series — `member:false` forgets its file records so it drops to Missing), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
+| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}`, `DELETE /library/covers/cache` (clear extracted comic covers) |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
-| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `GET/PUT /settings/naming` (templates for all five media types) |
+| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear cached provider images), `GET/PUT /settings/naming` (templates for all five media types) |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
 bibliography as metadata; the author joins the target library, but no book
@@ -379,7 +383,7 @@ metadata endpoints return 503.
 - [x] Volume/issue data model: series-first — monitored series own their volumes/issues, browsable on the series' own page
 - [x] Manga metadata provider: **AniList** (public API, no key; verified live) behind the series-provider registry
 - [x] Comic metadata provider: **ComicVine** (free API key, entered in Settings) *(mock-tested; live verification pending a key)*
-- [x] CBZ/CBR handling + `ComicInfo.xml` written into imported CBZ archives (CBR is read-only — pure Go can't write RAR)
+- [x] CBZ/CBR handling + `ComicInfo.xml` written into imported CBZ archives (CBR is write-only-blocked — pure Go can't write RAR — but is read for cover extraction via rardecode); volume covers are pulled from the owned archive's first page (`GET /book/{id}/cover`)
 - [x] Issue/volume monitoring: per-series "monitor future volumes" — refresh discovers new volumes and monitors them automatically
 - [x] Kavita/Komga-friendly folder layouts (`Series/Series Vol. N.cbz`, templates editable)
 - [x] Magazines as provider-less series: add by name, issues recognized by date/number parsing (ISO dates, "July 2026", "Issue 452")

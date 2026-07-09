@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  getApiKey,
+  proxiedImage,
   type Book,
   type ReleaseCandidate,
   type RenameMove,
@@ -156,7 +158,7 @@ export default function SeriesDetailView({
 
       <section className="card detail-head">
         {series.coverUrl ? (
-          <img className="detail-art" src={series.coverUrl} alt="" />
+          <img className="detail-art" src={proxiedImage(series.coverUrl)} alt="" />
         ) : (
           <div className="detail-art fallback">{series.title.charAt(0)}</div>
         )}
@@ -304,16 +306,38 @@ export default function SeriesDetailView({
 const variantLabel = (variant?: string) =>
   variant === "color" ? "colorized" : variant === "mono" ? "monochrome" : "";
 
+// VolumeCover shows the volume's cover, preferring one extracted from the
+// owned comic file (first page), then the provider cover, then an initial —
+// falling to the next source whenever an image fails to load.
+function VolumeCover({ volume }: { volume: Book }) {
+  const srcs: string[] = [];
+  if (volume.hasFile) {
+    srcs.push(`/api/v1/book/${volume.id}/cover?apikey=${encodeURIComponent(getApiKey())}`);
+  }
+  const provider = proxiedImage(volume.coverUrl);
+  if (provider) srcs.push(provider);
+
+  const [idx, setIdx] = useState(0);
+  if (idx >= srcs.length) {
+    return <div className="missing-thumb fallback">{volume.title.charAt(0)}</div>;
+  }
+  return (
+    <img
+      className="missing-thumb"
+      src={srcs[idx]}
+      alt=""
+      loading="lazy"
+      onError={() => setIdx(idx + 1)}
+    />
+  );
+}
+
 // coverAbout renders the compact thumbnail + blurb shared by the volume and
 // Missing rows (same look as the per-author Missing view).
 function coverAbout(volume: Book) {
   return (
     <div className="volume-about">
-      {volume.coverUrl ? (
-        <img className="missing-thumb" src={volume.coverUrl} alt="" loading="lazy" />
-      ) : (
-        <div className="missing-thumb fallback">{volume.title.charAt(0)}</div>
-      )}
+      <VolumeCover volume={volume} />
       <p className="missing-about">
         {volume.description || "No description from the metadata provider."}
       </p>

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
@@ -469,6 +472,99 @@ func TestSeriesSearchWanted(t *testing.T) {
 	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/search", series.ID), nil, &res), http.StatusOK)
 	if res.Searched != 2 {
 		t.Fatalf("after unmonitor, searched = %d, want 2", res.Searched)
+	}
+}
+
+func jpegBytes(tag string) []byte { return append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, []byte(tag)...) }
+
+func writeCBZWithCover(t *testing.T, path string, cover []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("001.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(cover); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (a *testAPI) rawGet(path string) (*http.Response, []byte) {
+	a.t.Helper()
+	req, _ := http.NewRequest("GET", a.srv.URL+path, nil)
+	req.Header.Set("X-Api-Key", a.apiKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp, body
+}
+
+// TestBookCoverCache: the cover is extracted from the owned archive, cached
+// on disk, served from cache even if the source vanishes, and refreshed when
+// the source file changes.
+func TestBookCoverCache(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 1
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+	v1 := series.Volumes[0].ID
+
+	root := t.TempDir()
+	cbz := filepath.Join(root, "Berserk", "Berserk v01.cbz")
+	writeCBZWithCover(t, cbz, jpegBytes("COVER-A"))
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "manga", "variant": "mono", "path": root}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	cover := fmt.Sprintf("/api/v1/book/%d/cover", v1)
+
+	// First fetch extracts the cover and caches it.
+	resp, body := a.rawGet(cover)
+	a.want(resp, http.StatusOK)
+	if !bytes.Equal(body, jpegBytes("COVER-A")) {
+		t.Fatalf("cover = %q, want COVER-A", body)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "image/jpeg" {
+		t.Errorf("content type = %q, want image/jpeg", ct)
+	}
+
+	// Cache hit: even with the source archive gone, the cover still serves.
+	if err := os.Remove(cbz); err != nil {
+		t.Fatal(err)
+	}
+	resp, body = a.rawGet(cover)
+	a.want(resp, http.StatusOK)
+	if !bytes.Equal(body, jpegBytes("COVER-A")) {
+		t.Fatalf("cached cover = %q, want COVER-A", body)
+	}
+
+	// Invalidation: a newer source file with a different cover refreshes it.
+	writeCBZWithCover(t, cbz, jpegBytes("COVER-B"))
+	future := time.Now().Add(time.Hour)
+	if err := os.Chtimes(cbz, future, future); err != nil {
+		t.Fatal(err)
+	}
+	resp, body = a.rawGet(cover)
+	a.want(resp, http.StatusOK)
+	if !bytes.Equal(body, jpegBytes("COVER-B")) {
+		t.Fatalf("after source change, cover = %q, want COVER-B", body)
 	}
 }
 

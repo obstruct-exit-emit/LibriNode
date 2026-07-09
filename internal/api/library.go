@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/librinode/librinode/internal/comiccover"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
 )
@@ -157,6 +161,7 @@ func (s *server) handleAddAuthor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rematchFiles()
+	s.prefetchAuthorImages(author.ID)
 	s.writeAuthorDetail(w, http.StatusCreated, author.ID)
 }
 
@@ -270,6 +275,7 @@ func (s *server) handleRefreshAuthor(w http.ResponseWriter, r *http.Request) {
 		writeSyncError(w, err)
 		return
 	}
+	s.prefetchAuthorImages(id)
 	s.writeAuthorDetail(w, http.StatusOK, id)
 }
 
@@ -396,6 +402,7 @@ func (s *server) handleAddBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.rematchFiles()
+	s.images.Prefetch(book.CoverURL)
 	s.writeBookDetail(w, http.StatusCreated, book.ID)
 }
 
@@ -637,6 +644,173 @@ func (s *server) handleGetBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeBookDetail(w, http.StatusOK, id)
+}
+
+// handleBookCover streams the cover image extracted from one of a book's
+// comic archives (CBZ/CBR) — a real cover for owned manga/comic volumes.
+// The extracted image is cached on disk (<data>/covers) and re-used until a
+// source file changes. 404 when the book has no comic file or none yields an
+// image; the UI then falls back to the provider cover.
+func (s *server) handleBookCover(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	files, err := s.store.ListBookFiles(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+
+	// Newest comic-file mtime — the cache is valid only while it's at least
+	// this fresh, so replacing a volume's file refreshes its cover.
+	var comicFiles []library.BookFile
+	var newest time.Time
+	for _, f := range files {
+		if f.MediaType != "manga" && f.MediaType != "comic" {
+			continue
+		}
+		comicFiles = append(comicFiles, f)
+		if info, err := os.Stat(f.Path); err == nil && info.ModTime().After(newest) {
+			newest = info.ModTime()
+		}
+	}
+	if len(comicFiles) == 0 {
+		writeError(w, http.StatusNotFound, "no cover available")
+		return
+	}
+
+	cachePath := filepath.Join(s.cfg.DataDir(), "covers", fmt.Sprintf("book-%d", id))
+	if info, err := os.Stat(cachePath); err == nil && !info.ModTime().Before(newest) {
+		if data, err := os.ReadFile(cachePath); err == nil {
+			if ct, ok := comiccover.ContentType(data); ok {
+				s.writeCover(w, ct, data)
+				return
+			}
+		}
+	}
+
+	for _, f := range comicFiles {
+		data, contentType, err := comiccover.Extract(f.Path)
+		if err != nil {
+			slog.Debug("cover extraction failed", "bookId", id, "path", f.Path, "error", err)
+			continue
+		}
+		s.cacheCover(cachePath, data)
+		s.writeCover(w, contentType, data)
+		return
+	}
+	writeError(w, http.StatusNotFound, "no cover available")
+}
+
+// handleImage proxies a provider image (author/series/book art) through the
+// on-disk cache: served from cache when present, downloaded and cached on
+// first request. On any failure it redirects to the origin URL so the image
+// still loads. ?url= is the provider URL.
+func (s *server) handleImage(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Query().Get("url")
+	if url == "" {
+		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	data, contentType, err := s.images.Fetch(ctx, url)
+	if err != nil {
+		slog.Debug("image proxy fetch failed, redirecting to origin", "url", url, "error", err)
+		http.Redirect(w, r, url, http.StatusFound)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, max-age=604800")
+	w.Write(data)
+}
+
+// prefetchAuthorImages downloads an author's portrait and their books' cover
+// art into the image cache in the background (download-on-add/refresh).
+func (s *server) prefetchAuthorImages(id int64) {
+	if a, err := s.store.GetAuthor(id); err == nil {
+		s.images.Prefetch(a.ImageURL)
+	}
+	if books, err := s.store.ListBooks(id); err == nil {
+		for i := range books {
+			s.images.Prefetch(books[i].CoverURL)
+		}
+	}
+}
+
+// prefetchSeriesImages downloads a series' cover and its volumes'/issues'
+// covers into the image cache in the background.
+func (s *server) prefetchSeriesImages(id int64) {
+	if sr, err := s.store.GetSeries(id); err == nil {
+		s.images.Prefetch(sr.CoverURL)
+	}
+	if vols, err := s.store.ListVolumes(id); err == nil {
+		for i := range vols {
+			s.images.Prefetch(vols[i].CoverURL)
+		}
+	}
+}
+
+// handleClearCoverCache deletes the covers extracted from owned comic
+// archives (`<data>/covers/book-*`). They re-extract from the files on the
+// next request; this just reclaims disk. Provider art (covers/remote) is left
+// alone — that's cleared from the Metadata settings.
+func (s *server) handleClearCoverCache(w http.ResponseWriter, r *http.Request) {
+	dir := filepath.Join(s.cfg.DataDir(), "covers")
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		writeJSON(w, http.StatusOK, map[string]any{"removed": 0, "freedBytes": 0})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	removed, freed := 0, int64(0)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "book-") {
+			continue
+		}
+		if info, err := e.Info(); err == nil {
+			freed += info.Size()
+		}
+		if os.Remove(filepath.Join(dir, e.Name())) == nil {
+			removed++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"removed": removed, "freedBytes": freed})
+}
+
+func (s *server) writeCover(w http.ResponseWriter, contentType string, data []byte) {
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Write(data)
+}
+
+// cacheCover writes the cover atomically (temp file + rename) so concurrent
+// requests never read a partial file. Failures are non-fatal — the cover is
+// still served, just re-extracted next time.
+func (s *server) cacheCover(cachePath string, data []byte) {
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
+		slog.Debug("cover cache mkdir failed", "error", err)
+		return
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(cachePath), ".cover-*")
+	if err != nil {
+		slog.Debug("cover cache temp failed", "error", err)
+		return
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return
+	}
+	tmp.Close()
+	if err := os.Rename(tmp.Name(), cachePath); err != nil {
+		os.Remove(tmp.Name())
+	}
 }
 
 func (s *server) writeBookDetail(w http.ResponseWriter, status int, id int64) {

@@ -359,6 +359,16 @@ export function getApiKey(): string {
   return localStorage.getItem(KEY_STORAGE) ?? "";
 }
 
+// proxiedImage routes a provider image (Hardcover/AniList/ComicVine art)
+// through LibriNode's caching proxy so it's served locally and survives the
+// provider's URL rot. Local API URLs (our own /cover endpoint) pass through
+// unchanged; empty URLs return undefined so callers can fall back.
+export function proxiedImage(url?: string): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/")) return url;
+  return `/api/v1/image?url=${encodeURIComponent(url)}&apikey=${encodeURIComponent(getApiKey())}`;
+}
+
 export function setApiKey(key: string) {
   localStorage.setItem(KEY_STORAGE, key);
 }
@@ -663,4 +673,12 @@ export const api = {
   testMetadataProvider: (provider: string, settings: ProviderSettings) =>
     request<{ ok: boolean }>("/api/v1/settings/metadata/test",
       json({ provider, settings })),
+  clearMetadataCache: () =>
+    request<{ removed: number; freedBytes: number }>("/api/v1/settings/metadata/cache", {
+      method: "DELETE",
+    }),
+  clearCoverCache: () =>
+    request<{ removed: number; freedBytes: number }>("/api/v1/library/covers/cache", {
+      method: "DELETE",
+    }),
 };

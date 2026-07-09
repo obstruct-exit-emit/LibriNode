@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  proxiedImage,
   type Author,
   type Book,
   type ReleaseCandidate,
@@ -116,7 +117,7 @@ export default function BookDetailView({
 
       <section className="card detail-head">
         {book.coverUrl ? (
-          <img className="detail-art" src={book.coverUrl} alt="" />
+          <img className="detail-art" src={proxiedImage(book.coverUrl)} alt="" />
         ) : (
           <div className="detail-art fallback">{book.title.charAt(0)}</div>
         )}

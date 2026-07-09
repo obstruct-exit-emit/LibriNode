@@ -68,7 +68,9 @@ series-scoped **Search wanted**, **Organize…**, **Scan files**, and
 — title + owned/wanted badge — and every volume expands to a cover, blurb,
 and the same controls an individual book has: a monitor toggle, **Auto
 grab**, **Search releases**, and **Remove from library** (opt-in
-delete-files). A per-series **Missing** section lists volumes you're not
+delete-files). An owned volume's cover is extracted from the archive's first
+page (CBZ or CBR, the latter read via pure-Go rardecode), falling back to
+the provider's art. A per-series **Missing** section lists volumes you're not
 tracking — neither monitored nor owned — each with a one-click **Monitor**;
 removing a volume forgets its file records so it drops into Missing, and the
 next scan re-finds any files left on disk.

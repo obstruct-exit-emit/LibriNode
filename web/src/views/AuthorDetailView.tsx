@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Author, type Book, type RenameMove } from "../api";
+import { api, proxiedImage, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
 
 // Full-page author detail, *arr-style: header with portrait, description and
@@ -132,7 +132,7 @@ export default function AuthorDetailView({
 
       <section className="card detail-head">
         {author.imageUrl ? (
-          <img className="detail-art" src={author.imageUrl} alt="" />
+          <img className="detail-art" src={proxiedImage(author.imageUrl)} alt="" />
         ) : (
           <div className="detail-art fallback">{author.name.charAt(0)}</div>
         )}
@@ -219,7 +219,7 @@ export default function AuthorDetailView({
               return (
                 <button key={b.id} className="poster-card" onClick={() => onOpenBook(b.id)}>
                   {b.coverUrl ? (
-                    <img className="poster" src={b.coverUrl} alt="" loading="lazy" />
+                    <img className="poster" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
                   ) : (
                     <div className="poster fallback">{b.title.charAt(0)}</div>
                   )}
@@ -341,7 +341,7 @@ function MissingCard({
                     {open === b.id && (
                       <div className="missing-detail">
                         {b.coverUrl ? (
-                          <img className="missing-thumb" src={b.coverUrl} alt="" loading="lazy" />
+                          <img className="missing-thumb" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
                         ) : (
                           <div className="missing-thumb fallback">{b.title.charAt(0)}</div>
                         )}

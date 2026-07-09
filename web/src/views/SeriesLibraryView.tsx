@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type RenameMove, type Series, type SeriesResult } from "../api";
+import { api, proxiedImage, type RenameMove, type Series, type SeriesResult } from "../api";
 import { libraryLabels } from "../App";
 import WantedCard from "../components/WantedCard";
 
@@ -166,7 +166,7 @@ export default function SeriesLibraryView({
                 {filtered.slice(0, visible).map((s) => (
                   <button key={s.id} className="poster-card" onClick={() => onOpenSeries(s.id)}>
                     {s.coverUrl ? (
-                      <img className="poster" src={s.coverUrl} alt="" loading="lazy" />
+                      <img className="poster" src={proxiedImage(s.coverUrl)} alt="" loading="lazy" />
                     ) : (
                       <div className="poster fallback">{s.title.charAt(0)}</div>
                     )}

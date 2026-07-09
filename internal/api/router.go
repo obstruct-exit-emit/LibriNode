@@ -9,11 +9,13 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 
 	"github.com/librinode/librinode/internal/autosearch"
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/health"
+	"github.com/librinode/librinode/internal/imagecache"
 	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
@@ -37,6 +39,7 @@ type server struct {
 	importer  *importer.Service
 	search    *autosearch.Service
 	health    *health.Service
+	images    *imagecache.Cache
 	sessions  *sessionStore
 	webFS     fs.FS // nil when no frontend build is embedded
 	version   string
@@ -63,6 +66,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		importer:  importer.New(store, downloads, org),
 		search:    autosearch.New(store, indexers, downloads),
 		health:    health.New(store, indexers, downloads, providers),
+		images:    imagecache.New(filepath.Join(cfg.DataDir(), "covers", "remote")),
 		sessions:  newSessionStore(),
 		version:   version,
 	}
@@ -80,6 +84,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("PUT /api/v1/auth/credentials", s.auth(s.handleSetCredentials))
 	mux.HandleFunc("POST /api/v1/auth/apikey/regenerate", s.auth(s.handleRegenerateAPIKey))
 	mux.HandleFunc("GET /api/v1/system/status", s.auth(s.handleSystemStatus))
+	mux.HandleFunc("GET /api/v1/image", s.auth(s.handleImage))
 	mux.HandleFunc("GET /api/v1/backup", s.auth(s.handleListBackups))
 	mux.HandleFunc("POST /api/v1/backup", s.auth(s.handleCreateBackup))
 	mux.HandleFunc("DELETE /api/v1/backup/{name}", s.auth(s.handleDeleteBackup))
@@ -105,6 +110,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/book", s.auth(s.handleListBooks))
 	mux.HandleFunc("POST /api/v1/book", s.auth(s.handleAddBook))
 	mux.HandleFunc("GET /api/v1/book/{id}", s.auth(s.handleGetBook))
+	mux.HandleFunc("GET /api/v1/book/{id}/cover", s.auth(s.handleBookCover))
+	mux.HandleFunc("DELETE /api/v1/library/covers/cache", s.auth(s.handleClearCoverCache))
 	mux.HandleFunc("PUT /api/v1/book/{id}/monitor", s.auth(s.handleMonitorBook))
 	mux.HandleFunc("PUT /api/v1/book/{id}/library", s.auth(s.handleBookLibrary))
 	mux.HandleFunc("GET /api/v1/libraries", s.auth(s.handleLibraries))
@@ -130,6 +137,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/settings/metadata", s.auth(s.handleGetMetadataSettings))
 	mux.HandleFunc("PUT /api/v1/settings/metadata", s.auth(s.handlePutMetadataSettings))
 	mux.HandleFunc("POST /api/v1/settings/metadata/test", s.auth(s.handleTestMetadataProvider))
+	mux.HandleFunc("DELETE /api/v1/settings/metadata/cache", s.auth(s.handleClearMetadataCache))
 	mux.HandleFunc("GET /api/v1/settings/naming", s.auth(s.handleGetNamingSettings))
 	mux.HandleFunc("PUT /api/v1/settings/naming", s.auth(s.handlePutNamingSettings))
 

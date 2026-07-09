@@ -61,3 +61,18 @@ System page tails it with a text filter; `log_level: debug` for more.
 plus `config.yaml`, stored under `<data>/backups`. Restore stages the files
 and applies them on the next restart, keeping the replaced ones as
 `*.pre-restore`. Download the zips somewhere safe.
+
+## Image cache
+
+Two kinds of images are cached under `<data>/covers`, both disposable and
+safe to delete (they rebuild on demand):
+
+- **Extracted comic covers** (`covers/book-<id>`): a manga/comic volume's
+  cover, pulled from the owned archive's first page and re-extracted when the
+  source file changes. Clear it from **Settings → Metadata → Clear extracted
+  covers**.
+- **Provider art** (`covers/remote/…`): author portraits and series/book
+  covers from Hardcover/AniList/ComicVine, downloaded on add/refresh so the
+  UI serves them locally and they survive the provider's link rot. Clear it
+  from **Settings → Metadata → Clear image cache** to reclaim disk or force
+  fresh art.

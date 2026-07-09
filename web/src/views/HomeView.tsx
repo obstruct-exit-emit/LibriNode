@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type HomeItem, type HomeSection } from "../api";
+import { api, proxiedImage, type HomeItem, type HomeSection } from "../api";
 import { libraryLabels } from "../App";
 
 // Home is the only place media types meet — as stacked per-library sections,
@@ -71,7 +71,7 @@ function HomeRow({ title, items }: { title: string; items: HomeItem[] }) {
         {items.map((it) => (
           <div className="home-tile" key={it.bookId} title={it.title}>
             {it.coverUrl ? (
-              <img src={it.coverUrl} alt="" loading="lazy" />
+              <img src={proxiedImage(it.coverUrl)} alt="" loading="lazy" />
             ) : (
               <div className="home-cover-fallback">{it.title.slice(0, 24)}</div>
             )}
