@@ -36,6 +36,10 @@ a book belongs only to the format libraries you added it to (or own).
 - Poster-grid browsing with detail pages, per-library Wanted pages, a
   release calendar, health checks, optional login, backups, and a log
   viewer.
+- Manga extras: colorized/monochrome variants in one library, per-series
+  Missing view, and volume covers extracted from the owned CBZ/CBR.
+- Local image cache: provider art is downloaded on add/refresh and served
+  from LibriNode, surviving provider link rot.
 
 Start with [Installation](installation.md), then the
 [Quickstart](quickstart.md).

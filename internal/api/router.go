@@ -112,6 +112,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/book/{id}", s.auth(s.handleGetBook))
 	mux.HandleFunc("GET /api/v1/book/{id}/cover", s.auth(s.handleBookCover))
 	mux.HandleFunc("DELETE /api/v1/library/covers/cache", s.auth(s.handleClearCoverCache))
+	mux.HandleFunc("DELETE /api/v1/settings/metadata/descriptions", s.auth(s.handleClearDescriptions))
+	mux.HandleFunc("DELETE /api/v1/cache", s.auth(s.handleClearAllCache))
 	mux.HandleFunc("PUT /api/v1/book/{id}/monitor", s.auth(s.handleMonitorBook))
 	mux.HandleFunc("PUT /api/v1/book/{id}/library", s.auth(s.handleBookLibrary))
 	mux.HandleFunc("GET /api/v1/libraries", s.auth(s.handleLibraries))

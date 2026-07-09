@@ -282,7 +282,7 @@ scriptable:
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
-| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear cached provider images), `GET/PUT /settings/naming` (templates for all five media types) |
+| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear provider images), `DELETE /settings/metadata/descriptions` (blank stored descriptions; re-fetched on refresh), `DELETE /cache` (clear all: provider art + extracted covers + descriptions), `GET/PUT /settings/naming` (templates for all five media types) |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
 bibliography as metadata; the author joins the target library, but no book

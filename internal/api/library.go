@@ -753,22 +753,18 @@ func (s *server) prefetchSeriesImages(id int64) {
 	}
 }
 
-// handleClearCoverCache deletes the covers extracted from owned comic
-// archives (`<data>/covers/book-*`). They re-extract from the files on the
-// next request; this just reclaims disk. Provider art (covers/remote) is left
-// alone — that's cleared from the Metadata settings.
-func (s *server) handleClearCoverCache(w http.ResponseWriter, r *http.Request) {
+// clearExtractedCovers deletes the covers extracted from owned comic archives
+// (`<data>/covers/book-*`), leaving provider art (covers/remote) alone. They
+// re-extract from the files on the next request.
+func (s *server) clearExtractedCovers() (removed int, freed int64, err error) {
 	dir := filepath.Join(s.cfg.DataDir(), "covers")
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
-		writeJSON(w, http.StatusOK, map[string]any{"removed": 0, "freedBytes": 0})
-		return
+		return 0, 0, nil
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return 0, 0, err
 	}
-	removed, freed := 0, int64(0)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasPrefix(e.Name(), "book-") {
 			continue
@@ -780,7 +776,53 @@ func (s *server) handleClearCoverCache(w http.ResponseWriter, r *http.Request) {
 			removed++
 		}
 	}
+	return removed, freed, nil
+}
+
+// handleClearCoverCache clears the extracted comic covers.
+func (s *server) handleClearCoverCache(w http.ResponseWriter, r *http.Request) {
+	removed, freed, err := s.clearExtractedCovers()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"removed": removed, "freedBytes": freed})
+}
+
+// handleClearDescriptions blanks stored descriptions; they're re-fetched on
+// the next metadata refresh.
+func (s *server) handleClearDescriptions(w http.ResponseWriter, r *http.Request) {
+	n, err := s.store.ClearDescriptions()
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"descriptionsCleared": n})
+}
+
+// handleClearAllCache clears every rebuildable cache at once: provider art,
+// extracted comic covers, and stored descriptions.
+func (s *server) handleClearAllCache(w http.ResponseWriter, r *http.Request) {
+	removedArt, freedArt, err := s.images.Clear()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	removedCovers, freedCovers, err := s.clearExtractedCovers()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	descN, err := s.store.ClearDescriptions()
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"removed":             removedArt + removedCovers,
+		"freedBytes":          freedArt + freedCovers,
+		"descriptionsCleared": descN,
+	})
 }
 
 func (s *server) writeCover(w http.ResponseWriter, contentType string, data []byte) {

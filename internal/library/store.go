@@ -118,6 +118,22 @@ func (s *Store) DeleteAuthor(id int64) error {
 	return nil
 }
 
+// ClearDescriptions blanks the stored author, book, and series descriptions
+// so they're re-fetched on the next metadata refresh. Returns how many rows
+// were cleared.
+func (s *Store) ClearDescriptions() (int64, error) {
+	var total int64
+	for _, table := range []string{"authors", "books", "series"} {
+		res, err := s.db.Exec(`UPDATE ` + table + ` SET description = '' WHERE description != ''`)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+	}
+	return total, nil
+}
+
 // SetAuthorLibrary adds or removes an author from a format library. Book
 // membership is handled separately (SetAuthorBooksLibrary).
 func (s *Store) SetAuthorLibrary(id int64, mediaType string, member bool) error {

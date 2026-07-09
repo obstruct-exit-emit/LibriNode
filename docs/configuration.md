@@ -73,6 +73,9 @@ safe to delete (they rebuild on demand):
   covers**.
 - **Provider art** (`covers/remote/…`): author portraits and series/book
   covers from Hardcover/AniList/ComicVine, downloaded on add/refresh so the
-  UI serves them locally and they survive the provider's link rot. Clear it
-  from **Settings → Metadata → Clear image cache** to reclaim disk or force
-  fresh art.
+  UI serves them locally and they survive the provider's link rot.
+
+**Settings → Metadata** has buttons to clear each of these, plus
+**Descriptions** (stored in the database — cleared descriptions return on the
+next metadata refresh) and **Clear all**, which wipes every rebuildable cache
+at once.

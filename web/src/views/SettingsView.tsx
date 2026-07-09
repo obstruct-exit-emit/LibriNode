@@ -1043,16 +1043,22 @@ function MetadataCard({
   const [notice, setNotice] = useState("");
   const [cacheNotice, setCacheNotice] = useState("");
 
-  const runClear = (fn: () => Promise<{ removed: number; freedBytes: number }>) => {
+  const runClear = (
+    fn: () => Promise<{ removed?: number; freedBytes?: number; descriptionsCleared?: number }>,
+  ) => {
     setCacheNotice("");
     fn()
-      .then((r) =>
-        setCacheNotice(
-          r.removed === 0
-            ? "Cache was already empty."
-            : `✓ Cleared ${r.removed} image(s), freed ${(r.freedBytes / (1 << 20)).toFixed(1)} MiB.`,
-        ),
-      )
+      .then((r) => {
+        const parts: string[] = [];
+        if (r.removed !== undefined) {
+          parts.push(`${r.removed} image(s) (${((r.freedBytes ?? 0) / (1 << 20)).toFixed(1)} MiB)`);
+        }
+        if (r.descriptionsCleared !== undefined) {
+          parts.push(`${r.descriptionsCleared} description(s)`);
+        }
+        const total = (r.removed ?? 0) + (r.descriptionsCleared ?? 0);
+        setCacheNotice(total === 0 ? "Nothing to clear." : `✓ Cleared ${parts.join(", ")}.`);
+      })
       .catch((err: unknown) => setCacheNotice(`✗ ${err instanceof Error ? err.message : String(err)}`));
   };
 
@@ -1202,12 +1208,13 @@ function MetadataCard({
 
       <div className="settings-form" style={{ marginTop: "1.25rem" }}>
         <p className="muted" style={{ margin: 0 }}>
-          Cached cover images live under the data directory and rebuild on
-          demand. <strong>Provider art</strong> is downloaded from the metadata
-          provider (author portraits, cover images); <strong>extracted
-          covers</strong> are pulled from the first page of your owned
-          manga/comic archives. Clearing either reclaims disk or forces a
-          rebuild.
+          Cached metadata rebuilds on demand. <strong>Provider art</strong>
+          {" "}(author portraits, cover images) and <strong>extracted
+          covers</strong> (the first page of your owned manga/comic archives)
+          live under the data directory and re-fetch as you browse.{" "}
+          <strong>Descriptions</strong> are stored in the database and only
+          return on the next metadata refresh (per author/series, or the daily
+          sync).
         </p>
         <div className="settings-actions">
           <button className="danger" onClick={() => runClear(api.clearMetadataCache)}>
@@ -1215,6 +1222,26 @@ function MetadataCard({
           </button>
           <button className="danger" onClick={() => runClear(api.clearCoverCache)}>
             Clear extracted covers
+          </button>
+          <button
+            className="danger"
+            onClick={() => {
+              if (confirm("Clear all stored descriptions?\n\nThey stay blank until a metadata refresh re-fetches them.")) {
+                runClear(api.clearDescriptions);
+              }
+            }}
+          >
+            Clear descriptions
+          </button>
+          <button
+            className="danger"
+            onClick={() => {
+              if (confirm("Clear ALL caches — provider art, extracted covers, and descriptions?\n\nImages re-fetch as you browse; descriptions return on the next metadata refresh.")) {
+                runClear(api.clearAllCache);
+              }
+            }}
+          >
+            Clear all
           </button>
           {cacheNotice && (
             <span className={cacheNotice.startsWith("✗") ? "notice bad" : "notice ok"}>

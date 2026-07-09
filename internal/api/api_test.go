@@ -568,6 +568,39 @@ func TestBookCoverCache(t *testing.T) {
 	}
 }
 
+// TestClearDescriptionsAndAllCache: descriptions blank out (and a full-cache
+// clear reports images + descriptions together).
+func TestClearDescriptionsAndAllCache(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
+	if author.Description == "" {
+		t.Fatal("added author should have a description from the provider")
+	}
+
+	// Clear descriptions: the author's description blanks out.
+	var res struct {
+		DescriptionsCleared int `json:"descriptionsCleared"`
+	}
+	a.want(a.call("DELETE", "/api/v1/settings/metadata/descriptions", nil, &res), http.StatusOK)
+	if res.DescriptionsCleared < 1 {
+		t.Fatalf("descriptionsCleared = %d, want >= 1", res.DescriptionsCleared)
+	}
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d", author.ID), nil, &author), http.StatusOK)
+	if author.Description != "" {
+		t.Fatalf("description not cleared: %q", author.Description)
+	}
+
+	// Clear-all returns the combined shape (nothing to clear now, but valid).
+	var all struct {
+		Removed             int   `json:"removed"`
+		FreedBytes          int64 `json:"freedBytes"`
+		DescriptionsCleared int   `json:"descriptionsCleared"`
+	}
+	a.want(a.call("DELETE", "/api/v1/cache", nil, &all), http.StatusOK)
+}
+
 func TestScanFlow(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

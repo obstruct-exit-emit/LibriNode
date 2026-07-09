@@ -38,6 +38,8 @@ internal/organize/    naming-template rename engine (all media types)
 internal/naming/      template token rendering
 internal/opf/         OPF sidecar rendering
 internal/comicinfo/   ComicInfo.xml for CBZ archives
+internal/comiccover/  cover extraction from CBZ/CBR archives
+internal/imagecache/  provider-image download cache
 internal/health/      background health checks
 internal/logging/     rotating log file
 internal/config/      config.yaml + env overrides

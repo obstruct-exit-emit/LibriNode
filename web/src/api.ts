@@ -681,4 +681,13 @@ export const api = {
     request<{ removed: number; freedBytes: number }>("/api/v1/library/covers/cache", {
       method: "DELETE",
     }),
+  clearDescriptions: () =>
+    request<{ descriptionsCleared: number }>("/api/v1/settings/metadata/descriptions", {
+      method: "DELETE",
+    }),
+  clearAllCache: () =>
+    request<{ removed: number; freedBytes: number; descriptionsCleared: number }>(
+      "/api/v1/cache",
+      { method: "DELETE" },
+    ),
 };

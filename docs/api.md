@@ -24,7 +24,7 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab`, `GET /queue`, `GET /history`, `POST /library/import`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=`, `POST /library/search` |
-| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear cached provider images), `GET/PUT /settings/naming` |
+| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear provider images), `DELETE /settings/metadata/descriptions` (blank stored descriptions), `DELETE /cache` (clear all caches), `GET/PUT /settings/naming` |
 
 Notes:
 
