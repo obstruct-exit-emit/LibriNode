@@ -75,11 +75,17 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 		if existing, err := s.store.GetBookByForeignID(source, issue.ForeignID); err == nil {
 			volMonitored = existing.Monitored // preserved by upsert anyway
 		}
-		// Prefer the volume's own description/cover; fall back to the issue
-		// title (older providers set only that) and the series cover.
+		// Prefer the volume's own description; fall back to the series
+		// description for context rather than the volume title (which just
+		// repeats the "Vol. N" line). Comics keep the issue name, which reads
+		// as a reasonable per-issue blurb.
 		description := issue.Description
 		if description == "" {
-			description = issue.Title
+			if mediaType == "comic" {
+				description = issue.Title
+			} else {
+				description = remote.Description
+			}
 		}
 		coverURL := issue.CoverURL
 		if coverURL == "" {
