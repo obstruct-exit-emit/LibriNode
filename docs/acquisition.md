@@ -43,6 +43,12 @@ downloads.
 - **Completed Download Handling** (every minute): finished downloads are
   imported into the naming-template layout, grab history updated. Files are
   *copied*, so torrents keep seeding; usenet history is cleaned up.
+- **Multi-book packs**: when a grabbed release turns out to be a bundle
+  ("complete series"), the grabbed book's file is identified by volume
+  number (manga/comics) or title (ebooks) — never by size — and the pack's
+  other files fill your **monitored** books only. Unmonitored books are
+  never auto-imported, and a book that already owns the format is only
+  replaced when the pack's copy is a genuine quality upgrade.
 - **Seed goals**: configure ratio/time limits in qBittorrent. When it
   finishes and pauses a torrent (goal reached), LibriNode removes the
   torrent *and its data* — but only for downloads it grabbed and imported.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -488,5 +489,178 @@ func TestAmbiguousUntrackedIsSkipped(t *testing.T) {
 	}
 	if result.Imported != 0 || result.Skipped == 0 {
 		t.Fatalf("ambiguous match should skip: %+v", result)
+	}
+}
+
+// mangaSeries adds a manga series with three volumes (positions 1–3) and a
+// manga root folder: vol 1 monitored, vol 2 monitored (the grab target),
+// vol 3 unmonitored.
+func (f *fx) mangaSeries(t *testing.T) (v1, v2, v3 *library.Book) {
+	t.Helper()
+	series := &library.Series{Source: "hardcover", ForeignID: "7310",
+		Title: "Death Note", MediaType: "manga", Monitored: true}
+	if err := f.store.UpsertSeries(series); err != nil {
+		t.Fatal(err)
+	}
+	vol := func(fid string, pos float64, monitored bool) *library.Book {
+		b := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover",
+			ForeignID: fid, MediaType: "manga", Monitored: monitored,
+			Title: fmt.Sprintf("Death Note Vol. %.0f", pos)}
+		if err := f.store.UpsertBook(b); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.store.LinkBookSeries(b.ID, series.ID, pos); err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	if _, err := f.db.Exec(
+		`INSERT INTO root_folders (media_type, path, variant) VALUES ('manga', ?, 'mono')`,
+		t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	return vol("dn1", 1, true), vol("dn2", 2, true), vol("dn3", 3, false)
+}
+
+// TestPackImportsMonitoredVolumesOnly: grabbing one volume from a
+// complete-series bundle imports the grabbed volume (matched by number, not
+// size) plus any other *monitored* volumes — never the unmonitored ones.
+func TestPackImportsMonitoredVolumesOnly(t *testing.T) {
+	f := fixture(t)
+	v1, v2, v3 := f.mangaSeries(t)
+
+	// The unmonitored volume's file is the largest in the bundle — size must
+	// not decide which file the grabbed volume gets.
+	f.completedDownload(t, "nzo_pack", "Death Note v01-v03 Complete Digital",
+		"Death Note v01.cbz",
+		"Death Note v02.cbz",
+		"Death Note v03 Extended Collectors Special Edition.cbz")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v2.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_pack",
+		Title: "Death Note v01-v03 Complete Digital", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 2 {
+		t.Fatalf("imported = %d, want 2 (grabbed v2 + monitored v1): %+v", result.Imported, result)
+	}
+
+	// The grabbed volume got ITS file (v02), not the bundle's largest (v03).
+	files, _ := f.store.ListBookFiles(v2.ID)
+	if len(files) != 1 {
+		t.Fatalf("v2 files = %+v", files)
+	}
+	if got, _ := os.ReadFile(files[0].Path); string(got) != "book-bytes-Death Note v02.cbz" {
+		t.Fatalf("v2 imported the wrong source file: %q", got)
+	}
+
+	// Monitored v1 came along; unmonitored v3 did not.
+	if files, _ := f.store.ListBookFiles(v1.ID); len(files) != 1 {
+		t.Fatalf("v1 files = %+v, want the pack extra", files)
+	}
+	if files, _ := f.store.ListBookFiles(v3.ID); len(files) != 0 {
+		t.Fatalf("v3 files = %+v, want none (unmonitored)", files)
+	}
+
+	grabs, _ := f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusImported {
+		t.Errorf("grab = %+v", grabs[0])
+	}
+}
+
+// TestPackEbookImportsMonitoredByTitle: an ebook bundle fills the author's
+// monitored books by title match; unmonitored books are left alone.
+func TestPackEbookImportsMonitoredByTitle(t *testing.T) {
+	f := fixture(t)
+
+	guards := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "10",
+		Title: "Guards! Guards!", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+	sourcery := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "11",
+		Title: "Sourcery"} // enrolled nowhere, monitored nowhere
+	if err := f.store.UpsertBook(sourcery); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_epack", "Terry Pratchett - Discworld Collection EPUB",
+		"Mort.epub", "Guards! Guards! (1989).epub", "Sourcery.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_epack",
+		Title: "Terry Pratchett - Discworld Collection EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 2 {
+		t.Fatalf("imported = %d, want 2 (grabbed Mort + monitored Guards): %+v", result.Imported, result)
+	}
+
+	// The grabbed book got its own file, not another book's.
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 {
+		t.Fatalf("Mort files = %+v", files)
+	}
+	if got, _ := os.ReadFile(files[0].Path); string(got) != "book-bytes-Mort.epub" {
+		t.Fatalf("Mort imported the wrong source file: %q", got)
+	}
+	if files, _ := f.store.ListBookFiles(guards.ID); len(files) != 1 {
+		t.Fatalf("Guards files = %+v, want the pack extra", files)
+	}
+	if files, _ := f.store.ListBookFiles(sourcery.ID); len(files) != 0 {
+		t.Fatalf("Sourcery files = %+v, want none (unmonitored)", files)
+	}
+}
+
+// TestPackSkipsOwnedBookUnlessUpgrade: a monitored book that already owns the
+// format is not re-imported from a pack (same format is not an upgrade).
+func TestPackSkipsOwnedBookUnlessUpgrade(t *testing.T) {
+	f := fixture(t)
+
+	guards := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "10",
+		Title: "Guards! Guards!", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+	owned := filepath.Join(t.TempDir(), "guards.epub")
+	if err := os.WriteFile(owned, []byte("already-owned"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 1, BookID: guards.ID, MediaType: "ebook",
+		Path: owned, Size: 13, Format: "epub",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_epack2", "Terry Pratchett - Two Book Bundle EPUB",
+		"Mort.epub", "Guards! Guards!.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_epack2",
+		Title: "Terry Pratchett - Two Book Bundle EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("imported = %d, want 1 (Guards owns an equal-quality epub): %+v", result.Imported, result)
+	}
+	files, _ := f.store.ListBookFiles(guards.ID)
+	if len(files) != 1 || files[0].Path != owned {
+		t.Fatalf("Guards files = %+v, want only the pre-owned epub", files)
 	}
 }
