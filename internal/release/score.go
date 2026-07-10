@@ -52,7 +52,7 @@ func PreferencesFor(store *library.Store, mediaType string) Preferences {
 	return DefaultEbookPreferences()
 }
 
-// DefaultMagazinePreferences: periodicals ship as pdf first.
+// DefaultMagazinePreferences scores pdf first — periodicals ship as pdf.
 func DefaultMagazinePreferences() Preferences {
 	return Preferences{
 		FormatScores: map[string]int{"pdf": 100, "epub": 70, "cbz": 50},

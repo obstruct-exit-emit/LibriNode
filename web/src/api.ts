@@ -119,20 +119,6 @@ export interface Indexer {
   addedAt?: string;
 }
 
-export interface Release {
-  indexerId: number;
-  indexer: string;
-  protocol: "usenet" | "torrent";
-  title: string;
-  guid: string;
-  infoUrl?: string;
-  downloadUrl: string;
-  size: number;
-  publishDate?: string;
-  seeders: number;
-  peers: number;
-}
-
 export interface DownloadClient {
   id: number;
   name: string;
@@ -178,6 +164,20 @@ export interface Series {
   itemCount: number;
   ownedCount: number;
   volumes?: Book[];
+}
+
+export interface Release {
+  indexerId: number;
+  indexer: string;
+  protocol: "usenet" | "torrent";
+  title: string;
+  guid: string;
+  infoUrl?: string;
+  downloadUrl: string;
+  size: number;
+  publishDate?: string;
+  seeders: number;
+  peers: number;
 }
 
 export interface ReleaseCandidate extends Release {
@@ -501,17 +501,6 @@ export const api = {
       ...json({ library, member: false, deleteFiles }),
       method: "PUT",
     }),
-  monitorAuthor: (id: number, monitored: boolean) =>
-    request(`/api/v1/author/${id}/monitor`, {
-      ...json({ monitored }),
-      method: "PUT",
-    }),
-  deleteAuthor: (id: number, deleteFiles = false) =>
-    request<{ deletedFiles: number; errors: string[] } | undefined>(
-      `/api/v1/author/${id}${deleteFiles ? "?deleteFiles=true" : ""}`,
-      { method: "DELETE" },
-    ),
-
   listBooks: (authorId?: number) =>
     request<Book[]>(authorId ? `/api/v1/book?authorId=${authorId}` : "/api/v1/book"),
   getBook: (id: number) => request<Book>(`/api/v1/book/${id}`),
@@ -522,12 +511,6 @@ export const api = {
       ...json({ monitored }),
       method: "PUT",
     }),
-  deleteBook: (id: number, deleteFiles = false) =>
-    request<{ deletedFiles: number; errors: string[] } | undefined>(
-      `/api/v1/book/${id}${deleteFiles ? "?deleteFiles=true" : ""}`,
-      { method: "DELETE" },
-    ),
-
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
   listUnmatchedFiles: () =>
     request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
@@ -625,10 +608,6 @@ export const api = {
     request<void>(`/api/v1/indexer/${id}`, { method: "DELETE" }),
   testIndexer: (ind: Omit<Indexer, "id" | "addedAt">) =>
     request<{ ok: boolean }>("/api/v1/indexer/test", json(ind)),
-  searchReleases: (term: string) =>
-    request<{ releases: Release[]; errors: string[] }>(
-      `/api/v1/release?term=${encodeURIComponent(term)}`,
-    ),
 
   getNamingSettings: () => request<NamingSettings>("/api/v1/settings/naming"),
   saveNamingSettings: (templates: Partial<NamingSettings>) =>
