@@ -199,13 +199,13 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 
 	var sources []string
 	var format string
-	var packFiles []string // every candidate of a multi-book release, for pack extras
+	var pack *packPlan // set when the download is a multi-book release
 	switch mediaType {
 	case "audiobook":
 		sources, format, err = pickAudioFiles(item.Path)
 	case "manga", "comic":
 		var source string
-		source, packFiles, err = s.pickPackAware(item.Path, scanner.IsComicPath, "comic archive", grab, book, mediaType)
+		source, pack, err = s.pickPackAware(item.Path, scanner.IsComicPath, "comic archive", grab, book, mediaType)
 		sources = []string{source}
 		format = fileFormat(source)
 	case "magazine":
@@ -215,7 +215,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		format = fileFormat(source)
 	default:
 		var source string
-		source, packFiles, err = s.pickPackAware(item.Path, scanner.IsEbookPath, "ebook", grab, book, mediaType)
+		source, pack, err = s.pickPackAware(item.Path, scanner.IsEbookPath, "ebook", grab, book, mediaType)
 		sources = []string{source}
 		format = fileFormat(source)
 	}
@@ -265,9 +265,9 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	result.Imported++
 	slog.Info("imported download", "book", book.Title, "path", target)
 
-	// Multi-book pack: the download's other files fill *monitored* books.
-	if grab != nil && len(packFiles) > 1 {
-		s.importPackExtras(packFiles, sources[0], book, mediaType, result)
+	// Multi-book pack: the download's other files fill more books.
+	if grab != nil && pack != nil {
+		s.importPackExtras(pack, sources[0], book, mediaType, result)
 	}
 }
 
@@ -372,14 +372,14 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 // their format library, like scanned files do). Either way, a book that
 // already has this format's file is only replaced when the pack's copy is a
 // genuine quality upgrade.
-func (s *Service) importPackExtras(files []string, primary string, grabbed *library.Book, mediaType string, result *Result) {
+func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *library.Book, mediaType string, result *Result) {
 	importAll := s.packAll != nil && s.packAll()
 	done := map[int64]bool{grabbed.ID: true}
-	for _, f := range files {
+	for _, f := range pack.files {
 		if f == primary {
 			continue
 		}
-		b := s.matchPackFile(f, grabbed, mediaType)
+		b := pack.matcher.match(f)
 		if b == nil || done[b.ID] {
 			continue
 		}
@@ -411,44 +411,55 @@ func (s *Service) importPackExtras(files []string, primary string, grabbed *libr
 	}
 }
 
-// matchPackFile resolves one file of a pack to a library book: manga/comic
-// files match by volume number within the grabbed volume's series; ebooks
-// match by title against the grabbed book's author's books, and only when
-// the match is unambiguous.
-func (s *Service) matchPackFile(path string, grabbed *library.Book, mediaType string) *library.Book {
+// packMatcher resolves a pack's files to library books from data fetched
+// once per download: the grabbed volume's series (manga/comic) or the
+// grabbed book's author's bibliography (ebooks).
+type packMatcher struct {
+	mediaType string
+	volumes   []library.Book    // manga/comic: the series' volumes…
+	positions map[int64]float64 // …and their volume numbers
+	books     []library.Book    // ebook: the author's books
+}
+
+func (s *Service) newPackMatcher(grabbed *library.Book, mediaType string) *packMatcher {
+	m := &packMatcher{mediaType: mediaType}
 	switch mediaType {
+	case "manga", "comic":
+		links, err := s.store.ListSeriesForBook(grabbed.ID)
+		if err != nil || len(links) == 0 {
+			return m
+		}
+		if m.positions, err = s.store.SeriesBookPositions(links[0].SeriesID); err != nil {
+			return m
+		}
+		m.volumes, _ = s.store.ListVolumes(links[0].SeriesID)
+	default: // ebook
+		m.books, _ = s.store.ListBooks(grabbed.AuthorID)
+	}
+	return m
+}
+
+// match resolves one file to a library book: manga/comic files match by
+// volume number within the series; ebooks match by title, and only when the
+// match is unambiguous.
+func (m *packMatcher) match(path string) *library.Book {
+	switch m.mediaType {
 	case "manga", "comic":
 		number := scanner.VolumeFromName(filepath.Base(path))
 		if number == 0 {
 			return nil
 		}
-		links, err := s.store.ListSeriesForBook(grabbed.ID)
-		if err != nil || len(links) == 0 {
-			return nil
-		}
-		positions, err := s.store.SeriesBookPositions(links[0].SeriesID)
-		if err != nil {
-			return nil
-		}
-		vols, err := s.store.ListVolumes(links[0].SeriesID)
-		if err != nil {
-			return nil
-		}
-		for i := range vols {
-			if positions[vols[i].ID] == number {
-				return &vols[i]
+		for i := range m.volumes {
+			if m.positions[m.volumes[i].ID] == number {
+				return &m.volumes[i]
 			}
 		}
 		return nil
 	default: // ebook
 		norm := scanner.Normalize(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
-		books, err := s.store.ListBooks(grabbed.AuthorID)
-		if err != nil {
-			return nil
-		}
 		var match *library.Book
-		for i := range books {
-			b := &books[i]
+		for i := range m.books {
+			b := &m.books[i]
 			if b.MediaType != "book" {
 				continue
 			}
@@ -570,7 +581,7 @@ func (s *Service) matchByTitle(title string) *library.Book {
 // multi-file downloads are packs — the grabbed book's file is identified by
 // volume number (manga/comic) or title (ebooks), never by size: the largest
 // file of a v01–v12 bundle is rarely the volume that was grabbed.
-func (s *Service) pickPackAware(path string, accept func(string) bool, kind string, grab *download.GrabRecord, book *library.Book, mediaType string) (string, []string, error) {
+func (s *Service) pickPackAware(path string, accept func(string) bool, kind string, grab *download.GrabRecord, book *library.Book, mediaType string) (string, *packPlan, error) {
 	files, err := listAcceptable(path, accept, kind)
 	if err != nil {
 		return "", nil, err
@@ -578,10 +589,11 @@ func (s *Service) pickPackAware(path string, accept func(string) bool, kind stri
 	if grab == nil || len(files) < 2 {
 		return largestFile(files), nil, nil
 	}
+	matcher := s.newPackMatcher(book, mediaType)
 	var match string
 	var matchSize int64
 	for _, f := range files {
-		b := s.matchPackFile(f.path, book, mediaType)
+		b := matcher.match(f.path)
 		if b != nil && b.ID == book.ID && f.size > matchSize {
 			match, matchSize = f.path, f.size
 		}
@@ -593,7 +605,14 @@ func (s *Service) pickPackAware(path string, accept func(string) bool, kind stri
 	for _, f := range files {
 		paths = append(paths, f.path)
 	}
-	return match, paths, nil
+	return match, &packPlan{files: paths, matcher: matcher}, nil
+}
+
+// packPlan carries a multi-book download's candidate files and their
+// matcher from primary-file selection to the pack-extras pass.
+type packPlan struct {
+	files   []string
+	matcher *packMatcher
 }
 
 type candidateFile struct {

@@ -6,8 +6,8 @@ import (
 )
 
 // RootFolder mirrors the root_folders table (managed by the rootfolder API);
-// the scanner needs them to know where to look. Variant is 'color'/'mono'
-// for manga roots (the colorized/monochrome split) and '' for everything
+// the scanner needs them to know where to look. Variant is "color"/"mono"
+// for manga roots (the colorized/monochrome split) and "" for everything
 // else — files scanned from a root inherit it.
 type RootFolder struct {
 	ID        int64  `json:"id"`
@@ -19,7 +19,7 @@ type RootFolder struct {
 // BookFile is a file found on disk by a library scan. BookID is nil-like (0)
 // when the scanner could not match it to a library book. For multi-file
 // audiobooks, Path is the book's directory and Size the total of its audio
-// files. Variant carries the manga colorized/monochrome distinction (''
+// files. Variant carries the manga colorized/monochrome distinction (""
 // for non-manga files).
 type BookFile struct {
 	ID           int64  `json:"id"`

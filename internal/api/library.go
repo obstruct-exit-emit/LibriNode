@@ -928,4 +928,3 @@ func (s *server) handleDeleteBook(w http.ResponseWriter, r *http.Request) {
 	}
 	s.finishDelete(w, deleteFiles, paths)
 }
-

@@ -213,8 +213,8 @@ func TestBookAndEditionCRUD(t *testing.T) {
 	if _, err := s.GetBook(b.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("book survived author delete: err = %v", err)
 	}
-	if _, err := s.GetEdition(e.ID); !errors.Is(err, ErrNotFound) {
-		t.Errorf("edition survived author delete: err = %v", err)
+	if eds, _ := s.ListEditions(b.ID); len(eds) != 0 {
+		t.Errorf("editions survived author delete: %+v", eds)
 	}
 	links, _ = s.ListSeriesForBook(b.ID)
 	if len(links) != 0 {

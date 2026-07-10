@@ -11,7 +11,7 @@ import (
 var mediaTypes = []string{"ebook", "audiobook", "manga", "comic", "magazine"}
 
 // mangaVariants are the colorized/monochrome sub-libraries a manga root can
-// hold; other media types have no variant ('').
+// hold; other media types have no variant ("").
 var mangaVariants = []string{"color", "mono"}
 
 type rootFolder struct {

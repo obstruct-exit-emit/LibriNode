@@ -417,10 +417,6 @@ func scanEdition(row interface{ Scan(...any) error }) (*Edition, error) {
 	return &e, nil
 }
 
-func (s *Store) GetEdition(id int64) (*Edition, error) {
-	return scanEdition(s.db.QueryRow(`SELECT `+editionCols+` FROM editions WHERE id = ?`, id))
-}
-
 func (s *Store) ListEditions(bookID int64) ([]Edition, error) {
 	rows, err := s.db.Query(
 		`SELECT `+editionCols+` FROM editions WHERE book_id = ? ORDER BY format, release_date`, bookID)

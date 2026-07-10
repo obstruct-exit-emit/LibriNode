@@ -52,13 +52,13 @@ type Book struct {
 	// Per-format library membership (prose books only): a book shows in
 	// the Ebooks/Audiobooks library only when owned or deliberately added
 	// there; each membership has its own monitored flag.
-	InEbookLibrary     bool   `json:"inEbookLibrary"`
-	EbookMonitored     bool   `json:"ebookMonitored"`
-	InAudiobookLibrary bool   `json:"inAudiobookLibrary"`
-	AudiobookMonitored bool   `json:"audiobookMonitored"`
-	HasFile            bool   `json:"hasFile"` // any media type
-	HasEbookFile       bool   `json:"hasEbookFile"`
-	HasAudiobookFile   bool   `json:"hasAudiobookFile"`
+	InEbookLibrary     bool `json:"inEbookLibrary"`
+	EbookMonitored     bool `json:"ebookMonitored"`
+	InAudiobookLibrary bool `json:"inAudiobookLibrary"`
+	AudiobookMonitored bool `json:"audiobookMonitored"`
+	HasFile            bool `json:"hasFile"` // any media type
+	HasEbookFile       bool `json:"hasEbookFile"`
+	HasAudiobookFile   bool `json:"hasAudiobookFile"`
 	// Per-variant ownership for manga volumes (colorized/monochrome share one
 	// volume row); both false for non-manga.
 	HasColorFile bool   `json:"hasColorFile"`
