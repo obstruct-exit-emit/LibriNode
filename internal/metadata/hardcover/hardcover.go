@@ -242,13 +242,23 @@ func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book
 
 // --- Author lookup ---
 
+// Hardcover caps any selection at 100 rows, and prolific authors carry
+// 1000+ contributions — every translation, box set, and reprint is one, and
+// most have zero readers. An unordered fetch therefore returns 100 arbitrary
+// rows (largely junk) and misses the canon entirely. Order by readership and
+// skip never-read entries so the single 100-row page holds the canonical
+// bibliography: the books people actually track, each with its description.
 const authorQuery = `query Author($id: Int!) {
   authors(where: {id: {_eq: $id}}, limit: 1) {
     id
     name
     bio
     cached_image
-    contributions {
+    contributions(
+      where: {book: {id: {_is_null: false}, users_count: {_gte: 1}}},
+      order_by: {book: {users_count: desc_nulls_last}},
+      limit: 100
+    ) {
       book {
         id
         title
