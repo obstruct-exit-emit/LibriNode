@@ -462,6 +462,70 @@ func (s *Store) UpsertSeries(sr *Series) error {
 	).Scan(&sr.ID)
 }
 
+// RebindSeries moves an existing series row onto a different provider identity
+// (metadata_source, foreign_id) in place, keeping its id, monitoring flags and
+// series_books links so a provider switch doesn't change the series' URL or
+// lose its monitored state. Any other series already occupying the target
+// identity is removed first so the UNIQUE(metadata_source, foreign_id)
+// constraint holds.
+func (s *Store) RebindSeries(id int64, source, foreignID, title, description, coverURL string) error {
+	if _, err := s.GetSeries(id); err != nil {
+		return err
+	}
+	var conflictID int64
+	err := s.db.QueryRow(
+		`SELECT id FROM series WHERE metadata_source = ? AND foreign_id = ? AND id <> ?`,
+		source, foreignID, id).Scan(&conflictID)
+	switch {
+	case err == nil:
+		if derr := s.DeleteSeries(conflictID); derr != nil {
+			return derr
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+	_, err = s.db.Exec(
+		`UPDATE series SET metadata_source = ?, foreign_id = ?, title = ?, description = ?, cover_url = ? WHERE id = ?`,
+		source, foreignID, title, description, coverURL, id)
+	return err
+}
+
+// BookHasFiles reports whether a book has any downloaded files, so a provider
+// migration can keep owned volumes instead of deleting their file links.
+func (s *Store) BookHasFiles(id int64) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM book_files WHERE book_id = ?`, id).Scan(&n)
+	return n > 0, err
+}
+
+// MoveBookFiles reassigns every file of one book to another — used when a
+// provider migration replaces an owned volume with the new provider's
+// same-numbered volume, so the file follows instead of being orphaned.
+func (s *Store) MoveBookFiles(fromID, toID int64) error {
+	_, err := s.db.Exec(`UPDATE book_files SET book_id = ? WHERE book_id = ?`, toID, fromID)
+	return err
+}
+
+// SeriesBookPositions maps each linked book to its series position (volume
+// number), so a provider migration can match old volumes to new ones by number.
+func (s *Store) SeriesBookPositions(seriesID int64) (map[int64]float64, error) {
+	rows, err := s.db.Query(`SELECT book_id, position FROM series_books WHERE series_id = ?`, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	positions := map[int64]float64{}
+	for rows.Next() {
+		var bookID int64
+		var pos float64
+		if err := rows.Scan(&bookID, &pos); err != nil {
+			return nil, err
+		}
+		positions[bookID] = pos
+	}
+	return positions, rows.Err()
+}
+
 const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url`
 
 func scanSeries(row interface{ Scan(...any) error }) (*Series, error) {

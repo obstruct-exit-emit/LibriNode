@@ -163,12 +163,20 @@ search the provider, add the series, and its page lists every volume/issue
 with owned/wanted badges. Manga metadata can come from **AniList** (no key)
 or **Hardcover** (reuses your Hardcover token) — pick the manga provider
 under **Settings → Metadata**; comics use **ComicVine** (free API key).
-"Monitor future volumes" is the series' monitor toggle — refreshes (manual
-or the daily sweep) discover new volumes and start monitoring them. Provider
-quirks: *ongoing* manga on AniList often report no volume count yet (they add
-with zero volumes and fill in on later refresh), while Hardcover's manga
-series sometimes lack clean volume numbers, so LibriNode numbers them
-sequentially by the provider's order. Manga/comic searches use each indexer's
+Switching the manga provider re-sources existing series on their next
+refresh: LibriNode re-matches each series on the newly selected provider by
+title, re-binds it in place (keeping your monitoring and owned files), and
+pulls that provider's volumes — so moving from AniList to Hardcover swaps in
+Hardcover's real per-volume descriptions. "Monitor future volumes" is the
+series' monitor toggle — refreshes (manual or the daily sweep) discover new
+volumes and start monitoring them. Provider quirks: *ongoing* manga on
+AniList often report no volume count yet (they add with zero volumes and fill
+in on later refresh) and synthesize volumes without per-volume descriptions
+(left blank rather than repeating the series blurb); Hardcover carries real
+per-volume descriptions and covers, numbered by the series' volume positions
+(spin-offs and reissue/box-set editions dropped, one standard edition kept
+per volume), falling back to sequential order only when a series has no
+positions at all. Manga/comic searches use each indexer's
 **Comic categories** (default `7030`), scans understand `Series/Series
 v05.cbz` layouts, and imports write `ComicInfo.xml` into CBZ archives for
 Kavita/Komga.

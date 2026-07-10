@@ -3,6 +3,7 @@ package refresh
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
@@ -119,6 +120,11 @@ func trimFloat(f float64) string {
 // RefreshSeries re-syncs an existing series; new volumes follow monitor_new.
 // Manual series (magazines) have no provider to refresh — their issues come
 // from grabs and scans — so they're a quiet no-op.
+//
+// A refresh always honors the provider currently selected for the media type:
+// switch manga from AniList to Hardcover, hit refresh, and the series re-binds
+// to Hardcover (re-matched by title). It only falls back to the series' own
+// source provider when the selected one isn't configured.
 func (s *Service) RefreshSeries(ctx context.Context, id int64) error {
 	series, err := s.store.GetSeries(id)
 	if err != nil {
@@ -127,15 +133,118 @@ func (s *Service) RefreshSeries(ctx context.Context, id int64) error {
 	if series.Source == "manual" {
 		return nil
 	}
-	// Refresh through the provider that created the series, not whatever is
-	// currently selected for the media type — their ids aren't interchangeable.
-	p := s.providers.SeriesProviderByName(series.Source)
-	if p == nil {
-		return nil // source provider not configured — leave the series as-is
+	active := s.providers.SeriesFor(series.MediaType)
+	if active == nil {
+		active = s.providers.SeriesProviderByName(series.Source)
 	}
-	_, err = s.syncSeriesWith(ctx, p, series.MediaType, series.ForeignID,
-		series.Monitored, series.MonitorNew, series.MonitorNew)
-	return err
+	if active == nil {
+		return nil // no provider configured — leave the series as-is
+	}
+	if active.Name() == series.Source {
+		_, err = s.syncSeriesWith(ctx, active, series.MediaType, series.ForeignID,
+			series.Monitored, series.MonitorNew, series.MonitorNew)
+		return err
+	}
+	// The selected provider differs from the one this series was added with;
+	// re-match it on the new provider and re-bind in place.
+	return s.rematchSeries(ctx, series, active)
+}
+
+// rematchSeries moves a series to a different provider: it searches the active
+// provider for the series title, re-binds the row to the best match (keeping
+// the local id and monitoring), re-syncs volumes from the new provider, and
+// drops the previous provider's volume books (owned volumes are kept so their
+// files survive). If nothing matches, the series is left untouched rather than
+// emptied.
+func (s *Service) rematchSeries(ctx context.Context, series *library.Series, p metadata.SeriesProvider) error {
+	results, err := p.SearchSeries(ctx, series.Title)
+	if err != nil {
+		return err
+	}
+	match := pickSeriesMatch(results, series.Title)
+	if match == nil {
+		return nil // no counterpart on the new provider — keep the old data
+	}
+	remote, err := p.GetSeries(ctx, match.ForeignID)
+	if err != nil {
+		return err
+	}
+
+	oldVolumes, err := s.store.ListVolumes(series.ID)
+	if err != nil {
+		return err
+	}
+	oldPositions, err := s.store.SeriesBookPositions(series.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.store.RebindSeries(series.ID, p.Name(), remote.ForeignID,
+		remote.Title, remote.Description, remote.CoverURL); err != nil {
+		return err
+	}
+	series.Source = p.Name()
+	series.ForeignID = remote.ForeignID
+
+	if _, err := s.syncSeriesWith(ctx, p, series.MediaType, remote.ForeignID,
+		series.Monitored, series.MonitorNew, series.MonitorNew); err != nil {
+		return err
+	}
+
+	// Index the new provider's volumes by number so an owned old volume can
+	// hand its files to the same-numbered new volume.
+	newByNumber := map[float64]int64{}
+	for _, iss := range remote.Issues {
+		if b, err := s.store.GetBookByForeignID(p.Name(), iss.ForeignID); err == nil {
+			newByNumber[iss.Number] = b.ID
+		}
+	}
+
+	// Retire the previous provider's volume books. Owned volumes migrate their
+	// files (and monitored flag) onto the matching new volume before deletion;
+	// an owned volume with no counterpart is kept so its file isn't lost. Prose
+	// books (media_type "book") that merely reference the series are left be.
+	for _, v := range oldVolumes {
+		if v.MediaType == "book" || v.Source == p.Name() {
+			continue
+		}
+		hasFiles, err := s.store.BookHasFiles(v.ID)
+		if err != nil {
+			return err
+		}
+		if hasFiles {
+			newID, ok := newByNumber[oldPositions[v.ID]]
+			if !ok {
+				continue // no same-numbered new volume — keep the owned one
+			}
+			if err := s.store.MoveBookFiles(v.ID, newID); err != nil {
+				return err
+			}
+			if err := s.store.SetBookMonitored(newID, v.Monitored); err != nil {
+				return err
+			}
+		}
+		if err := s.store.DeleteBook(v.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// pickSeriesMatch chooses the provider result that best corresponds to title:
+// an exact case-insensitive title match wins; otherwise the first result, since
+// providers return search hits by relevance.
+func pickSeriesMatch(results []metadata.SeriesResult, title string) *metadata.SeriesResult {
+	if len(results) == 0 {
+		return nil
+	}
+	want := strings.ToLower(strings.TrimSpace(title))
+	for i := range results {
+		if strings.ToLower(strings.TrimSpace(results[i].Title)) == want {
+			return &results[i]
+		}
+	}
+	return &results[0]
 }
 
 // refreshAllSeries re-syncs every manga/comic series (called from RefreshAll).
