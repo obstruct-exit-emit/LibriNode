@@ -7,8 +7,9 @@
 
 2. **Metadata.** Under **Settings → Metadata**, paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
-   then **Save**. Search goes live immediately. Manga metadata (AniList)
-   needs no key; comics need a free
+   then **Save**. Search goes live immediately. Manga metadata comes from
+   AniList (no key) or Hardcover — pick the manga provider on the same page;
+   comics need a free
    [ComicVine key](https://comicvine.gamespot.com/api/).
 
 3. **Root folders.** Under **Settings → Media Management**, add one root
@@ -16,7 +17,7 @@
    library appear in the sidebar.
 
 4. **Add something.** On a library page, hit **+ Add** and search. Adding an
-   author pulls their full bibliography as metadata and joins the library,
+   author pulls their bibliography as metadata and joins the library,
    but monitors nothing yet — every book starts in that author's **Missing**
    section for you to monitor selectively. Adding a specific book pulls its
    editions and monitors just that one. Adding a manga/comic series pulls

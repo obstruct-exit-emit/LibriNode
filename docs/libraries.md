@@ -27,10 +27,12 @@ grid of their monitored-or-owned books, and a **Missing** section below it:
 the rest of the bibliography, grouped by series (then standalones by year),
 each row expandable to a thumbnail + blurb with a one-click **+ Monitor**
 that enrolls the book and starts searching. Adding an author pulls their
-bibliography as metadata only — nothing is auto-monitored, so a freshly
-added author's whole bibliography starts in Missing; an author with zero
-visible books still shows, with an empty grid pointing at Missing, instead
-of disappearing.
+bibliography as metadata only — the canonical works, ordered by Hardcover
+readership, so prolific authors get their actual canon rather than a random
+slice of translations and reprints — and nothing is auto-monitored, so a
+freshly added author's whole bibliography starts in Missing; an author with
+zero visible books still shows, with an empty grid pointing at Missing,
+instead of disappearing.
 
 The book page has cover art, description, the monitor toggle, **Auto
 grab**/**Search releases**, remove-from-library (with an opt-in
@@ -55,16 +57,26 @@ with a `metadata.opf` sidecar — Audiobookshelf-ready. Ebooks get a
 Search the provider, add the series, and every volume/issue appears on its
 page with owned/wanted badges. Manga metadata comes from **AniList** (no
 key) or **Hardcover** (reuses your Hardcover token) — choose the manga
-provider under **Settings → Metadata**; comics use **ComicVine**. Hardcover's
-manga series sometimes lack clean volume numbers, so volumes are numbered
-sequentially by the provider's order. The series
+provider under **Settings → Metadata**; comics use **ComicVine**. Switching
+the manga provider re-sources existing series on their next refresh: each
+series is re-matched by title on the newly selected provider, re-bound in
+place (monitoring and owned files kept — owned volumes hand their files to
+the same-numbered new volume), and its volumes re-synced from the new
+provider. The series
 monitor toggle doubles as "monitor future volumes": refreshes (manual or
 daily) discover new volumes and monitor them automatically. Imports write
 `ComicInfo.xml` into CBZ archives and use Kavita/Komga-friendly
 `Series/Series Vol. N.cbz` layouts.
 
-Ongoing manga often have no official volume count on AniList yet — they add
-with zero volumes and fill in as AniList publishes totals.
+Provider quirks: ongoing manga often have no official volume count on
+AniList yet — they add with zero volumes and fill in as AniList publishes
+totals — and AniList synthesizes volumes without per-volume descriptions
+(left blank rather than repeating the series blurb on every volume).
+Hardcover carries real per-volume descriptions and covers: volumes are
+numbered by the series' positions, position-0 spin-offs and
+reissue/box-set/omnibus editions are dropped in favor of one standard
+edition per volume, and sequential numbering is only a fallback for series
+with no positions at all.
 
 Manga series get the full author/book treatment. The series page carries
 series-scoped **Search wanted**, **Organize…**, **Scan files**, and

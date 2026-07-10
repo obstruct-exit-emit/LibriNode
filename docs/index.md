@@ -17,7 +17,7 @@ per-type libraries — automatically.
 |---|---|---|
 | Ebooks | Hardcover | epub, mobi, azw3, pdf |
 | Audiobooks | Hardcover | m4b, m4a, mp3, flac, opus |
-| Manga | AniList (no key) | cbz, cbr, epub |
+| Manga | AniList (no key) or Hardcover | cbz, cbr, epub |
 | Comics | ComicVine (free key) | cbz, cbr, pdf |
 | Magazines | none — added by name | pdf, epub, cbz |
 

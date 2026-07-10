@@ -29,8 +29,9 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 Notes:
 
 - `POST /author` takes `{"foreignAuthorId": "...", "library": "ebook"}` and
-  pulls the full bibliography as metadata — the author joins the library,
-  but no book is enrolled or monitored (see Missing, below). `POST /book`
+  pulls the bibliography as metadata (canonical works by Hardcover
+  readership) — the author joins the library, but no book is enrolled or
+  monitored (see Missing, below). `POST /book`
   takes `foreignBookId` the same way and monitors + enrolls that one book.
   `POST /series` takes `{"mediaType": "manga", "foreignSeriesId": ...}`
   or `{"mediaType": "magazine", "title": "..."}`.

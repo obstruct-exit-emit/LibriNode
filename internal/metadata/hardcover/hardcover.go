@@ -1,10 +1,10 @@
 // Package hardcover implements metadata.Provider against the Hardcover.app
 // GraphQL API (https://api.hardcover.app/v1/graphql, Bearer-token auth).
 //
-// The GraphQL queries follow Hardcover's published Hasura schema but have not
-// yet been verified against the live API (pending an API token); the response
-// parsing is deliberately defensive, and the query constants below are the
-// single place to adjust if field names drift.
+// The GraphQL queries follow Hardcover's Hasura schema and are verified
+// against the live API; the response parsing stays deliberately defensive,
+// and the query constants below are the single place to adjust if field
+// names drift.
 package hardcover
 
 import (

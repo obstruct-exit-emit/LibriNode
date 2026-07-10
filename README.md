@@ -121,9 +121,10 @@ language, date formats) is planned post-1.0.
    your media lives — one root per media type (ebook, audiobook, manga,
    comic, magazine).
 4. **Search:** find authors or books on Hardcover and add them to the
-   library. Adding an author pulls their full bibliography as metadata and
-   makes the author a member of that library, but does **not** monitor every
-   book — new books land in the author's **Missing** section for you to
+   library. Adding an author pulls their bibliography as metadata — the
+   canonical works by Hardcover readership, not a random slice of reprints —
+   and makes the author a member of that library, but does **not** monitor
+   every book — new books land in the author's **Missing** section for you to
    monitor selectively (owning a file enrolls its book automatically).
    Adding a specific book pulls its editions and monitors just that one.
 5. **Library → Scan files:** match files you already own to library books —
@@ -296,9 +297,11 @@ scriptable:
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear provider images), `DELETE /settings/metadata/descriptions` (blank stored descriptions; re-fetched on refresh), `DELETE /cache` (clear all: provider art + extracted covers + descriptions), `GET/PUT /settings/naming` (templates for all five media types) |
 
-`POST /author` takes `{"foreignAuthorId": "..."}` and pulls the full
-bibliography as metadata; the author joins the target library, but no book
-is enrolled or monitored — every book starts in Missing. `POST /book` takes
+`POST /author` takes `{"foreignAuthorId": "..."}` and pulls the
+bibliography as metadata (the most-read entries on Hardcover — canonical
+works first, zero-reader reprints skipped); the author joins the target
+library, but no book is enrolled or monitored — every book starts in
+Missing. `POST /book` takes
 `{"foreignBookId": "..."}` and pulls one book with its editions, monitored
 and enrolled in the target library, creating an unmonitored author stub if
 one doesn't exist yet (the stub still joins the target library, via the
@@ -393,7 +396,7 @@ metadata endpoints return 503.
 
 ### Phase 4 — Manga, comics & magazines
 - [x] Volume/issue data model: series-first — monitored series own their volumes/issues, browsable on the series' own page
-- [x] Manga metadata provider: **AniList** (public API, no key; verified live) behind the series-provider registry
+- [x] Manga metadata provider: **AniList** (public API, no key; verified live) behind the series-provider registry; **Hardcover** later became a selectable alternative (same token as books; verified live) — the manga provider is chosen in Settings → Metadata, switching it re-sources existing series on their next refresh (re-matched by title, monitoring and owned files kept), and Hardcover volumes carry real per-volume descriptions/covers with spin-offs and reissue editions filtered out
 - [x] Comic metadata provider: **ComicVine** (free API key, entered in Settings) *(mock-tested; live verification pending a key)*
 - [x] CBZ/CBR handling + `ComicInfo.xml` written into imported CBZ archives (CBR is write-only-blocked — pure Go can't write RAR — but is read for cover extraction via rardecode); volume covers are pulled from the owned archive's first page (`GET /book/{id}/cover`)
 - [x] Issue/volume monitoring: per-series "monitor future volumes" — refresh discovers new volumes and monitors them automatically
@@ -442,7 +445,7 @@ metadata endpoints return 503.
 
 ## Status
 
-🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga and comics flow series-first from AniList and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included) and manga ownable in colorized and monochrome variants at once; magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. **1.0 waits on**: real-world burn-in, those live verifications, and code-signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
+🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga and comics flow series-first from AniList or Hardcover (selectable) and ComicVine, with volumes/issues monitored per series ("monitor future volumes" included) and manga ownable in colorized and monochrome variants at once; magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. **1.0 waits on**: real-world burn-in, those live verifications, and code-signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
 
 ## License
 
