@@ -230,6 +230,26 @@ button.toggle.on {
   min-width: 200px;
 }
 
+/* Bordered sub-section inside a settings card (one per library type). */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem 1rem;
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.settings-section > .muted {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .token-row {
   display: flex;
   gap: 0.5rem;

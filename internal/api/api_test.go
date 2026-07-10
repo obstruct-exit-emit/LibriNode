@@ -535,6 +535,13 @@ func TestBookCoverCache(t *testing.T) {
 
 	cover := fmt.Sprintf("/api/v1/book/%d/cover", v1)
 
+	// Manga defaults to the provider's cover art: extraction 404s until the
+	// library is switched to file covers.
+	resp, _ := a.rawGet(cover)
+	a.want(resp, http.StatusNotFound)
+	a.want(a.call("PUT", "/api/v1/settings/metadata",
+		map[string]any{"mangaCoverSource": "file"}, nil), http.StatusOK)
+
 	// First fetch extracts the cover and caches it.
 	resp, body := a.rawGet(cover)
 	a.want(resp, http.StatusOK)

@@ -188,10 +188,11 @@ series-scoped **Search wanted**, **Organize…**, **Scan files**, and
 compact — title + owned/wanted badge — and every volume expands to a cover,
 blurb, and the same controls an individual book has: a monitor toggle,
 **Auto grab**, **Search releases**, and **Remove from library** (with an
-opt-in delete-files). By default the cover is pulled straight from the owned
-file — the archive's first page — for both CBZ and CBR (read via pure-Go
-rardecode), falling back to the provider's art; a **Settings → Metadata**
-toggle switches this to always use the provider's cover instead. Below the
+opt-in delete-files). Manga volume covers default to the
+provider's art; a per-library **Settings → Metadata** toggle switches manga
+(or comics, which default the other way) to extract the cover from the owned
+file's first page instead — both CBZ and CBR (read via pure-Go rardecode),
+falling back to the provider's art when extraction yields nothing. Below the
 list, a per-series **Missing**
 section lists volumes you're not tracking — neither monitored nor owned —
 each with a one-click **Monitor** to add it back, mirroring the per-author

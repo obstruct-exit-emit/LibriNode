@@ -14,8 +14,9 @@ auth:                  # present once a login account is set
   password_hash: pbkdf2-sha256$...
 metadata:
   active: hardcover
-  manga_provider: anilist   # anilist | hardcover (Settings → Metadata)
-  cover_source: file        # file | provider (manga/comic volume covers)
+  manga_provider: anilist        # anilist | hardcover (Settings → Metadata)
+  manga_cover_source: provider   # provider | file — manga volume covers
+  comic_cover_source: file       # file | provider — comic issue covers
   providers:
     hardcover: { token: "..." }
     comicvine: { token: "..." }

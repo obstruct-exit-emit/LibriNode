@@ -25,20 +25,23 @@ type metadataSettingsResponse struct {
 	// selector); MangaProvider is the chosen one.
 	MangaProviders []string `json:"mangaProviders"`
 	MangaProvider  string   `json:"mangaProvider"`
-	// CoverSource: "file" or "provider".
-	CoverSource string `json:"coverSource"`
+	// Per-library volume-cover source, "file" or "provider" (effective
+	// values — defaults applied).
+	MangaCoverSource string `json:"mangaCoverSource"`
+	ComicCoverSource string `json:"comicCoverSource"`
 }
 
 func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 	ms := s.cfg.MetadataSettings()
 	resp := metadataSettingsResponse{
-		Active:          ms.Active,
-		Available:       metadata.Available(),
-		SeriesAvailable: metadata.SeriesAvailable(),
-		Providers:       ms.Providers,
-		MangaProviders:  metadata.AvailableSeriesProviders("manga"),
-		MangaProvider:   s.cfg.MangaSeriesProvider(),
-		CoverSource:     coverSourceOrDefault(ms.CoverSource),
+		Active:           ms.Active,
+		Available:        metadata.Available(),
+		SeriesAvailable:  metadata.SeriesAvailable(),
+		Providers:        ms.Providers,
+		MangaProviders:   metadata.AvailableSeriesProviders("manga"),
+		MangaProvider:    s.cfg.MangaSeriesProvider(),
+		MangaCoverSource: s.cfg.CoverSourceFor("manga"),
+		ComicCoverSource: s.cfg.CoverSourceFor("comic"),
 	}
 	// Every registered provider shows up in the form, configured or not.
 	for _, name := range append(append([]string{}, resp.Available...), resp.SeriesAvailable...) {
@@ -49,11 +52,8 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 	return resp
 }
 
-func coverSourceOrDefault(v string) string {
-	if v == "provider" {
-		return "provider"
-	}
-	return "file"
+func validCoverSource(v string) bool {
+	return v == "" || v == "file" || v == "provider"
 }
 
 func (s *server) handleGetMetadataSettings(w http.ResponseWriter, r *http.Request) {
@@ -64,10 +64,11 @@ func (s *server) handleGetMetadataSettings(w http.ResponseWriter, r *http.Reques
 // config.yaml, and hot-swaps the active provider — no restart needed.
 func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Active        string                       `json:"active"`
-		Providers     map[string]metadata.Settings `json:"providers"`
-		MangaProvider string                       `json:"mangaProvider"`
-		CoverSource   string                       `json:"coverSource"`
+		Active           string                       `json:"active"`
+		Providers        map[string]metadata.Settings `json:"providers"`
+		MangaProvider    string                       `json:"mangaProvider"`
+		MangaCoverSource string                       `json:"mangaCoverSource"`
+		ComicCoverSource string                       `json:"comicCoverSource"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -81,8 +82,8 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "unknown manga provider: "+req.MangaProvider)
 		return
 	}
-	if req.CoverSource != "" && req.CoverSource != "file" && req.CoverSource != "provider" {
-		writeError(w, http.StatusBadRequest, "coverSource must be file or provider")
+	if !validCoverSource(req.MangaCoverSource) || !validCoverSource(req.ComicCoverSource) {
+		writeError(w, http.StatusBadRequest, "cover source must be file or provider")
 		return
 	}
 	if req.Providers == nil {
@@ -90,10 +91,11 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 	}
 
 	ms := config.MetadataSettings{
-		Active:        req.Active,
-		Providers:     req.Providers,
-		MangaProvider: req.MangaProvider,
-		CoverSource:   req.CoverSource,
+		Active:           req.Active,
+		Providers:        req.Providers,
+		MangaProvider:    req.MangaProvider,
+		MangaCoverSource: req.MangaCoverSource,
+		ComicCoverSource: req.ComicCoverSource,
 	}
 	if err := s.metadata.Configure(ms.Active, ms.Providers); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())

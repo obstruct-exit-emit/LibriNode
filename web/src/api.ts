@@ -353,7 +353,8 @@ export interface MetadataSettings {
   providers: Record<string, ProviderSettings>;
   mangaProviders: string[];
   mangaProvider: string;
-  coverSource: string;
+  mangaCoverSource: string;
+  comicCoverSource: string;
 }
 
 const KEY_STORAGE = "librinode-api-key";
@@ -671,7 +672,7 @@ export const api = {
   saveMetadataSettings: (
     active: string,
     providers: Record<string, ProviderSettings>,
-    extra?: { mangaProvider?: string; coverSource?: string },
+    extra?: { mangaProvider?: string; mangaCoverSource?: string; comicCoverSource?: string },
   ) =>
     request<MetadataSettings>("/api/v1/settings/metadata", {
       ...json({ active, providers, ...extra }),

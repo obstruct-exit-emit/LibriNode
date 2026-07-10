@@ -1040,7 +1040,8 @@ function MetadataCard({
   const [providers, setProviders] = useState<Record<string, ProviderSettings>>({});
   const [showToken, setShowToken] = useState(false);
   const [mangaProvider, setMangaProvider] = useState("");
-  const [coverSource, setCoverSource] = useState("file");
+  const [mangaCoverSource, setMangaCoverSource] = useState("provider");
+  const [comicCoverSource, setComicCoverSource] = useState("file");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [cacheNotice, setCacheNotice] = useState("");
@@ -1072,17 +1073,18 @@ function MetadataCard({
         setActive(s.active);
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
-        setCoverSource(s.coverSource);
+        setMangaCoverSource(s.mangaCoverSource);
+        setComicCoverSource(s.comicCoverSource);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
 
   if (!settings) return <p className="muted">Loading…</p>;
 
-  const activeSettings = providers[active] ?? { token: "" };
+  const hardcoverSettings = providers["hardcover"] ?? { token: "" };
 
-  const setToken = (token: string) => {
-    setProviders({ ...providers, [active]: { ...activeSettings, token } });
+  const setProviderToken = (name: string, token: string) => {
+    setProviders({ ...providers, [name]: { ...(providers[name] ?? {}), token } });
     setNotice("");
   };
 
@@ -1090,7 +1092,7 @@ function MetadataCard({
     setBusy(true);
     setNotice("");
     api
-      .testMetadataProvider(active, activeSettings)
+      .testMetadataProvider("hardcover", hardcoverSettings)
       .then(() => setNotice("✓ Connection OK — token accepted"))
       .catch((err: unknown) =>
         setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
@@ -1102,13 +1104,14 @@ function MetadataCard({
     setBusy(true);
     setNotice("");
     api
-      .saveMetadataSettings(active, providers, { mangaProvider, coverSource })
+      .saveMetadataSettings(active, providers, { mangaProvider, mangaCoverSource, comicCoverSource })
       .then((s) => {
         setSettings(s);
         setActive(s.active);
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
-        setCoverSource(s.coverSource);
+        setMangaCoverSource(s.mangaCoverSource);
+        setComicCoverSource(s.comicCoverSource);
         const hasToken = s.active && s.providers[s.active]?.token;
         setNotice(
           hasToken
@@ -1124,45 +1127,24 @@ function MetadataCard({
 
   return (
     <section className="card">
-      <h2>Metadata Provider</h2>
+      <h2>Metadata</h2>
       <p className="muted">
-        Book and audiobook metadata (authors, series, editions, covers) comes
-        from the provider below. Providers are pluggable — more sources can be
-        added without touching the rest of the app.
+        Where each library's metadata (authors, series, volumes, covers,
+        descriptions) comes from. Providers are pluggable — more sources can
+        be added without touching the rest of the app.
       </p>
 
       <div className="settings-form">
-        <label>
-          Provider
-          <select
-            value={active}
-            onChange={(e) => {
-              setActive(e.target.value);
-              setNotice("");
-            }}
-          >
-            <option value="">None (disabled)</option>
-            {settings.available.map((name) => (
-              <option key={name} value={name}>
-                {name[0].toUpperCase() + name.slice(1)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {active && (
+        <div className="settings-section">
+          <h3>API keys</h3>
           <label>
-            API token
+            Hardcover API token
             <span className="token-row">
               <input
                 type={showToken ? "text" : "password"}
-                placeholder={
-                  active === "hardcover"
-                    ? "Token from hardcover.app/account/api"
-                    : "API token"
-                }
-                value={activeSettings.token}
-                onChange={(e) => setToken(e.target.value)}
+                placeholder="Token from hardcover.app/account/api"
+                value={hardcoverSettings.token}
+                onChange={(e) => setProviderToken("hardcover", e.target.value)}
               />
               <button
                 type="button"
@@ -1171,69 +1153,108 @@ function MetadataCard({
               >
                 {showToken ? "hide" : "show"}
               </button>
+              <button
+                type="button"
+                disabled={busy || !hardcoverSettings.token}
+                onClick={test}
+              >
+                Test
+              </button>
             </span>
           </label>
-        )}
+          <label>
+            ComicVine API key
+            <input
+              type="password"
+              placeholder="Required for comic search (free key)"
+              value={providers["comicvine"]?.token ?? ""}
+              onChange={(e) => setProviderToken("comicvine", e.target.value)}
+            />
+          </label>
+          <p className="muted">
+            Hardcover tokens come from{" "}
+            <a href="https://hardcover.app/account/api" target="_blank" rel="noreferrer">hardcover.app/account/api</a>;
+            ComicVine keys from{" "}
+            <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noreferrer">comicvine.gamespot.com/api</a>.
+            AniList needs no key.
+          </p>
+        </div>
 
-        <p className="muted">
-          Comics need a free{" "}
-          <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noreferrer">ComicVine API key</a>:
-        </p>
-        <label>
-          ComicVine API key
-          <input
-            type="password"
-            placeholder="Required for comic search"
-            value={providers["comicvine"]?.token ?? ""}
-            onChange={(e) => {
-              setProviders({
-                ...providers,
-                comicvine: { ...(providers["comicvine"] ?? {}), token: e.target.value },
-              });
-              setNotice("");
-            }}
-          />
-        </label>
+        <div className="settings-section">
+          <h3>Ebooks &amp; Audiobooks</h3>
+          <label>
+            Book provider
+            <select
+              value={active}
+              onChange={(e) => {
+                setActive(e.target.value);
+                setNotice("");
+              }}
+            >
+              <option value="">None (disabled)</option>
+              {settings.available.map((name) => (
+                <option key={name} value={name}>
+                  {name[0].toUpperCase() + name.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-        <label>
-          Manga provider
-          <select
-            value={mangaProvider || settings.mangaProviders[0] || "anilist"}
-            onChange={(e) => {
-              setMangaProvider(e.target.value);
-              setNotice("");
-            }}
-          >
-            {settings.mangaProviders.map((name) => (
-              <option key={name} value={name}>
-                {name[0].toUpperCase() + name.slice(1)}
-                {name === "anilist" ? " (no key)" : ""}
-                {name === "hardcover" ? " (uses your Hardcover token)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="settings-section">
+          <h3>Manga</h3>
+          <label>
+            Manga provider
+            <select
+              value={mangaProvider || settings.mangaProviders[0] || "anilist"}
+              onChange={(e) => {
+                setMangaProvider(e.target.value);
+                setNotice("");
+              }}
+            >
+              {settings.mangaProviders.map((name) => (
+                <option key={name} value={name}>
+                  {name[0].toUpperCase() + name.slice(1)}
+                  {name === "anilist" ? " (no key)" : ""}
+                  {name === "hardcover" ? " (uses your Hardcover token)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Volume covers
+            <select
+              value={mangaCoverSource}
+              onChange={(e) => {
+                setMangaCoverSource(e.target.value);
+                setNotice("");
+              }}
+            >
+              <option value="provider">Use the provider's cover art</option>
+              <option value="file">Extract from the owned file (first page)</option>
+            </select>
+          </label>
+        </div>
 
-        <label>
-          Manga/comic volume covers
-          <select
-            value={coverSource}
-            onChange={(e) => {
-              setCoverSource(e.target.value);
-              setNotice("");
-            }}
-          >
-            <option value="file">Extract from the owned file (first page)</option>
-            <option value="provider">Use the provider's cover art</option>
-          </select>
-        </label>
+        <div className="settings-section">
+          <h3>Comics</h3>
+          <p className="muted">Comic metadata comes from ComicVine (key above).</p>
+          <label>
+            Issue covers
+            <select
+              value={comicCoverSource}
+              onChange={(e) => {
+                setComicCoverSource(e.target.value);
+                setNotice("");
+              }}
+            >
+              <option value="file">Extract from the owned file (first page)</option>
+              <option value="provider">Use the provider's cover art</option>
+            </select>
+          </label>
+        </div>
 
         <div className="settings-actions">
-          {active && (
-            <button disabled={busy || !activeSettings.token} onClick={test}>
-              Test
-            </button>
-          )}
           <button disabled={busy} onClick={save}>
             Save
           </button>
