@@ -164,6 +164,25 @@ func (s *server) handlePutNamingSettings(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, namingResponse(s.cfg.NamingSettings()))
 }
 
+// --- Import settings ---
+
+func (s *server) handleGetImportSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.cfg.ImportSettings())
+}
+
+func (s *server) handlePutImportSettings(w http.ResponseWriter, r *http.Request) {
+	var req config.ImportSettings
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := s.cfg.SetImport(req); err != nil {
+		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.cfg.ImportSettings())
+}
+
 // handleTestMetadataProvider builds a provider from the submitted (unsaved)
 // settings and checks it against the live API.
 func (s *server) handleTestMetadataProvider(w http.ResponseWriter, r *http.Request) {

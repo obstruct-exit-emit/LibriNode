@@ -133,6 +133,14 @@ type AuthSettings struct {
 // Enabled reports whether a login account is configured.
 func (a AuthSettings) Enabled() bool { return a.Username != "" }
 
+// ImportSettings tunes Completed Download Handling.
+type ImportSettings struct {
+	// PackImportAll imports every matching book from a multi-book pack, not
+	// just monitored ones. Opt-in: the default (false) fills monitored books
+	// only, so grabbing one volume never auto-imports the rest of a bundle.
+	PackImportAll bool `yaml:"pack_import_all,omitempty" json:"packImportAll"`
+}
+
 type Config struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -142,6 +150,7 @@ type Config struct {
 	Auth     AuthSettings     `yaml:"auth,omitempty"`
 	Metadata MetadataSettings `yaml:"metadata"`
 	Naming   NamingSettings   `yaml:"naming"`
+	Import   ImportSettings   `yaml:"import,omitempty"`
 
 	// Legacy flat field, migrated into Metadata.Providers on load and
 	// dropped from the file on the next save.
@@ -307,6 +316,29 @@ func (c *Config) NamingSettings() NamingSettings {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.Naming
+}
+
+// ImportSettings returns the current import options.
+func (c *Config) ImportSettings() ImportSettings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Import
+}
+
+// SetImport replaces the import options and persists the config.
+func (c *Config) SetImport(is ImportSettings) error {
+	c.mu.Lock()
+	c.Import = is
+	c.mu.Unlock()
+	return c.save()
+}
+
+// PackImportAll reports whether pack imports fill every matching book
+// instead of monitored ones only.
+func (c *Config) PackImportAll() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Import.PackImportAll
 }
 
 // MetadataSettings returns a deep copy so callers can't mutate shared state.

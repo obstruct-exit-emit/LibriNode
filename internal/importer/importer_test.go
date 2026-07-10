@@ -28,6 +28,7 @@ type fx struct {
 	book    *library.Book
 	history []map[string]any // mutable mock SAB history
 	removed []string         // nzo ids deleted from history
+	packAll bool             // the pack-import-all setting
 }
 
 func fixture(t *testing.T) *fx {
@@ -92,7 +93,7 @@ func fixture(t *testing.T) *fx {
 		t.Fatal(err)
 	}
 
-	f.svc = New(store, downloads, organize.New(store, cfg))
+	f.svc = New(store, downloads, organize.New(store, cfg), func() bool { return f.packAll })
 	return f
 }
 
@@ -619,6 +620,79 @@ func TestPackEbookImportsMonitoredByTitle(t *testing.T) {
 	}
 	if files, _ := f.store.ListBookFiles(sourcery.ID); len(files) != 0 {
 		t.Fatalf("Sourcery files = %+v, want none (unmonitored)", files)
+	}
+}
+
+// TestPackImportAllOptIn: with the pack-import-all setting on, the pack fills
+// unmonitored books too — and enrolled ebooks join their format library.
+func TestPackImportAllOptIn(t *testing.T) {
+	f := fixture(t)
+	f.packAll = true
+	v1, v2, v3 := f.mangaSeries(t)
+
+	f.completedDownload(t, "nzo_all", "Death Note v01-v03 Complete Digital",
+		"Death Note v01.cbz", "Death Note v02.cbz", "Death Note v03.cbz")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v2.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_all",
+		Title: "Death Note v01-v03 Complete Digital", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 3 {
+		t.Fatalf("imported = %d, want 3 (import-all fills the unmonitored volume too): %+v",
+			result.Imported, result)
+	}
+	for _, v := range []*library.Book{v1, v2, v3} {
+		if files, _ := f.store.ListBookFiles(v.ID); len(files) != 1 {
+			t.Fatalf("%s files = %+v, want 1", v.Title, files)
+		}
+	}
+	// The unmonitored volume stays unmonitored — owning it never re-monitors.
+	got, _ := f.store.GetBook(v3.ID)
+	if got.Monitored {
+		t.Error("import-all must not monitor the unmonitored volume")
+	}
+}
+
+// TestPackImportAllEnrollsEbook: import-all puts an unenrolled prose book's
+// file in place AND makes the book an ebook-library member (like scan does).
+func TestPackImportAllEnrollsEbook(t *testing.T) {
+	f := fixture(t)
+	f.packAll = true
+
+	guards := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "10",
+		Title: "Guards! Guards!"} // not enrolled, not monitored
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_eall", "Terry Pratchett - Two Book Bundle EPUB",
+		"Mort.epub", "Guards! Guards!.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_eall",
+		Title: "Terry Pratchett - Two Book Bundle EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 2 {
+		t.Fatalf("imported = %d, want 2: %+v", result.Imported, result)
+	}
+	got, _ := f.store.GetBook(guards.ID)
+	if !got.InEbookLibrary {
+		t.Error("import-all should enroll the imported ebook in the library")
+	}
+	if got.EbookMonitored {
+		t.Error("import-all must not monitor the book")
 	}
 }
 

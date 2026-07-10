@@ -63,7 +63,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		organize:  org,
 		indexers:  indexers,
 		downloads: downloads,
-		importer:  importer.New(store, downloads, org),
+		importer:  importer.New(store, downloads, org, cfg.PackImportAll),
 		search:    autosearch.New(store, indexers, downloads),
 		health:    health.New(store, indexers, downloads, providers),
 		images:    imagecache.New(filepath.Join(cfg.DataDir(), "covers", "remote")),
@@ -142,6 +142,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("DELETE /api/v1/settings/metadata/cache", s.auth(s.handleClearMetadataCache))
 	mux.HandleFunc("GET /api/v1/settings/naming", s.auth(s.handleGetNamingSettings))
 	mux.HandleFunc("PUT /api/v1/settings/naming", s.auth(s.handlePutNamingSettings))
+	mux.HandleFunc("GET /api/v1/settings/import", s.auth(s.handleGetImportSettings))
+	mux.HandleFunc("PUT /api/v1/settings/import", s.auth(s.handlePutImportSettings))
 
 	mux.HandleFunc("GET /api/v1/qualityprofile", s.auth(s.handleListProfiles))
 	mux.HandleFunc("POST /api/v1/qualityprofile", s.auth(s.handleAddProfile))

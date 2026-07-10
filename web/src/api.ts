@@ -357,6 +357,10 @@ export interface MetadataSettings {
   comicCoverSource: string;
 }
 
+export interface ImportSettings {
+  packImportAll: boolean;
+}
+
 const KEY_STORAGE = "librinode-api-key";
 
 export function getApiKey(): string {
@@ -630,6 +634,13 @@ export const api = {
   saveNamingSettings: (templates: Partial<NamingSettings>) =>
     request<NamingSettings>("/api/v1/settings/naming", {
       ...json(templates),
+      method: "PUT",
+    }),
+
+  getImportSettings: () => request<ImportSettings>("/api/v1/settings/import"),
+  saveImportSettings: (settings: ImportSettings) =>
+    request<ImportSettings>("/api/v1/settings/import", {
+      ...json(settings),
       method: "PUT",
     }),
 

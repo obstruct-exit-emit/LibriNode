@@ -24,6 +24,10 @@ naming:
   ebook_folder: "{Author Name}"
   ebook_file: "{Series Title} {Series Position} - {Book Title}"
   # audiobook_*, manga_*, comic_*, magazine_* — all editable in the UI
+import:
+  pack_import_all: false   # opt-in: multi-book packs fill every matching
+                           # book, not just monitored ones (Settings →
+                           # Download Clients → Import options)
 ```
 
 Environment variables override the file: `LIBRINODE_HOST`, `LIBRINODE_PORT`,

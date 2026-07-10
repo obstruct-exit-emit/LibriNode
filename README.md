@@ -296,7 +296,7 @@ scriptable:
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
-| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear provider images), `DELETE /settings/metadata/descriptions` (blank stored descriptions; re-fetched on refresh), `DELETE /cache` (clear all: provider art + extracted covers + descriptions), `GET/PUT /settings/naming` (templates for all five media types) |
+| Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear provider images), `DELETE /settings/metadata/descriptions` (blank stored descriptions; re-fetched on refresh), `DELETE /cache` (clear all: provider art + extracted covers + descriptions), `GET/PUT /settings/naming` (templates for all five media types), `GET/PUT /settings/import` (pack-import options) |
 
 `POST /author` takes `{"foreignAuthorId": "..."}` and pulls the
 bibliography as metadata (the most-read entries on Hardcover — canonical
@@ -386,7 +386,7 @@ metadata endpoints return 503.
 - [x] **qBittorrent** client: add, track, remove (category-scoped; seed goals with CDH)
 - [x] **SABnzbd** client: add, track, remove (category-scoped; post-process hand-off with CDH)
 - [x] Completed Download Handling: finished grabs import automatically (copy into naming-template layout, torrents keep seeding, usenet history cleaned up, failed downloads resolved + removed), with grab history and a manual Import Now
-- [x] Multi-book pack imports *(pulled forward from post-1.0)*: when a grabbed release is a bundle ("complete series"), the grabbed book's file is matched by volume number (manga/comics) or title (ebooks) — never by size, so a v01–v12 pack can't file volume 12 as the volume you grabbed — and the pack's other files fill **monitored** books only (unmonitored books are never auto-imported; owned books are only replaced by genuine quality upgrades)
+- [x] Multi-book pack imports *(pulled forward from post-1.0)*: when a grabbed release is a bundle ("complete series"), the grabbed book's file is matched by volume number (manga/comics) or title (ebooks) — never by size, so a v01–v12 pack can't file volume 12 as the volume you grabbed — and the pack's other files fill **monitored** books only (unmonitored books are never auto-imported; owned books are only replaced by genuine quality upgrades). An opt-in **Import whole packs** toggle (Settings → Download Clients → Import options, `import.pack_import_all`) imports every book the pack matches instead — imported ebooks join their format library like scanned files, but nothing gets monitored automatically
 - [x] Automatic search for wanted items: periodic sweep (6h) + Search Wanted button + per-book Auto Grab; grabs the best approved release, skips books with pending grabs
 - [x] Interactive search UI: per-book release candidates with scores/rejections and Grab buttons in the Library
 

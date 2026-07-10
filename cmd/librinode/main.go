@@ -141,7 +141,7 @@ func run(dataDir string) error {
 	store := library.NewStore(db)
 	downloads := download.NewService(download.NewStore(db))
 	go refresh.New(store, providers).RunPeriodic(bgCtx, metadataRefreshInterval)
-	go importer.New(store, downloads, organize.New(store, cfg)).RunPeriodic(bgCtx, importInterval)
+	go importer.New(store, downloads, organize.New(store, cfg), cfg.PackImportAll).RunPeriodic(bgCtx, importInterval)
 	go autosearch.New(store, indexer.NewService(indexer.NewStore(db)), downloads).
 		RunPeriodic(bgCtx, wantedSearchInterval)
 

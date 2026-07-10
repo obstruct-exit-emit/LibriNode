@@ -30,10 +30,13 @@ type Service struct {
 	store     *library.Store
 	downloads *download.Service
 	organize  *organize.Service
+	// packAll (optional) reports the pack-import-all setting: import every
+	// matching book from a multi-book pack, not just monitored ones.
+	packAll func() bool
 }
 
-func New(store *library.Store, downloads *download.Service, org *organize.Service) *Service {
-	return &Service{store: store, downloads: downloads, organize: org}
+func New(store *library.Store, downloads *download.Service, org *organize.Service, packAll func() bool) *Service {
+	return &Service{store: store, downloads: downloads, organize: org, packAll: packAll}
 }
 
 // Result summarizes one import pass.
@@ -362,11 +365,15 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 }
 
 // importPackExtras imports the remaining files of a multi-book release
-// ("complete series" bundles). Policy: only files matching a *monitored*
-// library book are imported — grabbing one volume from a pack never
-// auto-imports unmonitored ones — and a book that already has this format's
-// file is only replaced when the pack's copy is a genuine quality upgrade.
+// ("complete series" bundles). Default policy: only files matching a
+// *monitored* library book are imported — grabbing one volume from a pack
+// never auto-imports unmonitored ones. The opt-in pack-import-all setting
+// lifts that to every matching book (imported ebooks/audiobooks then join
+// their format library, like scanned files do). Either way, a book that
+// already has this format's file is only replaced when the pack's copy is a
+// genuine quality upgrade.
 func (s *Service) importPackExtras(files []string, primary string, grabbed *library.Book, mediaType string, result *Result) {
+	importAll := s.packAll != nil && s.packAll()
 	done := map[int64]bool{grabbed.ID: true}
 	for _, f := range files {
 		if f == primary {
@@ -377,7 +384,7 @@ func (s *Service) importPackExtras(files []string, primary string, grabbed *libr
 			continue
 		}
 		done[b.ID] = true
-		if !monitoredFor(b, mediaType) {
+		if !importAll && !monitoredFor(b, mediaType) {
 			continue
 		}
 		format := fileFormat(f)
@@ -392,6 +399,11 @@ func (s *Service) importPackExtras(files []string, primary string, grabbed *libr
 		target, ok := s.placeAndRecord(b, mediaType, format, []string{f}, replacing, filepath.Base(f), result)
 		if !ok {
 			continue
+		}
+		// Owning a file puts a prose book in the format's library (same as
+		// scan); volumes already belong to their series.
+		if err := s.store.EnsureBookLibrary(b.ID, mediaType); err != nil {
+			result.note("pack: enrolling %s: %v", b.Title, err)
 		}
 		result.Imported++
 		result.note("pack: imported %s for %s", filepath.Base(f), b.Title)

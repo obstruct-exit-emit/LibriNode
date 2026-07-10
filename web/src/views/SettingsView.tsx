@@ -502,7 +502,71 @@ function DownloadClientsCard({
           )}
         </div>
       </div>
+
+      <ImportOptions onError={onError} />
     </section>
+  );
+}
+
+// ImportOptions: Completed Download Handling knobs (saved on toggle).
+function ImportOptions({ onError }: { onError: (message: string) => void }) {
+  const [packImportAll, setPackImportAll] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    api
+      .getImportSettings()
+      .then((s) => {
+        setPackImportAll(s.packImportAll);
+        setLoaded(true);
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  if (!loaded) return null;
+
+  const toggle = (value: boolean) => {
+    setPackImportAll(value);
+    setNotice("");
+    api
+      .saveImportSettings({ packImportAll: value })
+      .then((s) => {
+        setPackImportAll(s.packImportAll);
+        setNotice("✓ Saved");
+      })
+      .catch((err: unknown) => {
+        setPackImportAll(!value);
+        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`);
+      });
+  };
+
+  return (
+    <div className="settings-form" style={{ marginTop: "1.25rem" }}>
+      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Import options</h3>
+      <label className="check">
+        <span>
+          <input
+            type="checkbox"
+            checked={packImportAll}
+            onChange={(e) => toggle(e.target.checked)}
+          />{" "}
+          Import whole packs — when a grabbed release is a multi-book bundle,
+          import every book it matches, not just monitored ones
+        </span>
+      </label>
+      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        Off (default): a pack only fills the grabbed book plus other{" "}
+        <strong>monitored</strong> books. Either way, a book that already owns
+        the format is only replaced by a genuine quality upgrade, and nothing
+        gets monitored automatically.
+      </p>
+      {notice && (
+        <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
+          {notice}
+        </span>
+      )}
+    </div>
   );
 }
 
