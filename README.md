@@ -430,7 +430,7 @@ metadata endpoints return 503.
 - [x] Manga series get the full author/book treatment: the series page has series-scoped **Search wanted** (`POST /series/{id}/search`), **Organize…** (`?seriesId=` on rename), **Scan files**, and **Refresh**; each volume expands to the same controls an individual book has (monitor toggle, **Auto grab**, **Search releases**, **Remove from library** with opt-in delete-files); and a per-series **Missing** section lists volumes neither monitored nor owned, each with a one-click **Monitor** to add it back. Removing a volume forgets its file records so it's no longer owned and drops into Missing (files stay on disk unless delete-files is checked; the next scan re-finds them)
 
 ### Post-1.0 ideas
-- [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file)
+- [ ] Multi-book archive imports (a "complete series" release currently imports only its largest file). Decided policy: import **only files matching monitored books** — never auto-import the rest of the pack — and per-file upgrade checks apply (skip a book we already own unless the pack's copy is a genuine quality upgrade)
 - [ ] Fuzzy / ISBN- and embedded-metadata-based file matching (scanning is exact-normalized-match today)
 - [ ] `ComicInfo.xml` for CBR archives (needs a RAR writer)
 - [ ] Multi-user / permissions
