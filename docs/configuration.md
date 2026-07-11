@@ -15,8 +15,9 @@ auth:                  # present once a login account is set
 metadata:
   active: hardcover
   manga_provider: anilist        # anilist | hardcover (Settings → Metadata)
+  comic_provider: hardcover      # hardcover | comicvine (Settings → Metadata)
   manga_cover_source: provider   # provider | file — manga volume covers
-  comic_cover_source: file       # file | provider — comic issue covers
+  comic_cover_source: provider   # provider | file — comic issue covers
   providers:
     hardcover: { token: "..." }
     comicvine: { token: "..." }

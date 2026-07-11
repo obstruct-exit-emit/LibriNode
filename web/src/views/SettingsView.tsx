@@ -1104,8 +1104,9 @@ function MetadataCard({
   const [providers, setProviders] = useState<Record<string, ProviderSettings>>({});
   const [showToken, setShowToken] = useState(false);
   const [mangaProvider, setMangaProvider] = useState("");
+  const [comicProvider, setComicProvider] = useState("");
   const [mangaCoverSource, setMangaCoverSource] = useState("provider");
-  const [comicCoverSource, setComicCoverSource] = useState("file");
+  const [comicCoverSource, setComicCoverSource] = useState("provider");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [cacheNotice, setCacheNotice] = useState("");
@@ -1137,6 +1138,7 @@ function MetadataCard({
         setActive(s.active);
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
+        setComicProvider(s.comicProvider);
         setMangaCoverSource(s.mangaCoverSource);
         setComicCoverSource(s.comicCoverSource);
       })
@@ -1168,12 +1170,18 @@ function MetadataCard({
     setBusy(true);
     setNotice("");
     api
-      .saveMetadataSettings(active, providers, { mangaProvider, mangaCoverSource, comicCoverSource })
+      .saveMetadataSettings(active, providers, {
+        mangaProvider,
+        comicProvider,
+        mangaCoverSource,
+        comicCoverSource,
+      })
       .then((s) => {
         setSettings(s);
         setActive(s.active);
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
+        setComicProvider(s.comicProvider);
         setMangaCoverSource(s.mangaCoverSource);
         setComicCoverSource(s.comicCoverSource);
         const hasToken = s.active && s.providers[s.active]?.token;
@@ -1302,7 +1310,24 @@ function MetadataCard({
 
         <div className="settings-section">
           <h3>Comics</h3>
-          <p className="muted">Comic metadata comes from ComicVine (key above).</p>
+          <label>
+            Comic provider
+            <select
+              value={comicProvider || settings.comicProviders[0] || "hardcover"}
+              onChange={(e) => {
+                setComicProvider(e.target.value);
+                setNotice("");
+              }}
+            >
+              {settings.comicProviders.map((name) => (
+                <option key={name} value={name}>
+                  {name[0].toUpperCase() + name.slice(1)}
+                  {name === "comicvine" ? " (key above)" : ""}
+                  {name === "hardcover" ? " (uses your Hardcover token)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Issue covers
             <select
@@ -1312,8 +1337,8 @@ function MetadataCard({
                 setNotice("");
               }}
             >
-              <option value="file">Extract from the owned file (first page)</option>
               <option value="provider">Use the provider's cover art</option>
+              <option value="file">Extract from the owned file (first page)</option>
             </select>
           </label>
         </div>

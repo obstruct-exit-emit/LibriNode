@@ -21,7 +21,7 @@ func TestSeriesSearchAndGet(t *testing.T) {
 			]
 		}]}}`,
 	})
-	sc := &SeriesClient{c}
+	sc := &SeriesClient{c, "manga"}
 
 	if sc.MediaType() != "manga" || sc.Name() != "hardcover" {
 		t.Fatalf("MediaType/Name = %s/%s", sc.MediaType(), sc.Name())
@@ -79,7 +79,7 @@ func TestSeriesMessyPositionsFallBackToSequential(t *testing.T) {
 			]
 		}]}}`,
 	})
-	sc := &SeriesClient{c}
+	sc := &SeriesClient{c, "manga"}
 
 	s, err := sc.GetSeries(context.Background(), "7310")
 	if err != nil {
@@ -111,7 +111,7 @@ func TestSeriesDropsSpinOffsAndPrefersStandardEdition(t *testing.T) {
 			]
 		}]}}`,
 	})
-	sc := &SeriesClient{c}
+	sc := &SeriesClient{c, "manga"}
 
 	s, err := sc.GetSeries(context.Background(), "7310")
 	if err != nil {

@@ -120,6 +120,9 @@ func run(dataDir string) error {
 	metadata.Register("hardcover", hardcover.Factory)
 	metadata.RegisterSeries("anilist", anilist.Factory)
 	metadata.RegisterSeries("hardcover", hardcover.SeriesFactory)
+	// Hardcover serves comics too — a distinct registry key, but the provider
+	// reports itself as "hardcover" (what series.Source records).
+	metadata.RegisterSeries("hardcover-comics", hardcover.ComicSeriesFactory)
 	metadata.RegisterSeries("comicvine", comicvine.Factory)
 
 	providers := metadata.NewManager()

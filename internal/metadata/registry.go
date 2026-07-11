@@ -75,13 +75,35 @@ func RegisterSeries(name string, f SeriesFactory) {
 	seriesFactories[name] = f
 }
 
-// SeriesAvailable lists registered series provider names, sorted.
+// seriesRegistryKeys lists the raw registration keys, sorted. A provider can
+// be registered under several keys — one per media type it serves (Hardcover
+// has "hardcover" for manga and "hardcover-comics" for comics) — while
+// reporting one Name() everywhere user-visible.
+func seriesRegistryKeys() []string {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	keys := make([]string, 0, len(seriesFactories))
+	for key := range seriesFactories {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// SeriesAvailable lists the distinct series-provider names as the providers
+// report them — what settings entries and series.Source use — sorted.
 func SeriesAvailable() []string {
 	regMu.RLock()
 	defer regMu.RUnlock()
-	names := make([]string, 0, len(seriesFactories))
-	for name := range seriesFactories {
-		names = append(names, name)
+	seen := map[string]bool{}
+	names := []string{}
+	for _, f := range seriesFactories {
+		// Probe builds only read Name(); token-requiring factories still
+		// report it via a throwaway instance.
+		if p, err := f(Settings{Token: "probe"}); err == nil && !seen[p.Name()] {
+			seen[p.Name()] = true
+			names = append(names, p.Name())
+		}
 	}
 	sort.Strings(names)
 	return names
@@ -154,13 +176,23 @@ func (m *Manager) Configure(name string, settings map[string]Settings) error {
 func (m *Manager) ConfigureSeries(settings map[string]Settings, selection map[string]string) {
 	byType := map[string][]SeriesProvider{}
 	byName := map[string]SeriesProvider{}
-	for _, name := range SeriesAvailable() { // sorted, so [0] is a stable default
-		p, err := BuildSeries(name, settings[name])
+	for _, key := range seriesRegistryKeys() { // sorted, so [0] is a stable default
+		// A registry key's settings live under the provider's OWN name
+		// (Hardcover's comic registration reuses the hardcover token): probe
+		// for the name first, then build with that name's settings.
+		probe, err := BuildSeries(key, Settings{Token: "probe"})
+		if err != nil {
+			continue
+		}
+		p, err := BuildSeries(key, settings[probe.Name()])
 		if err != nil {
 			continue
 		}
 		byType[p.MediaType()] = append(byType[p.MediaType()], p)
-		byName[name] = p
+		// Keyed by the provider's own name (which series.Source records) — a
+		// provider registered under several keys collapses to one entry; the
+		// instances are interchangeable for by-source refreshes.
+		byName[p.Name()] = p
 	}
 
 	built := map[string]SeriesProvider{}
@@ -190,17 +222,18 @@ func (m *Manager) SeriesProviderByName(name string) SeriesProvider {
 	return m.seriesByName[name]
 }
 
-// AvailableSeriesProviders lists the registered series-provider names that
-// serve a media type (configured or not), sorted — for the settings UI.
+// AvailableSeriesProviders lists the series-provider names (as the providers
+// report them — what series.Source records and the selection matches) that
+// serve a media type, configured or not, sorted — for the settings UI.
 func AvailableSeriesProviders(mediaType string) []string {
 	regMu.RLock()
 	defer regMu.RUnlock()
 	names := []string{}
-	for name, f := range seriesFactories {
-		// Build with an empty setting only to read MediaType; providers that
-		// need a token still report their media type via a throwaway instance.
+	for _, f := range seriesFactories {
+		// Build with a probe setting only to read Name/MediaType; providers
+		// that need a token still report them via a throwaway instance.
 		if p, err := f(Settings{Token: "probe"}); err == nil && p.MediaType() == mediaType {
-			names = append(names, name)
+			names = append(names, p.Name())
 		}
 	}
 	sort.Strings(names)

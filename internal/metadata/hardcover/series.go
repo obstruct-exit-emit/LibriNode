@@ -12,27 +12,38 @@ import (
 )
 
 // SeriesClient adapts the Hardcover book API to metadata.SeriesProvider for
-// manga: a Hardcover *series* is the manga, and the books linked to it via
-// book_series are its volumes. Hardcover's manga series are messier than
-// AniList's — spin-offs sit at position 0 and each numbered volume carries
-// several editions (English/Japanese/collector's) — so GetSeries keeps the
-// positioned volumes (dropping the position-0 extras), collapses each position
-// to its richest edition, and only numbers sequentially when a series has no
-// positive positions at all.
+// manga and comics: a Hardcover *series* is the manga/comic, and the books
+// linked to it via book_series are its volumes/issues. Hardcover's series are
+// messier than AniList's — spin-offs sit at position 0 and each numbered
+// volume carries several editions (English/Japanese/collector's) — so
+// GetSeries keeps the positioned volumes (dropping the position-0 extras),
+// collapses each position to its richest edition, and only numbers
+// sequentially when a series has no positive positions at all.
 type SeriesClient struct {
 	*Client
+	mediaType string
 }
 
 // SeriesFactory builds the Hardcover manga series provider; it shares the
 // book provider's token.
 func SeriesFactory(s metadata.Settings) (metadata.SeriesProvider, error) {
+	return seriesFactoryFor("manga", s)
+}
+
+// ComicSeriesFactory builds the Hardcover comic series provider — the same
+// client and series handling, registered for the comic media type.
+func ComicSeriesFactory(s metadata.Settings) (metadata.SeriesProvider, error) {
+	return seriesFactoryFor("comic", s)
+}
+
+func seriesFactoryFor(mediaType string, s metadata.Settings) (metadata.SeriesProvider, error) {
 	if s.Token == "" {
 		return nil, metadata.ErrNotConfigured
 	}
-	return &SeriesClient{New(s.Token)}, nil
+	return &SeriesClient{New(s.Token), mediaType}, nil
 }
 
-func (sc *SeriesClient) MediaType() string { return "manga" }
+func (sc *SeriesClient) MediaType() string { return sc.mediaType }
 
 func (sc *SeriesClient) SearchSeries(ctx context.Context, query string) ([]metadata.SeriesResult, error) {
 	docs, err := sc.search(ctx, query, "Series")

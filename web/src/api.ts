@@ -353,6 +353,8 @@ export interface MetadataSettings {
   providers: Record<string, ProviderSettings>;
   mangaProviders: string[];
   mangaProvider: string;
+  comicProviders: string[];
+  comicProvider: string;
   mangaCoverSource: string;
   comicCoverSource: string;
 }
@@ -662,7 +664,12 @@ export const api = {
   saveMetadataSettings: (
     active: string,
     providers: Record<string, ProviderSettings>,
-    extra?: { mangaProvider?: string; mangaCoverSource?: string; comicCoverSource?: string },
+    extra?: {
+      mangaProvider?: string;
+      comicProvider?: string;
+      mangaCoverSource?: string;
+      comicCoverSource?: string;
+    },
   ) =>
     request<MetadataSettings>("/api/v1/settings/metadata", {
       ...json({ active, providers, ...extra }),

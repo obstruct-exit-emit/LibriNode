@@ -30,12 +30,14 @@ type MetadataSettings struct {
 	Active    string                       `yaml:"active"`
 	Providers map[string]metadata.Settings `yaml:"providers"`
 	// MangaProvider chooses the manga series provider ("anilist" or
-	// "hardcover"); empty defaults to anilist.
+	// "hardcover"); empty defaults to anilist. ComicProvider chooses the
+	// comic series provider ("hardcover" or "comicvine"); empty defaults to
+	// hardcover.
 	MangaProvider string `yaml:"manga_provider,omitempty"`
+	ComicProvider string `yaml:"comic_provider,omitempty"`
 	// MangaCoverSource / ComicCoverSource pick volume/issue cover art per
 	// library: "file" (extract the first page of the owned archive) or
-	// "provider" (the metadata provider's art). Manga defaults to provider
-	// art; comics default to file extraction.
+	// "provider" (the metadata provider's art). Both default to provider art.
 	MangaCoverSource string `yaml:"manga_cover_source,omitempty"`
 	ComicCoverSource string `yaml:"comic_cover_source,omitempty"`
 }
@@ -51,9 +53,20 @@ func (c *Config) MangaSeriesProvider() string {
 	return c.Metadata.MangaProvider
 }
 
+// ComicSeriesProvider returns the configured comic provider name, defaulting
+// to hardcover.
+func (c *Config) ComicSeriesProvider() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Metadata.ComicProvider == "" {
+		return "hardcover"
+	}
+	return c.Metadata.ComicProvider
+}
+
 // CoverSourceFor returns the effective volume-cover source ("file" or
 // "provider") for a manga/comic media type: the per-type setting, or the
-// default — provider art for manga, file extraction for comics.
+// default — the provider's art.
 func (c *Config) CoverSourceFor(mediaType string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -65,10 +78,7 @@ func (c *Config) CoverSourceFor(mediaType string) string {
 		v = c.Metadata.ComicCoverSource
 	}
 	if v == "" {
-		if mediaType == "manga" {
-			return "provider"
-		}
-		return "file"
+		return "provider"
 	}
 	return v
 }
@@ -82,7 +92,10 @@ func (c *Config) UseProviderCovers(mediaType string) bool {
 // SeriesSelection maps each series media type to its chosen provider, for
 // metadata.Manager.ConfigureSeries.
 func (c *Config) SeriesSelection() map[string]string {
-	return map[string]string{"manga": c.MangaSeriesProvider()}
+	return map[string]string{
+		"manga": c.MangaSeriesProvider(),
+		"comic": c.ComicSeriesProvider(),
+	}
 }
 
 // NamingSettings holds the file-organization templates (per media type as
@@ -348,6 +361,7 @@ func (c *Config) MetadataSettings() MetadataSettings {
 	out := MetadataSettings{
 		Active:           c.Metadata.Active,
 		MangaProvider:    c.Metadata.MangaProvider,
+		ComicProvider:    c.Metadata.ComicProvider,
 		MangaCoverSource: c.Metadata.MangaCoverSource,
 		ComicCoverSource: c.Metadata.ComicCoverSource,
 		Providers:        make(map[string]metadata.Settings, len(c.Metadata.Providers)),

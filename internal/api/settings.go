@@ -21,10 +21,13 @@ type metadataSettingsResponse struct {
 	Available       []string                     `json:"available"`
 	SeriesAvailable []string                     `json:"seriesAvailable"`
 	Providers       map[string]metadata.Settings `json:"providers"`
-	// MangaProviders lists the providers that can serve manga (for the
-	// selector); MangaProvider is the chosen one.
+	// MangaProviders / ComicProviders list the providers that can serve each
+	// series media type (for the selectors); the singular fields are the
+	// chosen ones.
 	MangaProviders []string `json:"mangaProviders"`
 	MangaProvider  string   `json:"mangaProvider"`
+	ComicProviders []string `json:"comicProviders"`
+	ComicProvider  string   `json:"comicProvider"`
 	// Per-library volume-cover source, "file" or "provider" (effective
 	// values — defaults applied).
 	MangaCoverSource string `json:"mangaCoverSource"`
@@ -40,6 +43,8 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 		Providers:        ms.Providers,
 		MangaProviders:   metadata.AvailableSeriesProviders("manga"),
 		MangaProvider:    s.cfg.MangaSeriesProvider(),
+		ComicProviders:   metadata.AvailableSeriesProviders("comic"),
+		ComicProvider:    s.cfg.ComicSeriesProvider(),
 		MangaCoverSource: s.cfg.CoverSourceFor("manga"),
 		ComicCoverSource: s.cfg.CoverSourceFor("comic"),
 	}
@@ -67,6 +72,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		Active           string                       `json:"active"`
 		Providers        map[string]metadata.Settings `json:"providers"`
 		MangaProvider    string                       `json:"mangaProvider"`
+		ComicProvider    string                       `json:"comicProvider"`
 		MangaCoverSource string                       `json:"mangaCoverSource"`
 		ComicCoverSource string                       `json:"comicCoverSource"`
 	}
@@ -82,6 +88,10 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "unknown manga provider: "+req.MangaProvider)
 		return
 	}
+	if req.ComicProvider != "" && !slices.Contains(metadata.AvailableSeriesProviders("comic"), req.ComicProvider) {
+		writeError(w, http.StatusBadRequest, "unknown comic provider: "+req.ComicProvider)
+		return
+	}
 	if !validCoverSource(req.MangaCoverSource) || !validCoverSource(req.ComicCoverSource) {
 		writeError(w, http.StatusBadRequest, "cover source must be file or provider")
 		return
@@ -94,6 +104,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		Active:           req.Active,
 		Providers:        req.Providers,
 		MangaProvider:    req.MangaProvider,
+		ComicProvider:    req.ComicProvider,
 		MangaCoverSource: req.MangaCoverSource,
 		ComicCoverSource: req.ComicCoverSource,
 	}

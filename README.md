@@ -162,9 +162,10 @@ imports land as `Author/Book Title/` folders — Audiobookshelf-ready.
 **Manga & comics** are series-first: from the Manga or Comics library page,
 search the provider, add the series, and its page lists every volume/issue
 with owned/wanted badges. Manga metadata can come from **AniList** (no key)
-or **Hardcover** (reuses your Hardcover token) — pick the manga provider
-under **Settings → Metadata**; comics use **ComicVine** (free API key).
-Switching the manga provider re-sources existing series on their next
+or **Hardcover** (reuses your Hardcover token); comic metadata from
+**Hardcover** (the default) or **ComicVine** (free API key) — pick each
+provider under **Settings → Metadata**.
+Switching a provider re-sources existing series on their next
 refresh: LibriNode re-matches each series on the newly selected provider by
 title, re-binds it in place (keeping your monitoring and owned files), and
 pulls that provider's volumes — so moving from AniList to Hardcover swaps in
@@ -188,9 +189,9 @@ series-scoped **Search wanted**, **Organize…**, **Scan files**, and
 stays compact — title + owned/wanted badge — and every row expands to a
 cover, blurb, file locations, and the same controls an individual book has:
 a monitor toggle, **Auto grab**, **Search releases**, and **Remove from
-library** (with an opt-in delete-files). Manga volume covers default to the
+library** (with an opt-in delete-files). Volume/issue covers default to the
 provider's art; a per-library **Settings → Metadata** toggle switches manga
-(or comics, which default the other way) to extract the cover from the owned
+or comics to extract the cover from the owned
 file's first page instead — both CBZ and CBR (read via pure-Go rardecode),
 falling back to the provider's art when extraction yields nothing. Below the
 list, a per-series **Missing** section lists the volumes/issues you're not

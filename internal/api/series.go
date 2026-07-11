@@ -26,7 +26,7 @@ func (s *server) handleSearchSeries(w http.ResponseWriter, r *http.Request, medi
 	p := s.metadata.SeriesFor(mediaType)
 	if p == nil {
 		writeError(w, http.StatusServiceUnavailable,
-			"no "+mediaType+" metadata provider configured — ComicVine needs an API key under Settings")
+			"no "+mediaType+" metadata provider configured — add a Hardcover token or ComicVine key under Settings")
 		return
 	}
 	ctx, cancel := s.metadataCtx(r)

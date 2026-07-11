@@ -57,9 +57,10 @@ with a `metadata.opf` sidecar — Audiobookshelf-ready. Ebooks get a
 
 Search the provider, add the series, and every volume/issue appears on its
 page with owned/wanted badges. Manga metadata comes from **AniList** (no
-key) or **Hardcover** (reuses your Hardcover token) — choose the manga
-provider under **Settings → Metadata**; comics use **ComicVine**. Switching
-the manga provider re-sources existing series on their next refresh: each
+key) or **Hardcover** (reuses your Hardcover token); comic metadata from
+**Hardcover** (the default) or **ComicVine** (free key) — choose each
+provider under **Settings → Metadata**. Switching
+a provider re-sources existing series on their next refresh: each
 series is re-matched by title on the newly selected provider, re-bound in
 place (monitoring and owned files kept — owned volumes hand their files to
 the same-numbered new volume), and its volumes re-synced from the new
@@ -85,11 +86,11 @@ carries series-scoped **Search wanted**, **Organize…**, **Scan files**, and
 compact — title + owned/wanted badge — and every row expands to a cover,
 blurb, file locations, and the same controls an individual book has: a
 monitor toggle, **Auto grab**, **Search releases**, and **Remove from
-library** (opt-in delete-files). Manga volume covers default to the
-provider's art, comic issue covers to extraction from the owned archive's
-first page (CBZ or CBR, the latter read via pure-Go rardecode) —
-**Settings → Metadata** has a per-library toggle to switch either, and
-extraction always falls back to the provider's art when it yields nothing.
+library** (opt-in delete-files). Volume/issue covers default to the
+provider's art — **Settings → Metadata** has a per-library toggle to switch
+manga or comics to extraction from the owned archive's first page (CBZ or
+CBR, the latter read via pure-Go rardecode) instead, and extraction always
+falls back to the provider's art when it yields nothing.
 A per-series **Missing** section lists the volumes/issues you're not
 tracking — neither monitored nor owned — each with a one-click **Monitor**;
 removing one forgets its file records so it drops into Missing, and the

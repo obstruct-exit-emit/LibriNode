@@ -8,9 +8,9 @@
 2. **Metadata.** Under **Settings → Metadata**, paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,
    then **Save**. Search goes live immediately. Manga metadata comes from
-   AniList (no key) or Hardcover — pick the manga provider on the same page;
-   comics need a free
-   [ComicVine key](https://comicvine.gamespot.com/api/).
+   AniList (no key) or Hardcover; comics from Hardcover (the default) or a
+   free [ComicVine key](https://comicvine.gamespot.com/api/) — pick each
+   provider on the same page.
 
 3. **Root folders.** Under **Settings → Media Management**, add one root
    folder per media type you use. Adding a root folder is what makes that
