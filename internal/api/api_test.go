@@ -1068,13 +1068,22 @@ func TestDownloadClientsAndGrab(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Validation.
+	// Validation: unknown type is rejected; a bad host too.
 	a.want(a.call("POST", "/api/v1/downloadclient",
 		map[string]any{"name": "x", "type": "transmission", "host": srv.URL}, nil), http.StatusBadRequest)
 	a.want(a.call("POST", "/api/v1/downloadclient",
-		map[string]any{"name": "x", "type": "sabnzbd", "host": srv.URL}, nil), http.StatusBadRequest) // no apiKey
+		map[string]any{"name": "x", "type": "sabnzbd", "host": "not-a-url"}, nil), http.StatusBadRequest)
 
-	// Test-before-save, then create.
+	// SABnzbd needs no API key — a keyless client (Real-Debrid's fake-SAB
+	// endpoint) tests and saves fine.
+	a.want(a.call("POST", "/api/v1/downloadclient/test",
+		map[string]any{"name": "rd", "type": "sabnzbd", "host": srv.URL}, nil), http.StatusOK)
+	var keyless download.ClientConfig
+	a.want(a.call("POST", "/api/v1/downloadclient",
+		map[string]any{"name": "rd", "type": "sabnzbd", "host": srv.URL}, &keyless), http.StatusCreated)
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/downloadclient/%d", keyless.ID), nil, nil), http.StatusNoContent)
+
+	// Test-before-save, then create (with a key this time).
 	a.want(a.call("POST", "/api/v1/downloadclient/test",
 		map[string]any{"name": "sab", "type": "sabnzbd", "host": srv.URL, "apiKey": "k"}, nil), http.StatusOK)
 	var client download.ClientConfig

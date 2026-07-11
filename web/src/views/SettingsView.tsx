@@ -346,10 +346,11 @@ function DownloadClientsCard({
       .finally(() => setBusy(false));
   };
 
+  // The SABnzbd API key is optional — SABnzbd-compatible endpoints like
+  // Real-Debrid's need no key (real SABnzbd rejects unauthenticated calls,
+  // which the Test button surfaces).
   const draftValid =
-    draft.name.trim() !== "" &&
-    /^https?:\/\//.test(draft.host.trim()) &&
-    (draft.type !== "sabnzbd" || draft.apiKey.trim() !== "");
+    draft.name.trim() !== "" && /^https?:\/\//.test(draft.host.trim());
 
   return (
     <section className="card">
@@ -449,7 +450,11 @@ function DownloadClientsCard({
         ) : (
           <label>
             API key
-            <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
+            <input
+              placeholder="Optional — leave blank for Real-Debrid / keyless SABnzbd endpoints"
+              value={draft.apiKey}
+              onChange={(e) => set({ apiKey: e.target.value })}
+            />
           </label>
         )}
         <button

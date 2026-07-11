@@ -38,9 +38,10 @@ func decodeDownloadClient(r *http.Request) (*download.ClientConfig, string) {
 	if !strings.HasPrefix(c.Host, "http://") && !strings.HasPrefix(c.Host, "https://") {
 		return nil, "host must be an http(s) URL"
 	}
-	if c.Type == download.TypeSABnzbd && c.APIKey == "" {
-		return nil, "apiKey is required for SABnzbd"
-	}
+	// A SABnzbd API key is optional: SABnzbd-compatible endpoints such as
+	// Real-Debrid's (which downloads NZBs behind a fake-SABnzbd interface)
+	// need no key. Real SABnzbd will reject unauthenticated calls, which the
+	// connection Test surfaces — so we let it be entered without one.
 	if c.Category == "" {
 		c.Category = "librinode"
 	}
