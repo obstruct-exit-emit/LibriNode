@@ -37,8 +37,9 @@ added it to (or own).
 - Poster-grid browsing with detail pages, per-library Wanted pages, a
   release calendar, health checks, optional login, backups, and a log
   viewer.
-- Manga extras: colorized/monochrome variants in one library, per-series
-  Missing view, and volume covers extracted from the owned CBZ/CBR.
+- Manga/comic extras: per-series Missing view with selective monitoring
+  (adds pull metadata only), colorized/monochrome manga variants in one
+  library, and covers from the provider or extracted from the owned CBZ/CBR.
 - Local image cache: provider art is downloaded on add/refresh and served
   from LibriNode, surviving provider link rot.
 

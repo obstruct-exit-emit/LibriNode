@@ -34,7 +34,9 @@ Notes:
   monitored (see Missing, below). `POST /book`
   takes `foreignBookId` the same way and monitors + enrolls that one book.
   `POST /series` takes `{"mediaType": "manga", "foreignSeriesId": ...}`
-  or `{"mediaType": "magazine", "title": "..."}`.
+  or `{"mediaType": "magazine", "title": "..."}` — like author adds it pulls
+  metadata only (volumes start unmonitored, in the series' Missing section);
+  pass `"monitored": true` for the monitor-everything behavior.
 - The per-author **Missing** section (bibliography gaps not yet monitored
   or owned in a format library) is `GET /author/{id}/missing?library=`;
   one-click monitor is the existing `PUT /book/{id}/library`.

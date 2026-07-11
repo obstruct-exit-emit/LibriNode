@@ -119,8 +119,10 @@ scanner as files land under their variant root.
 
 Add a magazine **by name**; LibriNode recognizes issues by date or number in
 release and file names (`The Economist - 2026-07-04.pdf`, `Issue 452`).
-Scanning materializes owned issues; automatic search grabs newly published
-issues (capped per pass). Imports land as `Magazine/Magazine - date.pdf`.
+Scanning materializes owned issues; once the magazine is monitored (adds
+start unmonitored, like every series), automatic search grabs newly
+published issues (capped per pass). Imports land as
+`Magazine/Magazine - date.pdf`.
 
 ## Organizing files
 
