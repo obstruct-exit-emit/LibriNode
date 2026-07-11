@@ -29,10 +29,12 @@ import (
 type MetadataSettings struct {
 	Active    string                       `yaml:"active"`
 	Providers map[string]metadata.Settings `yaml:"providers"`
-	// MangaProvider chooses the manga series provider ("anilist" or
-	// "hardcover"); empty defaults to anilist. ComicProvider chooses the
-	// comic series provider ("hardcover" or "comicvine"); empty defaults to
-	// hardcover.
+	// MangaProvider chooses the manga series provider ("anilist",
+	// "hardcover", or "none" to disable); empty defaults to anilist.
+	// ComicProvider chooses the comic series provider ("hardcover",
+	// "comicvine", or "none"); empty defaults to hardcover. "none" turns off
+	// search/adds for that library — existing series still refresh through
+	// their own source.
 	MangaProvider string `yaml:"manga_provider,omitempty"`
 	ComicProvider string `yaml:"comic_provider,omitempty"`
 	// MangaCoverSource / ComicCoverSource pick volume/issue cover art per
@@ -40,6 +42,15 @@ type MetadataSettings struct {
 	// "provider" (the metadata provider's art). Both default to provider art.
 	MangaCoverSource string `yaml:"manga_cover_source,omitempty"`
 	ComicCoverSource string `yaml:"comic_cover_source,omitempty"`
+	// Language / Country / IncludeAdult are global, provider-agnostic
+	// metadata preferences: every provider that carries the data prefers
+	// matching editions/entries and falls back to less strict picks.
+	// Defaults: english, united states, adult content hidden; "none" means
+	// no preference at all. They shape METADATA only — acquisition (quality
+	// profiles) is untouched.
+	Language     string `yaml:"language,omitempty"`
+	Country      string `yaml:"country,omitempty"`
+	IncludeAdult bool   `yaml:"include_adult,omitempty"`
 }
 
 // MangaSeriesProvider returns the configured manga provider name, defaulting
@@ -62,6 +73,56 @@ func (c *Config) ComicSeriesProvider() string {
 		return "hardcover"
 	}
 	return c.Metadata.ComicProvider
+}
+
+// MetadataLanguage returns the global metadata language preference,
+// defaulting to english.
+func (c *Config) MetadataLanguage() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Metadata.Language == "" {
+		return "english"
+	}
+	return c.Metadata.Language
+}
+
+// MetadataCountry returns the global metadata country preference, defaulting
+// to united states.
+func (c *Config) MetadataCountry() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Metadata.Country == "" {
+		return "united states"
+	}
+	return c.Metadata.Country
+}
+
+// IncludeAdult reports whether adult-flagged results may appear in metadata
+// searches (default: hidden).
+func (c *Config) IncludeAdult() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Metadata.IncludeAdult
+}
+
+// ProviderSettings returns the providers map with the global metadata
+// preferences injected into every entry — providers are built from Settings
+// alone, so the preferences ride along to each of them, present and future.
+// A "none" language/country means no preference and is injected as empty.
+func (c *Config) ProviderSettings() map[string]metadata.Settings {
+	ms := c.MetadataSettings()
+	lang, country, adult := c.MetadataLanguage(), c.MetadataCountry(), c.IncludeAdult()
+	if lang == "none" {
+		lang = ""
+	}
+	if country == "none" {
+		country = ""
+	}
+	for name, s := range ms.Providers {
+		s.Language, s.Country, s.IncludeAdult = lang, country, adult
+		ms.Providers[name] = s
+	}
+	return ms.Providers
 }
 
 // CoverSourceFor returns the effective volume-cover source ("file" or
@@ -364,6 +425,9 @@ func (c *Config) MetadataSettings() MetadataSettings {
 		ComicProvider:    c.Metadata.ComicProvider,
 		MangaCoverSource: c.Metadata.MangaCoverSource,
 		ComicCoverSource: c.Metadata.ComicCoverSource,
+		Language:         c.Metadata.Language,
+		Country:          c.Metadata.Country,
+		IncludeAdult:     c.Metadata.IncludeAdult,
 		Providers:        make(map[string]metadata.Settings, len(c.Metadata.Providers)),
 	}
 	for name, s := range c.Metadata.Providers {

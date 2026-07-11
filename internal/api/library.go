@@ -323,6 +323,33 @@ func (s *server) handleMonitorAuthor(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "monitored": req.Monitored})
 }
 
+// handleAuthorProvider sets (or with "" clears) the author's per-record
+// provider override — it beats the global Settings → Metadata selection on
+// the next refresh, including a disabled ("None") book provider.
+func (s *server) handleAuthorProvider(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if req.Provider != "" && !slices.Contains(metadata.Available(), req.Provider) {
+		writeError(w, http.StatusBadRequest, "unknown provider: "+req.Provider)
+		return
+	}
+	if err := s.store.SetAuthorProviderOverride(id, req.Provider); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.writeAuthorDetail(w, http.StatusOK, id)
+}
+
 func (s *server) handleDeleteAuthor(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {

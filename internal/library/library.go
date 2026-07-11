@@ -23,10 +23,13 @@ type Author struct {
 	Monitored   bool   `json:"monitored"`
 	// Per-format library membership: the author was added to (or owns files
 	// in) that library — independent of how many books are visible there.
-	InEbookLibrary     bool   `json:"inEbookLibrary"`
-	InAudiobookLibrary bool   `json:"inAudiobookLibrary"`
-	AddedAt            string `json:"addedAt"`
-	UpdatedAt          string `json:"updatedAt"`
+	InEbookLibrary     bool `json:"inEbookLibrary"`
+	InAudiobookLibrary bool `json:"inAudiobookLibrary"`
+	// ProviderOverride pins this author to a metadata provider, beating the
+	// global Settings → Metadata selection ("" = follow settings).
+	ProviderOverride string `json:"providerOverride"`
+	AddedAt          string `json:"addedAt"`
+	UpdatedAt        string `json:"updatedAt"`
 	// Grid stats, populated by library-scoped listings.
 	BookCount  int `json:"bookCount"`
 	OwnedCount int `json:"ownedCount"`
@@ -96,7 +99,10 @@ type Series struct {
 	MediaType   string `json:"mediaType"` // book (prose series), manga, comic
 	Monitored   bool   `json:"monitored"`
 	MonitorNew  bool   `json:"monitorNew"` // future volumes start monitored
-	CoverURL    string `json:"coverUrl"`
+	// ProviderOverride pins this series to a metadata provider, beating the
+	// global Settings → Metadata selection ("" = follow settings).
+	ProviderOverride string `json:"providerOverride"`
+	CoverURL         string `json:"coverUrl"`
 	// Grid stats, populated by listings.
 	ItemCount  int `json:"itemCount"`
 	OwnedCount int `json:"ownedCount"`

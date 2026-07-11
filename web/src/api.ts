@@ -23,6 +23,7 @@ export interface Author {
   monitored: boolean;
   inEbookLibrary: boolean;
   inAudiobookLibrary: boolean;
+  providerOverride: string;
   bookCount?: number;
   ownedCount: number;
   books?: Book[];
@@ -160,6 +161,7 @@ export interface Series {
   mediaType: string;
   monitored: boolean;
   monitorNew: boolean;
+  providerOverride: string;
   coverUrl: string;
   itemCount: number;
   ownedCount: number;
@@ -357,6 +359,9 @@ export interface MetadataSettings {
   comicProvider: string;
   mangaCoverSource: string;
   comicCoverSource: string;
+  language: string;
+  country: string;
+  includeAdult: boolean;
 }
 
 export interface ImportSettings {
@@ -491,6 +496,11 @@ export const api = {
     request<Author>("/api/v1/author", json({ foreignAuthorId, library })),
   refreshAuthor: (id: number) =>
     request<Author>(`/api/v1/author/${id}/refresh`, { method: "POST" }),
+  setAuthorProvider: (id: number, provider: string) =>
+    request<Author>(`/api/v1/author/${id}/provider`, {
+      ...json({ provider }),
+      method: "PUT",
+    }),
   authorMissing: (id: number, library: string) =>
     request<Book[]>(`/api/v1/author/${id}/missing?library=${library}`),
   searchAuthorWanted: (id: number, library: string) =>
@@ -635,6 +645,11 @@ export const api = {
   addMagazine: (title: string) =>
     request<Series>("/api/v1/series", json({ mediaType: "magazine", title })),
   getSeries: (id: number) => request<Series>(`/api/v1/series/${id}`),
+  setSeriesProvider: (id: number, provider: string) =>
+    request<Series>(`/api/v1/series/${id}/provider`, {
+      ...json({ provider }),
+      method: "PUT",
+    }),
   monitorSeries: (id: number, monitored: boolean, monitorNew: boolean) =>
     request<Series>(`/api/v1/series/${id}/monitor`, {
       ...json({ monitored, monitorNew }),
@@ -669,6 +684,9 @@ export const api = {
       comicProvider?: string;
       mangaCoverSource?: string;
       comicCoverSource?: string;
+      language?: string;
+      country?: string;
+      includeAdult?: boolean;
     },
   ) =>
     request<MetadataSettings>("/api/v1/settings/metadata", {

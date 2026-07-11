@@ -25,6 +25,15 @@ export default function AuthorDetailView({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [notice, setNotice] = useState("");
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
+  const [providerOptions, setProviderOptions] = useState<string[]>([]);
+
+  // The provider-override selector lists the registered book providers.
+  useEffect(() => {
+    api
+      .getMetadataSettings()
+      .then((s) => setProviderOptions(s.available))
+      .catch(() => setProviderOptions([]));
+  }, []);
 
   const reload = useCallback(() => {
     // Visible = member of this library AND (monitored here or owned here);
@@ -167,6 +176,28 @@ export default function AuthorDetailView({
             >
               Refresh metadata
             </button>
+            {providerOptions.length > 0 && (
+              <select
+                disabled={busy}
+                title="Metadata provider override for this author — beats Settings → Metadata (including None) on the next refresh"
+                value={author.providerOverride}
+                onChange={(e) =>
+                  headerAction(async () => {
+                    await api.setAuthorProvider(author.id, e.target.value);
+                    return e.target.value
+                      ? `✓ Provider pinned to ${e.target.value}`
+                      : "✓ Provider follows Settings → Metadata";
+                  })
+                }
+              >
+                <option value="">Provider: follow settings</option>
+                {providerOptions.map((name) => (
+                  <option key={name} value={name}>
+                    Provider: {name[0].toUpperCase() + name.slice(1)}
+                  </option>
+                ))}
+              </select>
+            )}
             <button className="danger" disabled={busy} onClick={() => setConfirmRemove(!confirmRemove)}>
               Remove from {label}
             </button>

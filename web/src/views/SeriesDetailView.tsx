@@ -35,6 +35,7 @@ export default function SeriesDetailView({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [notice, setNotice] = useState("");
+  const [providerOptions, setProviderOptions] = useState<string[]>([]);
 
   const reload = useCallback(() => {
     api
@@ -44,6 +45,18 @@ export default function SeriesDetailView({
   }, [id, onError]);
 
   useEffect(reload, [reload]);
+
+  // The provider-override selector lists the providers serving this media type.
+  useEffect(() => {
+    api
+      .getMetadataSettings()
+      .then((s) =>
+        setProviderOptions(
+          mediaType === "manga" ? s.mangaProviders : mediaType === "comic" ? s.comicProviders : [],
+        ),
+      )
+      .catch(() => setProviderOptions([]));
+  }, [mediaType]);
 
   if (!series) return <p className="muted">Loading series…</p>;
 
@@ -186,6 +199,21 @@ export default function SeriesDetailView({
               >
                 Refresh metadata
               </button>
+            )}
+            {series.metadataSource !== "manual" && providerOptions.length > 0 && (
+              <select
+                disabled={busy}
+                title="Metadata provider override for this series — beats Settings → Metadata (including None) on the next refresh"
+                value={series.providerOverride}
+                onChange={(e) => run(() => api.setSeriesProvider(series.id, e.target.value))}
+              >
+                <option value="">Provider: follow settings</option>
+                {providerOptions.map((name) => (
+                  <option key={name} value={name}>
+                    Provider: {name[0].toUpperCase() + name.slice(1)}
+                  </option>
+                ))}
+              </select>
             )}
             <button
               className="danger"

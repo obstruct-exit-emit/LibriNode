@@ -184,8 +184,10 @@ func TestSearchWithoutProvider(t *testing.T) {
 	a.want(a.call("GET", "/api/v1/search?term=x", nil, nil), http.StatusServiceUnavailable)
 	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, nil), http.StatusServiceUnavailable)
 	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, nil), http.StatusServiceUnavailable)
-	a.want(a.call("POST", "/api/v1/author/1/refresh", nil, nil), http.StatusServiceUnavailable)
-	a.want(a.call("POST", "/api/v1/book/1/refresh", nil, nil), http.StatusServiceUnavailable)
+	// Refresh resolves the record first (its provider override may apply),
+	// so a missing record 404s before the provider check.
+	a.want(a.call("POST", "/api/v1/author/1/refresh", nil, nil), http.StatusNotFound)
+	a.want(a.call("POST", "/api/v1/book/1/refresh", nil, nil), http.StatusNotFound)
 }
 
 func TestMetadataSettingsHotSwap(t *testing.T) {
@@ -235,6 +237,66 @@ func TestMetadataSettingsHotSwap(t *testing.T) {
 		"providers": map[string]any{"fake": map[string]string{"token": ""}},
 	}, nil), http.StatusOK)
 	a.want(a.call("GET", "/api/v1/search?term=magic", nil, nil), http.StatusServiceUnavailable)
+}
+
+// TestSeriesProviderNone: "none" disables a media type's provider — manga
+// search goes unavailable AND refreshes fetch nothing (libraries always
+// honor the settings). The per-series provider override is the explicit
+// escape hatch: once set, refresh uses that provider even under "none".
+func TestSeriesProviderNone(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 2
+	// Registered (not just injected) so the settings PUT's ConfigureSeries
+	// rebuild keeps the provider available by name.
+	metadata.RegisterSeries("fakemanga", func(metadata.Settings) (metadata.SeriesProvider, error) {
+		return fakeSeriesProvider{volumes: &volumes}, nil
+	})
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+
+	// Disable the manga provider via settings ("none" must validate).
+	var settings struct {
+		MangaProvider string `json:"mangaProvider"`
+	}
+	a.want(a.call("PUT", "/api/v1/settings/metadata", map[string]any{
+		"active": "", "providers": map[string]any{}, "mangaProvider": "none",
+	}, &settings), http.StatusOK)
+	if settings.MangaProvider != "none" {
+		t.Fatalf("mangaProvider = %q, want none", settings.MangaProvider)
+	}
+	a.want(a.call("GET", "/api/v1/search?term=berserk&type=manga", nil, nil), http.StatusServiceUnavailable)
+
+	// A refresh under provider=none fetches NOTHING — the volume count must
+	// not change even though the provider now reports more volumes.
+	volumes = 3
+	var refreshed library.Series
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/refresh", series.ID), nil, &refreshed), http.StatusOK)
+	if len(refreshed.Volumes) != 2 {
+		t.Fatalf("refresh under provider=none fetched metadata: %d volumes, want 2", len(refreshed.Volumes))
+	}
+
+	// The per-series provider override beats the global "none".
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/provider", series.ID),
+		map[string]string{"provider": "fakemanga"}, &refreshed), http.StatusOK)
+	if refreshed.ProviderOverride != "fakemanga" {
+		t.Fatalf("providerOverride = %q, want fakemanga", refreshed.ProviderOverride)
+	}
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/refresh", series.ID), nil, &refreshed), http.StatusOK)
+	if len(refreshed.Volumes) != 3 {
+		t.Fatalf("refresh with override got %d volumes, want 3", len(refreshed.Volumes))
+	}
+
+	// Clearing the override re-honors the global setting.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/provider", series.ID),
+		map[string]string{"provider": ""}, &refreshed), http.StatusOK)
+	volumes = 4
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/series/%d/refresh", series.ID), nil, &refreshed), http.StatusOK)
+	if len(refreshed.Volumes) != 3 {
+		t.Fatalf("refresh after clearing override fetched metadata under none: %d volumes, want 3", len(refreshed.Volumes))
+	}
 }
 
 // fakeSeriesProvider serves one manga series whose volume count can grow.

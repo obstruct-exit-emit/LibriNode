@@ -9,11 +9,21 @@ import (
 )
 
 // Settings holds one provider's configuration. Every current provider needs
-// at most a token; provider-specific fields (base URL, language, ...) get
-// added here as new sources land, so the config file and settings API don't
-// change shape per provider.
+// at most a token; provider-specific fields (base URL, ...) get added here
+// as new sources land, so the config file and settings API don't change
+// shape per provider.
 type Settings struct {
 	Token string `yaml:"token" json:"token"`
+	// Language, Country, and IncludeAdult are the GLOBAL metadata
+	// preferences (Settings → Metadata), injected at build time
+	// (config.ProviderSettings) so every provider — current and future —
+	// can honor them without provider-specific settings. Providers prefer
+	// editions/entries matching them and fall back to less strict picks;
+	// a provider without the data ignores them. Metadata only — quality
+	// profiles own acquisition. Never persisted per provider.
+	Language     string `yaml:"-" json:"-"`
+	Country      string `yaml:"-" json:"-"`
+	IncludeAdult bool   `yaml:"-" json:"-"`
 }
 
 // Factory builds a provider from its settings. Returning ErrNotConfigured
@@ -129,6 +139,9 @@ type Manager struct {
 	active       Provider
 	series       map[string]SeriesProvider // selected provider per media type
 	seriesByName map[string]SeriesProvider // every configured provider, by name
+	// settings as last passed to Configure, so per-record provider overrides
+	// can build a non-active book provider by name.
+	bookSettings map[string]Settings
 }
 
 func NewManager() *Manager {
@@ -151,8 +164,17 @@ func (m *Manager) Set(p Provider) {
 
 // Configure builds and activates the named provider from settings. An empty
 // name, or a factory reporting ErrNotConfigured, deactivates metadata
-// cleanly; other build errors leave the previous provider in place.
+// cleanly; other build errors leave the previous provider in place. The
+// settings map is retained (copied) for by-name builds (ProviderByName).
 func (m *Manager) Configure(name string, settings map[string]Settings) error {
+	retained := make(map[string]Settings, len(settings))
+	for k, v := range settings {
+		retained[k] = v
+	}
+	m.mu.Lock()
+	m.bookSettings = retained
+	m.mu.Unlock()
+
 	if name == "" {
 		m.Set(nil)
 		return nil
@@ -167,6 +189,26 @@ func (m *Manager) Configure(name string, settings map[string]Settings) error {
 	}
 	m.Set(p)
 	return nil
+}
+
+// ProviderByName returns the named book provider for a per-record override:
+// the active provider when the name matches, otherwise one built from the
+// retained settings. Nil when unknown or unconfigured.
+func (m *Manager) ProviderByName(name string) Provider {
+	if name == "" {
+		return nil
+	}
+	if p := m.Current(); p != nil && p.Name() == name {
+		return p
+	}
+	m.mu.RLock()
+	s := m.bookSettings[name]
+	m.mu.RUnlock()
+	p, err := Build(name, s)
+	if err != nil {
+		return nil
+	}
+	return p
 }
 
 // ConfigureSeries (re)builds every registered series provider from settings;
@@ -197,6 +239,12 @@ func (m *Manager) ConfigureSeries(settings map[string]Settings, selection map[st
 
 	built := map[string]SeriesProvider{}
 	for mt, providers := range byType {
+		// "none" disables the media type's provider outright: no search, no
+		// adds; existing series still refresh through their own source
+		// (SeriesProviderByName).
+		if selection[mt] == "none" {
+			continue
+		}
 		chosen := providers[0]
 		for _, p := range providers {
 			if p.Name() == selection[mt] {

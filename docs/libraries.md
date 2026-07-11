@@ -59,12 +59,18 @@ Search the provider, add the series, and every volume/issue appears on its
 page with owned/wanted badges. Manga metadata comes from **AniList** (no
 key) or **Hardcover** (reuses your Hardcover token); comic metadata from
 **Hardcover** (the default) or **ComicVine** (free key) — choose each
-provider under **Settings → Metadata**. Switching
+provider under **Settings → Metadata** — or **None** to disable the
+library's metadata entirely (libraries always honor the settings: under
+None nothing is fetched, not even on refresh). Switching
 a provider re-sources existing series on their next refresh: each
 series is re-matched by title on the newly selected provider, re-bound in
 place (monitoring and owned files kept — owned volumes hand their files to
 the same-numbered new volume), and its volumes re-synced from the new
-provider. Like adding an author, **adding a series pulls metadata only**:
+provider. Every author and series page also carries a **provider
+override** (off by default): pin a record to a provider and its refreshes
+use that one, beating the global selection — including None. That's how a
+mixed library stays stable: pin the exceptions, let everything else follow
+the settings. Like adding an author, **adding a series pulls metadata only**:
 every volume/issue starts unmonitored in the series' Missing section (and a
 fresh magazine doesn't auto-grab) until you monitor items selectively or
 flip the series' monitor toggle — which monitors every volume at once and
@@ -78,10 +84,16 @@ AniList yet — they add with zero volumes and fill in as AniList publishes
 totals — and AniList synthesizes volumes without per-volume descriptions
 (left blank rather than repeating the series blurb on every volume).
 Hardcover carries real per-volume descriptions and covers: volumes are
-numbered by the series' positions, position-0 spin-offs and
-reissue/box-set/omnibus editions are dropped in favor of one standard
-edition per volume, and sequential numbering is only a fallback for series
-with no positions at all.
+numbered by the series' positions, position-0 spin-offs are dropped, and
+each volume keeps one edition chosen by the global metadata preferences
+(**Settings → Metadata → Preferences**) — the edition matching your
+language, then the standard (non-reissue/box-set) printing, then your
+country, then the richest description; sequential numbering is only a
+fallback for series with no positions at all. The preferences are
+provider-agnostic: any provider that carries the data honors them
+(AniList also uses the language to pick English vs romaji titles, and its
+adult-flagged series stay out of search unless "include adult content"
+is on).
 
 Manga and comic series get the full author/book treatment. The series page
 carries series-scoped **Search wanted**, **Organize…**, **Scan files**, and

@@ -68,6 +68,45 @@ func TestSearchSeries(t *testing.T) {
 	}
 }
 
+// TestSearchSeriesAdultFilter: adult-flagged series stay out of search
+// results unless the global include-adult preference is on; the language
+// preference also picks romaji titles for non-English users.
+func TestSearchSeriesAdultFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data": {"Page": {"media": [
+			{"id": 1, "isAdult": false, "title": {"english": "Attack on Titan", "romaji": "Shingeki no Kyojin"}, "volumes": 34},
+			{"id": 2, "isAdult": true, "title": {"english": "Adult Thing", "romaji": "Adult Thing"}, "volumes": 3}
+		]}}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithEndpoint(srv.URL)) // defaults: adult hidden, English titles
+	results, err := c.SearchSeries(context.Background(), "titan")
+	if err != nil {
+		t.Fatalf("SearchSeries: %v", err)
+	}
+	if len(results) != 1 || results[0].ForeignID != "1" {
+		t.Fatalf("adult result leaked through the default filter: %+v", results)
+	}
+	if results[0].Title != "Attack on Titan" {
+		t.Errorf("default title = %q, want the English one", results[0].Title)
+	}
+
+	c = New(WithEndpoint(srv.URL))
+	c.includeAdult = true
+	c.preferRomaji = true // a non-English language preference
+	if results, err = c.SearchSeries(context.Background(), "titan"); err != nil {
+		t.Fatalf("SearchSeries: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("include-adult should surface both results: %+v", results)
+	}
+	if results[0].Title != "Shingeki no Kyojin" {
+		t.Errorf("romaji preference ignored: %q", results[0].Title)
+	}
+}
+
 func TestGetSeries(t *testing.T) {
 	c := mockAniList(t)
 	s, err := c.GetSeries(context.Background(), "30002")

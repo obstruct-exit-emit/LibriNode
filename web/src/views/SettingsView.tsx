@@ -1094,6 +1094,17 @@ function NamingCard({
   );
 }
 
+// Global metadata preference options (values stored lower-case; providers
+// match them case-insensitively against their own data).
+const LANGUAGES = [
+  "english", "spanish", "french", "german", "italian", "portuguese",
+  "dutch", "polish", "russian", "japanese", "chinese", "korean",
+];
+const COUNTRIES = [
+  "united states", "united kingdom", "canada", "australia", "germany",
+  "france", "spain", "italy", "brazil", "netherlands", "poland", "japan",
+];
+
 function MetadataCard({
   onError,
 }: {
@@ -1107,6 +1118,9 @@ function MetadataCard({
   const [comicProvider, setComicProvider] = useState("");
   const [mangaCoverSource, setMangaCoverSource] = useState("provider");
   const [comicCoverSource, setComicCoverSource] = useState("provider");
+  const [language, setLanguage] = useState("english");
+  const [country, setCountry] = useState("united states");
+  const [includeAdult, setIncludeAdult] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [cacheNotice, setCacheNotice] = useState("");
@@ -1141,6 +1155,9 @@ function MetadataCard({
         setComicProvider(s.comicProvider);
         setMangaCoverSource(s.mangaCoverSource);
         setComicCoverSource(s.comicCoverSource);
+        setLanguage(s.language);
+        setCountry(s.country);
+        setIncludeAdult(s.includeAdult);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
@@ -1175,6 +1192,9 @@ function MetadataCard({
         comicProvider,
         mangaCoverSource,
         comicCoverSource,
+        language,
+        country,
+        includeAdult,
       })
       .then((s) => {
         setSettings(s);
@@ -1184,6 +1204,9 @@ function MetadataCard({
         setComicProvider(s.comicProvider);
         setMangaCoverSource(s.mangaCoverSource);
         setComicCoverSource(s.comicCoverSource);
+        setLanguage(s.language);
+        setCountry(s.country);
+        setIncludeAdult(s.includeAdult);
         const hasToken = s.active && s.providers[s.active]?.token;
         setNotice(
           hasToken
@@ -1253,6 +1276,63 @@ function MetadataCard({
         </div>
 
         <div className="settings-section">
+          <h3>Preferences</h3>
+          <p className="muted">
+            Global metadata preferences, honored by every provider that
+            carries the data (with graceful fallback when nothing matches).
+            They shape metadata only — what to grab is the quality profiles'
+            job.
+          </p>
+          <label>
+            Language
+            <select
+              value={language}
+              onChange={(e) => {
+                setLanguage(e.target.value);
+                setNotice("");
+              }}
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l} value={l}>
+                  {l[0].toUpperCase() + l.slice(1)}
+                </option>
+              ))}
+              <option value="none">No preference</option>
+            </select>
+          </label>
+          <label>
+            Country
+            <select
+              value={country}
+              onChange={(e) => {
+                setCountry(e.target.value);
+                setNotice("");
+              }}
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c} value={c}>
+                  {c.replace(/\b\w/g, (ch) => ch.toUpperCase())}
+                </option>
+              ))}
+              <option value="none">No preference</option>
+            </select>
+          </label>
+          <label className="check">
+            <span>
+              <input
+                type="checkbox"
+                checked={includeAdult}
+                onChange={(e) => {
+                  setIncludeAdult(e.target.checked);
+                  setNotice("");
+                }}
+              />{" "}
+              Include adult content in metadata search results
+            </span>
+          </label>
+        </div>
+
+        <div className="settings-section">
           <h3>Ebooks &amp; Audiobooks</h3>
           <label>
             Book provider
@@ -1291,6 +1371,7 @@ function MetadataCard({
                   {name === "hardcover" ? " (uses your Hardcover token)" : ""}
                 </option>
               ))}
+              <option value="none">None (disabled)</option>
             </select>
           </label>
           <label>
@@ -1326,6 +1407,7 @@ function MetadataCard({
                   {name === "hardcover" ? " (uses your Hardcover token)" : ""}
                 </option>
               ))}
+              <option value="none">None (disabled)</option>
             </select>
           </label>
           <label>

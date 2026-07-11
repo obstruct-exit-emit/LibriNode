@@ -21,7 +21,7 @@ func TestSeriesSearchAndGet(t *testing.T) {
 			]
 		}]}}`,
 	})
-	sc := &SeriesClient{c, "manga"}
+	sc := &SeriesClient{Client: c, mediaType: "manga"}
 
 	if sc.MediaType() != "manga" || sc.Name() != "hardcover" {
 		t.Fatalf("MediaType/Name = %s/%s", sc.MediaType(), sc.Name())
@@ -79,7 +79,7 @@ func TestSeriesMessyPositionsFallBackToSequential(t *testing.T) {
 			]
 		}]}}`,
 	})
-	sc := &SeriesClient{c, "manga"}
+	sc := &SeriesClient{Client: c, mediaType: "manga"}
 
 	s, err := sc.GetSeries(context.Background(), "7310")
 	if err != nil {
@@ -111,7 +111,7 @@ func TestSeriesDropsSpinOffsAndPrefersStandardEdition(t *testing.T) {
 			]
 		}]}}`,
 	})
-	sc := &SeriesClient{c, "manga"}
+	sc := &SeriesClient{Client: c, mediaType: "manga"}
 
 	s, err := sc.GetSeries(context.Background(), "7310")
 	if err != nil {
@@ -130,5 +130,56 @@ func TestSeriesDropsSpinOffsAndPrefersStandardEdition(t *testing.T) {
 	}
 	if s.Issues[1].Number != 2 || s.Issues[1].ForeignID != "103" {
 		t.Fatalf("volume 2 = %+v, want position-2 edition (id 103)", s.Issues[1])
+	}
+}
+
+// TestSeriesLanguageAndCountryPreference: the global metadata preferences
+// outrank every other tier — a Spanish preference picks the Spanish printing
+// over the standard English one with the richer description; with two
+// same-language candidates, the country preference breaks the tie. No match
+// at all falls back to the usual standard/description tiers.
+func TestSeriesLanguageAndCountryPreference(t *testing.T) {
+	mock := map[string]string{
+		"Series": `{"data":{"series":[{
+			"id":7310,"name":"Death Note","books_count":4,
+			"book_series":[
+				{"position":9,"book":{"id":100,"title":"Death Note, Vol. 9","description":"A long, rich English synopsis of volume nine.",
+					"editions":[{"language":{"language":"English"},"country":{"name":"United States of America"}}]}},
+				{"position":9,"book":{"id":101,"title":"Death Note 09: Contacto","description":"Sinopsis corta.",
+					"editions":[{"language":{"language":"Spanish; Castilian"},"country":{"name":"Spain"}}]}},
+				{"position":10,"book":{"id":102,"title":"Death Note, Vol. 10","description":"US printing, longer description here.",
+					"editions":[{"language":{"language":"English"},"country":{"name":"United States of America"}}]}},
+				{"position":10,"book":{"id":103,"title":"Death Note, Vol. 10 (UK)","description":"UK printing.",
+					"editions":[{"language":{"language":"English"},"country":{"name":"United Kingdom"}}]}}
+			]
+		}]}}`,
+	}
+
+	// Spanish preference: the Spanish edition wins volume 9 despite the
+	// English one's longer description; volume 10 (no Spanish at all) falls
+	// back to the description tiers.
+	sc := &SeriesClient{Client: mockAPI(t, mock), mediaType: "manga", language: "spanish"}
+	s, err := sc.GetSeries(context.Background(), "7310")
+	if err != nil {
+		t.Fatalf("GetSeries: %v", err)
+	}
+	if s.Issues[0].ForeignID != "101" {
+		t.Fatalf("vol 9 with Spanish pref = %+v, want the Spanish edition (101)", s.Issues[0])
+	}
+	if s.Issues[1].ForeignID != "102" {
+		t.Fatalf("vol 10 with Spanish pref = %+v, want fallback to richest description (102)", s.Issues[1])
+	}
+
+	// English + United Kingdom: language ties volume 10's two candidates, the
+	// country preference picks the UK printing over the longer-described US one.
+	sc = &SeriesClient{Client: mockAPI(t, mock), mediaType: "manga", language: "english", country: "united kingdom"}
+	if s, err = sc.GetSeries(context.Background(), "7310"); err != nil {
+		t.Fatalf("GetSeries: %v", err)
+	}
+	if s.Issues[0].ForeignID != "100" {
+		t.Fatalf("vol 9 with English pref = %+v, want the English edition (100)", s.Issues[0])
+	}
+	if s.Issues[1].ForeignID != "103" {
+		t.Fatalf("vol 10 with UK pref = %+v, want the UK printing (103)", s.Issues[1])
 	}
 }

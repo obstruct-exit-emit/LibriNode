@@ -62,13 +62,13 @@ func (s *Store) UpsertAuthor(a *Author) error {
 }
 
 const authorCols = `id, metadata_source, foreign_id, name, sort_name, description, image_url, monitored,
-	in_ebook_library, in_audiobook_library, added_at, updated_at`
+	in_ebook_library, in_audiobook_library, provider_override, added_at, updated_at`
 
 func scanAuthor(row interface{ Scan(...any) error }) (*Author, error) {
 	var a Author
 	err := row.Scan(&a.ID, &a.Source, &a.ForeignID, &a.Name, &a.SortName,
 		&a.Description, &a.ImageURL, &a.Monitored,
-		&a.InEbookLibrary, &a.InAudiobookLibrary, &a.AddedAt, &a.UpdatedAt)
+		&a.InEbookLibrary, &a.InAudiobookLibrary, &a.ProviderOverride, &a.AddedAt, &a.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -174,6 +174,20 @@ func libraryColumn(mediaType string) (string, error) {
 		return "in_audiobook_library", nil
 	}
 	return "", errors.New("library must be ebook or audiobook")
+}
+
+// SetAuthorProviderOverride pins (or with "" clears) the author's metadata
+// provider override.
+func (s *Store) SetAuthorProviderOverride(id int64, provider string) error {
+	res, err := s.db.Exec(
+		`UPDATE authors SET provider_override = ?, updated_at = datetime('now') WHERE id = ?`, provider, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) SetAuthorMonitored(id int64, monitored bool) error {
@@ -522,12 +536,12 @@ func (s *Store) SeriesBookPositions(seriesID int64) (map[int64]float64, error) {
 	return positions, rows.Err()
 }
 
-const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url`
+const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, provider_override, cover_url`
 
 func scanSeries(row interface{ Scan(...any) error }) (*Series, error) {
 	var sr Series
 	err := row.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
-		&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.CoverURL)
+		&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -564,13 +578,26 @@ func (s *Store) ListSeries(mediaType string) ([]Series, error) {
 	for rows.Next() {
 		var sr Series
 		if err := rows.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
-			&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.CoverURL,
+			&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL,
 			&sr.ItemCount, &sr.OwnedCount); err != nil {
 			return nil, err
 		}
 		out = append(out, sr)
 	}
 	return out, rows.Err()
+}
+
+// SetSeriesProviderOverride pins (or with "" clears) the series' metadata
+// provider override.
+func (s *Store) SetSeriesProviderOverride(id int64, provider string) error {
+	res, err := s.db.Exec(`UPDATE series SET provider_override = ? WHERE id = ?`, provider, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetSeriesMonitored updates a series' monitoring flags and mirrors the

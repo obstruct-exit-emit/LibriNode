@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/librinode/librinode/internal/config"
@@ -32,6 +33,10 @@ type metadataSettingsResponse struct {
 	// values — defaults applied).
 	MangaCoverSource string `json:"mangaCoverSource"`
 	ComicCoverSource string `json:"comicCoverSource"`
+	// Global, provider-agnostic metadata preferences (effective values).
+	Language     string `json:"language"`
+	Country      string `json:"country"`
+	IncludeAdult bool   `json:"includeAdult"`
 }
 
 func (s *server) metadataSettingsResponse() metadataSettingsResponse {
@@ -47,6 +52,9 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 		ComicProvider:    s.cfg.ComicSeriesProvider(),
 		MangaCoverSource: s.cfg.CoverSourceFor("manga"),
 		ComicCoverSource: s.cfg.CoverSourceFor("comic"),
+		Language:         s.cfg.MetadataLanguage(),
+		Country:          s.cfg.MetadataCountry(),
+		IncludeAdult:     s.cfg.IncludeAdult(),
 	}
 	// Every registered provider shows up in the form, configured or not.
 	for _, name := range append(append([]string{}, resp.Available...), resp.SeriesAvailable...) {
@@ -75,6 +83,9 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		ComicProvider    string                       `json:"comicProvider"`
 		MangaCoverSource string                       `json:"mangaCoverSource"`
 		ComicCoverSource string                       `json:"comicCoverSource"`
+		Language         string                       `json:"language"`
+		Country          string                       `json:"country"`
+		IncludeAdult     bool                         `json:"includeAdult"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -84,11 +95,13 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "unknown provider: "+req.Active)
 		return
 	}
-	if req.MangaProvider != "" && !slices.Contains(metadata.AvailableSeriesProviders("manga"), req.MangaProvider) {
+	if req.MangaProvider != "" && req.MangaProvider != "none" &&
+		!slices.Contains(metadata.AvailableSeriesProviders("manga"), req.MangaProvider) {
 		writeError(w, http.StatusBadRequest, "unknown manga provider: "+req.MangaProvider)
 		return
 	}
-	if req.ComicProvider != "" && !slices.Contains(metadata.AvailableSeriesProviders("comic"), req.ComicProvider) {
+	if req.ComicProvider != "" && req.ComicProvider != "none" &&
+		!slices.Contains(metadata.AvailableSeriesProviders("comic"), req.ComicProvider) {
 		writeError(w, http.StatusBadRequest, "unknown comic provider: "+req.ComicProvider)
 		return
 	}
@@ -107,8 +120,25 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		ComicProvider:    req.ComicProvider,
 		MangaCoverSource: req.MangaCoverSource,
 		ComicCoverSource: req.ComicCoverSource,
+		Language:         strings.ToLower(strings.TrimSpace(req.Language)),
+		Country:          strings.ToLower(strings.TrimSpace(req.Country)),
+		IncludeAdult:     req.IncludeAdult,
 	}
-	if err := s.metadata.Configure(ms.Active, ms.Providers); err != nil {
+	// Build with the global preferences injected (same shape ProviderSettings
+	// produces once the config is saved); "none" means no preference.
+	lang, country := ms.Language, ms.Country
+	if lang == "none" {
+		lang = ""
+	}
+	if country == "none" {
+		country = ""
+	}
+	injected := make(map[string]metadata.Settings, len(ms.Providers))
+	for name, ps := range ms.Providers {
+		ps.Language, ps.Country, ps.IncludeAdult = lang, country, ms.IncludeAdult
+		injected[name] = ps
+	}
+	if err := s.metadata.Configure(ms.Active, injected); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -116,7 +146,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}
-	s.metadata.ConfigureSeries(ms.Providers, s.cfg.SeriesSelection())
+	s.metadata.ConfigureSeries(s.cfg.ProviderSettings(), s.cfg.SeriesSelection())
 	writeJSON(w, http.StatusOK, s.metadataSettingsResponse())
 }
 

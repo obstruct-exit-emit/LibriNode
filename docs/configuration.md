@@ -14,10 +14,13 @@ auth:                  # present once a login account is set
   password_hash: pbkdf2-sha256$...
 metadata:
   active: hardcover
-  manga_provider: anilist        # anilist | hardcover (Settings → Metadata)
-  comic_provider: hardcover      # hardcover | comicvine (Settings → Metadata)
+  manga_provider: anilist        # anilist | hardcover | none (Settings → Metadata)
+  comic_provider: hardcover      # hardcover | comicvine | none
   manga_cover_source: provider   # provider | file — manga volume covers
   comic_cover_source: provider   # provider | file — comic issue covers
+  language: english              # global metadata preference — providers
+  country: united states         #   prefer matching editions, then fall
+  include_adult: false           #   back; "none" = no preference
   providers:
     hardcover: { token: "..." }
     comicvine: { token: "..." }

@@ -118,3 +118,66 @@ func TestRefreshSeriesReMatchesToSelectedProvider(t *testing.T) {
 		t.Fatalf("volume source = %q, want hcfake", vols[0].Source)
 	}
 }
+
+// A same-provider refresh whose preferred edition changed (e.g. the global
+// language preference flipped) must not duplicate volumes: the stale edition
+// is retired and its monitored flag carries to the same-numbered replacement.
+func TestRefreshSeriesRetiresStaleEditions(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	hc := &fakeSeriesProvider{
+		name: "hcfake",
+		series: map[string]*metadata.SeriesResult{
+			"h1": {ForeignID: "h1", Title: "Death Note", AuthorName: "Ohba",
+				IssueCount: 2, Issues: []metadata.Issue{
+					{ForeignID: "en-v1", Number: 1, Description: "English v1"},
+					{ForeignID: "en-v2", Number: 2, Description: "English v2"},
+				}},
+		},
+	}
+	mgr := metadata.NewManager()
+	mgr.SetSeries(hc)
+	svc := New(store, mgr)
+	ctx := context.Background()
+
+	added, err := svc.SyncSeries(ctx, "manga", "h1", true, true, false)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	// Monitor volume 2 (metadata-only adds start unmonitored).
+	vols, _ := store.ListVolumes(added.ID)
+	if err := store.SetBookMonitored(vols[1].ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// The provider now prefers different editions (language flipped).
+	hc.series["h1"].Issues = []metadata.Issue{
+		{ForeignID: "es-v1", Number: 1, Description: "Spanish v1"},
+		{ForeignID: "es-v2", Number: 2, Description: "Spanish v2"},
+	}
+	if err := svc.RefreshSeries(ctx, added.ID); err != nil {
+		t.Fatalf("RefreshSeries: %v", err)
+	}
+
+	vols, err = store.ListVolumes(added.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vols) != 2 {
+		t.Fatalf("volume count = %d, want 2 (stale editions retired, not duplicated): %+v", len(vols), vols)
+	}
+	if vols[0].ForeignID != "es-v1" || vols[1].ForeignID != "es-v2" {
+		t.Fatalf("volumes = %q/%q, want the new editions", vols[0].ForeignID, vols[1].ForeignID)
+	}
+	if vols[0].Monitored {
+		t.Fatalf("volume 1 was unmonitored — replacement must stay unmonitored")
+	}
+	if !vols[1].Monitored {
+		t.Fatalf("volume 2 was monitored — the monitoring must carry to the replacement")
+	}
+}

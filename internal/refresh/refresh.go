@@ -34,15 +34,23 @@ func (s *Service) provider() (metadata.Provider, error) {
 	return nil, metadata.ErrNotConfigured
 }
 
-// SyncAuthor fetches an author and their full bibliography from the provider
-// and persists everything. Books are stored as metadata only — library
-// membership is never touched here, so refreshes can't enroll, un-enroll, or
-// re-monitor anything; new books surface in the author's Missing section.
+// SyncAuthor fetches an author and their full bibliography from the active
+// provider and persists everything. Books are stored as metadata only —
+// library membership is never touched here, so refreshes can't enroll,
+// un-enroll, or re-monitor anything; new books surface in the author's
+// Missing section.
 func (s *Service) SyncAuthor(ctx context.Context, foreignID string, monitored bool) (*library.Author, error) {
 	p, err := s.provider()
 	if err != nil {
 		return nil, err
 	}
+	return s.syncAuthorWith(ctx, p, foreignID, monitored)
+}
+
+// syncAuthorWith is SyncAuthor through an explicit provider — the caller
+// resolves it (the active provider on add, or the author's provider override
+// on refresh).
+func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, foreignID string, monitored bool) (*library.Author, error) {
 	remote, err := p.GetAuthor(ctx, foreignID)
 	if err != nil {
 		return nil, err
@@ -76,6 +84,13 @@ func (s *Service) SyncBook(ctx context.Context, foreignID string, monitored bool
 	if err != nil {
 		return nil, err
 	}
+	return s.syncBookWith(ctx, p, foreignID, monitored)
+}
+
+// syncBookWith is SyncBook through an explicit provider — the caller
+// resolves it (the active provider on add, or the author's provider override
+// on refresh).
+func (s *Service) syncBookWith(ctx context.Context, p metadata.Provider, foreignID string, monitored bool) (*library.Book, error) {
 	remote, err := p.GetBook(ctx, foreignID)
 	if err != nil {
 		return nil, err
@@ -105,31 +120,52 @@ func (s *Service) SyncBook(ctx context.Context, foreignID string, monitored bool
 	return s.store.GetBookByForeignID(source, remote.ForeignID)
 }
 
+// bookProviderFor resolves the provider for an author-scoped refresh: the
+// author's provider override wins when set; otherwise the active provider —
+// which is nil when Settings → Metadata says None, and libraries always
+// honor the settings.
+func (s *Service) bookProviderFor(author *library.Author) (metadata.Provider, error) {
+	if author.ProviderOverride != "" {
+		if p := s.providers.ProviderByName(author.ProviderOverride); p != nil {
+			return p, nil
+		}
+		return nil, metadata.ErrNotConfigured
+	}
+	return s.provider()
+}
+
 // RefreshAuthor re-syncs an existing author by local id. Books discovered
 // since the last sync are added with the author's monitored flag.
 func (s *Service) RefreshAuthor(ctx context.Context, id int64) error {
-	if _, err := s.provider(); err != nil {
-		return err
-	}
 	author, err := s.store.GetAuthor(id)
 	if err != nil {
 		return err
 	}
-	_, err = s.SyncAuthor(ctx, author.ForeignID, author.Monitored)
+	p, err := s.bookProviderFor(author)
+	if err != nil {
+		return err
+	}
+	_, err = s.syncAuthorWith(ctx, p, author.ForeignID, author.Monitored)
 	return err
 }
 
 // RefreshBook re-syncs an existing book by local id, updating its metadata,
-// series links, and editions.
+// series links, and editions. It follows the book's author's provider
+// override.
 func (s *Service) RefreshBook(ctx context.Context, id int64) error {
-	if _, err := s.provider(); err != nil {
-		return err
-	}
 	book, err := s.store.GetBook(id)
 	if err != nil {
 		return err
 	}
-	_, err = s.SyncBook(ctx, book.ForeignID, book.Monitored)
+	author, err := s.store.GetAuthor(book.AuthorID)
+	if err != nil {
+		return err
+	}
+	p, err := s.bookProviderFor(author)
+	if err != nil {
+		return err
+	}
+	_, err = s.syncBookWith(ctx, p, book.ForeignID, book.Monitored)
 	return err
 }
 

@@ -126,10 +126,12 @@ func run(dataDir string) error {
 	metadata.RegisterSeries("comicvine", comicvine.Factory)
 
 	providers := metadata.NewManager()
-	if err := providers.Configure(cfg.Metadata.Active, cfg.Metadata.Providers); err != nil {
+	// ProviderSettings carries the global metadata preferences (language,
+	// country, adult filter) into every provider build.
+	if err := providers.Configure(cfg.Metadata.Active, cfg.ProviderSettings()); err != nil {
 		logger.Warn("activating metadata provider failed", "provider", cfg.Metadata.Active, "error", err)
 	}
-	providers.ConfigureSeries(cfg.Metadata.Providers, cfg.SeriesSelection())
+	providers.ConfigureSeries(cfg.ProviderSettings(), cfg.SeriesSelection())
 	if p := providers.Current(); p != nil {
 		logger.Info("metadata provider active", "provider", p.Name())
 	} else {

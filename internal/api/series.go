@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/librinode/librinode/internal/library"
@@ -26,7 +27,7 @@ func (s *server) handleSearchSeries(w http.ResponseWriter, r *http.Request, medi
 	p := s.metadata.SeriesFor(mediaType)
 	if p == nil {
 		writeError(w, http.StatusServiceUnavailable,
-			"no "+mediaType+" metadata provider configured — add a Hardcover token or ComicVine key under Settings")
+			"no "+mediaType+" metadata provider — pick one (and add its token/key) under Settings → Metadata")
 		return
 	}
 	ctx, cancel := s.metadataCtx(r)
@@ -135,6 +136,38 @@ func (s *server) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 	s.rematchFiles()
 	s.prefetchSeriesImages(series.ID)
 	s.writeSeriesDetail(w, http.StatusCreated, series.ID)
+}
+
+// handleSeriesProvider sets (or with "" clears) the series' per-record
+// provider override — it beats the global Settings → Metadata selection on
+// the next refresh, including a global "none".
+func (s *server) handleSeriesProvider(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	series, err := s.store.GetSeries(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if req.Provider != "" && !slices.Contains(metadata.AvailableSeriesProviders(series.MediaType), req.Provider) {
+		writeError(w, http.StatusBadRequest, "unknown "+series.MediaType+" provider: "+req.Provider)
+		return
+	}
+	if err := s.store.SetSeriesProviderOverride(id, req.Provider); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.writeSeriesDetail(w, http.StatusOK, id)
 }
 
 func writeSeriesSyncError(w http.ResponseWriter, err error) {

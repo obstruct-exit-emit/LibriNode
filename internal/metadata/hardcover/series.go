@@ -22,6 +22,10 @@ import (
 type SeriesClient struct {
 	*Client
 	mediaType string
+	// Global metadata preferences (lower-cased; empty = no preference):
+	// editions matching language, then country, win their volume's slot.
+	language string
+	country  string
 }
 
 // SeriesFactory builds the Hardcover manga series provider; it shares the
@@ -40,7 +44,12 @@ func seriesFactoryFor(mediaType string, s metadata.Settings) (metadata.SeriesPro
 	if s.Token == "" {
 		return nil, metadata.ErrNotConfigured
 	}
-	return &SeriesClient{New(s.Token), mediaType}, nil
+	return &SeriesClient{
+		Client:    New(s.Token),
+		mediaType: mediaType,
+		language:  strings.ToLower(s.Language),
+		country:   strings.ToLower(s.Country),
+	}, nil
 }
 
 func (sc *SeriesClient) MediaType() string { return sc.mediaType }
@@ -78,7 +87,10 @@ const seriesQuery = `query Series($id: Int!) {
     author { name }
     book_series(order_by: {position: asc_nulls_last}) {
       position
-      book { id title description release_date cached_image }
+      book {
+        id title description release_date cached_image
+        editions { language { language } country { name } }
+      }
     }
   }
 }`
@@ -106,6 +118,14 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 					Description string          `json:"description"`
 					ReleaseDate string          `json:"release_date"`
 					CachedImage json.RawMessage `json:"cached_image"`
+					Editions    []struct {
+						Language *struct {
+							Language string `json:"language"`
+						} `json:"language"`
+						Country *struct {
+							Name string `json:"name"`
+						} `json:"country"`
+					} `json:"editions"`
 				} `json:"book"`
 			} `json:"book_series"`
 		} `json:"series"`
@@ -131,16 +151,25 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 		e.book.Description = bs.Book.Description
 		e.book.ReleaseDate = bs.Book.ReleaseDate
 		e.book.CachedImage = bs.Book.CachedImage
+		for _, ed := range bs.Book.Editions {
+			if ed.Language != nil && ed.Language.Language != "" {
+				e.languages = append(e.languages, strings.ToLower(ed.Language.Language))
+			}
+			if ed.Country != nil && ed.Country.Name != "" {
+				e.countries = append(e.countries, strings.ToLower(ed.Country.Name))
+			}
+		}
 		entries = append(entries, e)
 	}
 
 	// Hardcover series mix the real numbered volumes (position >= 1) with
 	// spin-offs and alternate editions (position 0), and carry several
-	// editions per volume — reissues, box sets, omnibus and foreign printings
-	// alongside the standard release. When the series has positioned volumes,
-	// keep one edition per position (see betterEdition: prefer the standard
-	// release, then the richest description) and drop the position-0 extras; a
-	// series with no positive positions is numbered sequentially.
+	// editions per volume — translations, reissues, box sets and omnibus
+	// printings alongside the standard release. When the series has
+	// positioned volumes, keep one edition per position (see betterEdition:
+	// prefer the global language/country preferences, then the standard
+	// release, then the richest description) and drop the position-0 extras;
+	// a series with no positive positions is numbered sequentially.
 	hasPositive := false
 	for _, e := range entries {
 		if e.pos >= 1 {
@@ -156,7 +185,7 @@ func (sc *SeriesClient) GetSeries(ctx context.Context, foreignID string) (*metad
 			if e.pos < 1 {
 				continue
 			}
-			if cur, ok := byPos[e.pos]; !ok || betterEdition(e, cur) {
+			if cur, ok := byPos[e.pos]; !ok || sc.betterEdition(e, cur) {
 				byPos[e.pos] = e
 			}
 		}
@@ -212,6 +241,25 @@ type entry struct {
 		ReleaseDate string
 		CachedImage json.RawMessage
 	}
+	// The book's editions' languages and countries (lower-cased) — what the
+	// global metadata preferences match against.
+	languages []string
+	countries []string
+}
+
+// matchesPref reports whether any value contains the (lower-cased, non-empty)
+// preference — Hardcover uses full names, sometimes compound ("Spanish;
+// Castilian", "United States of America"), so containment beats equality.
+func matchesPref(values []string, pref string) bool {
+	if pref == "" {
+		return false
+	}
+	for _, v := range values {
+		if strings.Contains(v, pref) {
+			return true
+		}
+	}
+	return false
 }
 
 // editionMarkers flag a variant printing (reissue, box set, deluxe, foreign
@@ -237,12 +285,21 @@ func specialEdition(e entry) bool {
 }
 
 // betterEdition reports whether a should represent the volume instead of b.
-// Prefer the standard release over reissues/box sets ("non-reissued if
-// possible"), then an edition that actually carries a description, then the
-// richer description.
-func betterEdition(a, b entry) bool {
+// Strict-to-lenient tiers, each falling through when the entries tie: the
+// global language preference, then the standard release over reissues/box
+// sets ("non-reissued if possible"), then the global country preference,
+// then an edition that actually carries a description, then the richer
+// description. Entries without edition data simply never win the preference
+// tiers — providers degrade gracefully when the data is missing.
+func (sc *SeriesClient) betterEdition(a, b entry) bool {
+	if la, lb := matchesPref(a.languages, sc.language), matchesPref(b.languages, sc.language); la != lb {
+		return la // a wins when only it matches the preferred language
+	}
 	if sa, sb := specialEdition(a), specialEdition(b); sa != sb {
 		return !sa // a wins when it is the standard (non-special) edition
+	}
+	if ca, cb := matchesPref(a.countries, sc.country), matchesPref(b.countries, sc.country); ca != cb {
+		return ca // a wins when only it matches the preferred country
 	}
 	if da, db := a.book.Description != "", b.book.Description != ""; da != db {
 		return da // a wins when it has a description and b doesn't

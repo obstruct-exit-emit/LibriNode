@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/librinode/librinode/internal/metadata"
@@ -24,13 +25,21 @@ import (
 const DefaultEndpoint = "https://graphql.anilist.co"
 
 // Factory registers AniList; it needs no key, so it is always configured.
-func Factory(metadata.Settings) (metadata.SeriesProvider, error) {
-	return New(), nil
+// The global metadata preferences ride along: language picks the title style
+// (English vs romaji), includeAdult gates adult-flagged search results.
+func Factory(s metadata.Settings) (metadata.SeriesProvider, error) {
+	c := New()
+	c.preferRomaji = s.Language != "" && !strings.Contains(strings.ToLower(s.Language), "english")
+	c.includeAdult = s.IncludeAdult
+	return c, nil
 }
 
 type Client struct {
 	endpoint string
 	httpc    *http.Client
+	// Global metadata preferences (see Factory).
+	preferRomaji bool
+	includeAdult bool
 }
 
 type Option func(*Client)
@@ -98,8 +107,9 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 
 // gqlMedia is the Media shape shared by search and lookup.
 type gqlMedia struct {
-	ID    int `json:"id"`
-	Title struct {
+	ID      int  `json:"id"`
+	IsAdult bool `json:"isAdult"`
+	Title   struct {
 		English string `json:"english"`
 		Romaji  string `json:"romaji"`
 	} `json:"title"`
@@ -125,6 +135,7 @@ type gqlMedia struct {
 
 const mediaFields = `
 	id
+	isAdult
 	title { english romaji }
 	description(asHtml: false)
 	volumes
@@ -134,10 +145,12 @@ const mediaFields = `
 
 var htmlTags = regexp.MustCompile(`<[^>]+>`)
 
-func (m *gqlMedia) toResult() metadata.SeriesResult {
+func (m *gqlMedia) toResult(preferRomaji bool) metadata.SeriesResult {
 	title := m.Title.English
-	if title == "" {
-		title = m.Title.Romaji
+	if preferRomaji || title == "" {
+		if m.Title.Romaji != "" {
+			title = m.Title.Romaji
+		}
 	}
 	author := ""
 	for _, edge := range m.Staff.Edges {
@@ -172,7 +185,12 @@ func (c *Client) SearchSeries(ctx context.Context, query string) ([]metadata.Ser
 	}
 	results := make([]metadata.SeriesResult, 0, len(out.Page.Media))
 	for i := range out.Page.Media {
-		results = append(results, out.Page.Media[i].toResult())
+		// Adult-flagged series stay out of search results unless the global
+		// include-adult preference is on.
+		if out.Page.Media[i].IsAdult && !c.includeAdult {
+			continue
+		}
+		results = append(results, out.Page.Media[i].toResult(c.preferRomaji))
 	}
 	return results, nil
 }
@@ -192,7 +210,7 @@ func (c *Client) GetSeries(ctx context.Context, foreignID string) (*metadata.Ser
 	if out.Media == nil {
 		return nil, metadata.ErrNotFound
 	}
-	result := out.Media.toResult()
+	result := out.Media.toResult(c.preferRomaji)
 	// AniList has no per-volume records; synthesize Vol. 1..N.
 	for i := 1; i <= result.IssueCount; i++ {
 		result.Issues = append(result.Issues, metadata.Issue{
