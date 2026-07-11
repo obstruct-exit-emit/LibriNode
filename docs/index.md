@@ -22,9 +22,10 @@ per-type libraries — automatically.
 | Magazines | none — added by name | pdf, epub, cbz |
 
 Each library is independent: its own root folders, naming templates, and
-quality profiles. Plex-style, a library only appears in the UI once you set
-it up. For prose books, Ebooks and Audiobooks are **separate libraries** —
-a book belongs only to the format libraries you added it to (or own).
+quality profiles. Plex-style, a library only appears in the UI once you
+create it by adding its root folder. For prose books, Ebooks and Audiobooks
+are **separate libraries** — a book belongs only to the format libraries you
+added it to (or own).
 
 ## Highlights
 

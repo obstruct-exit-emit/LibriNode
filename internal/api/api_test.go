@@ -1346,12 +1346,29 @@ func TestLibrariesHomeAndCrossAdd(t *testing.T) {
 		}
 	}
 
-	// Adding a book (default: ebook library) activates Ebooks only.
+	// Adding a book (default: ebook library) enrolls it but does NOT surface
+	// the library — only creating the library (adding a root folder) does,
+	// Plex-style.
 	var book library.Book
 	a.want(a.call("POST", "/api/v1/book", map[string]string{"foreignBookId": "1"}, &book), http.StatusCreated)
 	if !book.InEbookLibrary || !book.EbookMonitored || book.InAudiobookLibrary {
 		t.Fatalf("membership after add = %+v", book)
 	}
+	a.want(a.call("GET", "/api/v1/libraries", nil, &libs), http.StatusOK)
+	for _, l := range libs {
+		if l.Active {
+			t.Fatalf("content alone must not activate a library: %+v", libs)
+		}
+	}
+	var home []library.HomeSection
+	a.want(a.call("GET", "/api/v1/home", nil, &home), http.StatusOK)
+	if len(home) != 0 {
+		t.Fatalf("home must be empty before any library exists, got %+v", home)
+	}
+
+	// Creating the Ebooks library (adding a root folder) activates it.
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": t.TempDir()}, nil), http.StatusCreated)
 	a.want(a.call("GET", "/api/v1/libraries", nil, &libs), http.StatusOK)
 	for _, l := range libs {
 		if (l.MediaType == "ebook") != l.Active {
@@ -1360,15 +1377,13 @@ func TestLibrariesHomeAndCrossAdd(t *testing.T) {
 	}
 
 	// Home: one section (ebook), the book in recently-added and wanted.
-	var home []library.HomeSection
 	a.want(a.call("GET", "/api/v1/home", nil, &home), http.StatusOK)
 	if len(home) != 1 || home[0].MediaType != "ebook" ||
 		len(home[0].RecentlyAdded) != 1 || len(home[0].Wanted) != 1 {
 		t.Fatalf("home = %+v", home)
 	}
 
-	// Cross-add to Audiobooks with monitoring: activates the library and
-	// the scoped author list sees it.
+	// Cross-add to Audiobooks with monitoring: the scoped author list sees it.
 	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", book.ID),
 		map[string]any{"library": "audiobook", "member": true, "monitored": true}, &book), http.StatusOK)
 	if !book.InAudiobookLibrary || !book.AudiobookMonitored {

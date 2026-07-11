@@ -3,8 +3,8 @@ package library
 import "sort"
 
 // LibraryStatus describes one media-type library for the Plex-style UI: a
-// library is active — and visible — once it's set up (has a root folder) or
-// already holds content.
+// library is active — and visible — only once the user created it by adding
+// a root folder.
 type LibraryStatus struct {
 	MediaType string `json:"mediaType"`
 	Active    bool   `json:"active"`
@@ -49,7 +49,10 @@ func wantedWhere(mediaType string) string {
 	return itemsWhere(mediaType) + ` AND books.monitored = 1 AND ` + fileClause(mediaType)
 }
 
-// LibraryStatuses reports every media type's activity and counts.
+// LibraryStatuses reports every media type's activity and counts. A library
+// is active — and visible in the UI — only once the user has created it by
+// adding a root folder (Plex-style: creating the library is an explicit act;
+// content alone never surfaces one).
 func (s *Store) LibraryStatuses() ([]LibraryStatus, error) {
 	roots, err := s.ListRootFolders()
 	if err != nil {
@@ -79,7 +82,7 @@ func (s *Store) LibraryStatuses() ([]LibraryStatus, error) {
 				st.Items = seriesCount
 			}
 		}
-		st.Active = hasRoot[mt] || st.Items > 0
+		st.Active = hasRoot[mt]
 		statuses = append(statuses, st)
 	}
 	return statuses, nil

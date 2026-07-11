@@ -1,9 +1,10 @@
 # Libraries
 
-A library only appears in the sidebar once it's set up — a root folder
-added, or content of that type already owned. Library pages are poster
-grids (authors for prose, series for the rest) with owned/total counts.
-Grids over 10 cards get a filter box and render incrementally.
+A library only appears in the sidebar once you create it by adding a root
+folder for its media type (Settings → Media Management) — content alone
+never surfaces one, Plex-style. Library pages are poster grids (authors for
+prose, series for the rest) with owned/total counts. Grids over 10 cards get
+a filter box and render incrementally.
 
 ## Ebooks & Audiobooks (author-first, three levels deep)
 
