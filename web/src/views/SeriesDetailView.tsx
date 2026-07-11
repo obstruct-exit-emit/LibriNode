@@ -12,11 +12,12 @@ import { libraryLabels } from "../App";
 import RemovePanel from "../components/RemovePanel";
 
 // Full-page series detail, *arr-style: header with cover, description and
-// series-level actions, then volumes/issues as rows. Manga volumes expand to
-// show owned variants, file locations, and per-volume monitor/remove
-// controls; a Missing section lists volumes not in the library (neither
-// monitored nor owned), each with a one-click Monitor — mirroring the
-// per-author Missing view. Other media types stay flat.
+// series-level actions, then volumes/issues as rows. Manga volumes and comic
+// issues expand to show file locations (manga: owned variants too) and
+// per-item monitor/remove controls; a Missing section lists items not in the
+// library (neither monitored nor owned), each with a one-click Monitor —
+// mirroring the per-author Missing view. Magazines stay flat (issues
+// materialize from grabs and scans).
 export default function SeriesDetailView({
   id,
   mediaType,
@@ -48,13 +49,13 @@ export default function SeriesDetailView({
 
   const volumes = series.volumes ?? [];
   const owned = volumes.filter((v) => v.hasFile).length;
-  const unitName = mediaType === "magazine" ? "issue" : "volume";
-  const isManga = mediaType === "manga";
-
-  // Manga splits into the library (monitored or owned) and Missing (neither),
-  // like books/authors; other types show every volume/issue in one list.
-  const inLibrary = isManga ? volumes.filter((v) => v.monitored || v.hasFile) : volumes;
-  const missing = isManga ? volumes.filter((v) => !v.monitored && !v.hasFile) : [];
+  const unitName = mediaType === "manga" ? "volume" : "issue";
+  // Manga and comics split into the library (monitored or owned) and Missing
+  // (neither), like books/authors, with expandable per-item rows; magazines
+  // show every issue in one flat list.
+  const expandable = mediaType === "manga" || mediaType === "comic";
+  const inLibrary = expandable ? volumes.filter((v) => v.monitored || v.hasFile) : volumes;
+  const missing = expandable ? volumes.filter((v) => !v.monitored && !v.hasFile) : [];
 
   const run = (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -70,22 +71,6 @@ export default function SeriesDetailView({
       .deleteSeries(series.id, deleteFiles)
       .then(onBack)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setBusy(false));
-  };
-
-  const autoGrab = (v: Book) => {
-    setBusy(true);
-    setNotice("");
-    api
-      .autoSearchBook(v.id, mediaType)
-      .then((o) =>
-        setNotice(
-          o.grabbed
-            ? `✓ Grabbed "${o.release}" via ${o.client}`
-            : `✗ ${v.title}: ${o.message ?? "nothing grabbed"}`,
-        ),
-      )
-      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => setBusy(false));
   };
 
@@ -243,22 +228,26 @@ export default function SeriesDetailView({
 
       <section className="card">
         <h2>
-          {mediaType === "magazine" ? "Issues" : "Volumes"} ({inLibrary.length})
+          {mediaType === "manga" ? "Volumes" : "Issues"} ({inLibrary.length})
         </h2>
         {notice && <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>}
         {inLibrary.length === 0 ? (
           <p className="muted">
-            {mediaType === "magazine"
-              ? "No issues yet — they appear when grabbed or scanned."
-              : isManga
-                ? "Nothing in the library — monitor volumes from Missing below."
-                : "No volumes."}
+            {expandable
+              ? `Nothing in the library — monitor ${unitName}s from Missing below.`
+              : "No issues yet — they appear when grabbed or scanned."}
           </p>
         ) : (
           <ul className="rows">
             {inLibrary.map((v) =>
-              isManga ? (
-                <MangaVolumeRow key={v.id} volume={v} onChanged={reload} onError={onError} />
+              expandable ? (
+                <VolumeRow
+                  key={v.id}
+                  volume={v}
+                  mediaType={mediaType}
+                  onChanged={reload}
+                  onError={onError}
+                />
               ) : (
                 <li key={v.id}>
                   <div className="row">
@@ -267,15 +256,6 @@ export default function SeriesDetailView({
                       <span className={v.hasFile ? "owned yes" : "owned no"}>
                         {v.hasFile ? "owned" : "wanted"}
                       </span>
-                      {!v.hasFile && mediaType !== "magazine" && (
-                        <button
-                          disabled={busy}
-                          title="Search indexers and grab the best release for this volume"
-                          onClick={() => autoGrab(v)}
-                        >
-                          Auto grab
-                        </button>
-                      )}
                     </span>
                   </div>
                 </li>
@@ -285,16 +265,17 @@ export default function SeriesDetailView({
         )}
       </section>
 
-      {isManga && missing.length > 0 && (
+      {expandable && missing.length > 0 && (
         <section className="card">
           <h2>Missing ({missing.length})</h2>
           <p className="muted">
-            Volumes in the series you're not tracking — neither monitored nor
-            owned. Monitor adds one back to the library and searches for it.
+            {unitName === "volume" ? "Volumes" : "Issues"} in the series you're
+            not tracking — neither monitored nor owned. Monitor adds one back
+            to the library and searches for it.
           </p>
           <ul className="rows">
             {missing.map((v) => (
-              <MangaMissingRow key={v.id} volume={v} onChanged={reload} onError={onError} />
+              <MissingRow key={v.id} volume={v} onChanged={reload} onError={onError} />
             ))}
           </ul>
         </section>
@@ -345,17 +326,19 @@ function coverAbout(volume: Book) {
   );
 }
 
-// MangaVolumeRow keeps the list compact for series with hundreds of volumes:
-// collapsed it's just the title + an owned/wanted badge. Expanding reveals
-// the cover + blurb, which variants are owned and where each file lives, plus
-// the same per-item controls an individual book gets — monitor, Auto grab,
-// Search releases, and remove-from-library.
-function MangaVolumeRow({
+// VolumeRow keeps the list compact for series with hundreds of volumes or
+// issues: collapsed it's just the title + an owned/wanted badge. Expanding
+// reveals the cover + blurb, where each file lives (and, for manga, which
+// variants are owned), plus the same per-item controls an individual book
+// gets — monitor, Auto grab, Search releases, and remove-from-library.
+function VolumeRow({
   volume,
+  mediaType,
   onChanged,
   onError,
 }: {
   volume: Book;
+  mediaType: string;
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
@@ -389,7 +372,7 @@ function MangaVolumeRow({
     setSearching(true);
     setGrabNotice("");
     api
-      .autoSearchBook(volume.id, "manga")
+      .autoSearchBook(volume.id, mediaType)
       .then((o) => {
         setGrabNotice(o.grabbed ? `✓ Grabbed "${o.release}" via ${o.client}` : `✗ ${o.message ?? "nothing grabbed"}`);
         onChanged();
@@ -402,7 +385,7 @@ function MangaVolumeRow({
     setSearching(true);
     setGrabNotice("");
     api
-      .searchReleasesForBook(volume.id, "manga")
+      .searchReleasesForBook(volume.id, mediaType)
       .then((r) => {
         setCandidates(r.releases);
         if (r.errors.length) setGrabNotice(`Some indexers failed: ${r.errors.join("; ")}`);
@@ -413,12 +396,12 @@ function MangaVolumeRow({
 
   const grab = (c: ReleaseCandidate) => {
     api
-      .grabRelease(c.title, c.downloadUrl, c.protocol, volume.id, "manga", c.guid)
+      .grabRelease(c.title, c.downloadUrl, c.protocol, volume.id, mediaType, c.guid)
       .then((r) => setGrabNotice(`✓ Sent "${c.title}" to ${r.client}`))
       .catch((err: unknown) => setGrabNotice(`✗ ${err instanceof Error ? err.message : String(err)}`));
   };
 
-  const files = (detail?.files ?? []).filter((f) => f.mediaType === "manga");
+  const files = (detail?.files ?? []).filter((f) => f.mediaType === mediaType);
 
   return (
     <li>
@@ -530,7 +513,7 @@ function MangaVolumeRow({
               checkboxLabel="Also delete its files from disk (otherwise the next scan re-finds them)"
               busy={rowBusy}
               onConfirm={(deleteFiles) =>
-                act(() => api.setBookLibrary(volume.id, "manga", false, false, deleteFiles))
+                act(() => api.setBookLibrary(volume.id, mediaType, false, false, deleteFiles))
               }
               onCancel={() => setConfirmRemove(false)}
             />
@@ -541,10 +524,10 @@ function MangaVolumeRow({
   );
 }
 
-// MangaMissingRow is a series bibliography gap: a volume neither monitored nor
-// owned. Compact by default (title + one-click Monitor); expands to the cover
-// and blurb, mirroring the per-author Missing view.
-function MangaMissingRow({
+// MissingRow is a series bibliography gap: a volume/issue neither monitored
+// nor owned. Compact by default (title + one-click Monitor); expands to the
+// cover and blurb, mirroring the per-author Missing view.
+function MissingRow({
   volume,
   onChanged,
   onError,

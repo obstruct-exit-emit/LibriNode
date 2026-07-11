@@ -182,21 +182,20 @@ positions at all. Manga/comic searches use each indexer's
 v05.cbz` layouts, and imports write `ComicInfo.xml` into CBZ archives for
 Kavita/Komga.
 
-Manga gets the full author/book treatment. The series page carries
+Manga and comics get the full author/book treatment. The series page carries
 series-scoped **Search wanted**, **Organize…**, **Scan files**, and
-**Refresh** actions (each touches only this series). Its volume list stays
-compact — title + owned/wanted badge — and every volume expands to a cover,
-blurb, and the same controls an individual book has: a monitor toggle,
-**Auto grab**, **Search releases**, and **Remove from library** (with an
-opt-in delete-files). Manga volume covers default to the
+**Refresh** actions (each touches only this series). Its volume/issue list
+stays compact — title + owned/wanted badge — and every row expands to a
+cover, blurb, file locations, and the same controls an individual book has:
+a monitor toggle, **Auto grab**, **Search releases**, and **Remove from
+library** (with an opt-in delete-files). Manga volume covers default to the
 provider's art; a per-library **Settings → Metadata** toggle switches manga
 (or comics, which default the other way) to extract the cover from the owned
 file's first page instead — both CBZ and CBR (read via pure-Go rardecode),
 falling back to the provider's art when extraction yields nothing. Below the
-list, a per-series **Missing**
-section lists volumes you're not tracking — neither monitored nor owned —
-each with a one-click **Monitor** to add it back, mirroring the per-author
-Missing view.
+list, a per-series **Missing** section lists the volumes/issues you're not
+tracking — neither monitored nor owned — each with a one-click **Monitor**
+to add it back, mirroring the per-author Missing view.
 
 Manga can also be owned in **colorized and monochrome** variants at once: it
 stays one library, but you add a separate root folder per variant (a
@@ -290,7 +289,7 @@ scriptable:
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`), `GET/DELETE /series/{id}` (`?deleteFiles=true` also removes files), `PUT /series/{id}/monitor`, `POST /series/{id}/refresh`, `POST /series/{id}/search` (search this series' wanted volumes only) |
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
 | Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files — deletes outright, every library), `PUT /author/{id}/library` (scoped add/remove from ONE format library; `deleteFiles` on remove; auto-deletes the author once they're in no library), `PUT /author/{id}/monitor`, `POST /author/{id}/refresh` (never changes membership or monitoring), `GET /author/{id}/missing?library=` (bibliography gaps), `POST /author/{id}/search?library=` (search this author's wanted books only) |
-| Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `GET /book/{id}/cover` (cover image extracted from the owned CBZ/CBR's first page; cached under `<data>/covers`, refreshed when the file changes), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave; `library:"manga"` adds/removes a volume from its series — `member:false` forgets its file records so it drops to Missing), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
+| Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `GET /book/{id}/cover` (cover image extracted from the owned CBZ/CBR's first page; cached under `<data>/covers`, refreshed when the file changes), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave; `library:"manga"`/`"comic"` adds/removes a volume/issue from its series — `member:false` forgets its file records so it drops to Missing), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}`, `DELETE /library/covers/cache` (clear extracted comic covers) |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
@@ -428,7 +427,7 @@ metadata endpoints return 503.
 - [x] "Missing" view per author *(pulled forward from post-1.0)*: the author page ends with a Missing section listing bibliography gaps from the metadata provider — books neither monitored nor owned in that format library — grouped by series (ordered by position) then standalones by year; rows expand to a compact thumbnail + blurb, and a one-click **+ Monitor** adds the book to the library and starts searching (`GET /author/{id}/missing?library=`). Adding an author pulls their bibliography as metadata only — no book is auto-monitored or auto-enrolled, so a freshly added author's whole bibliography starts here in Missing, and an author with zero visible books still shows (an empty Books grid pointing at Missing) rather than disappearing
 - [x] Author page actions are author-scoped: **Search wanted**, **Organize…**, and **Scan files** in the author header only touch that author's books (`POST /author/{id}/search?library=`, `GET/POST /library/rename?authorId=`/`{"authorId":N}`); **Remove from Ebooks/Audiobooks** takes the author out of one format library only (the other is untouched) with an opt-in delete-files checkbox, auto-deleting the author outright once they're in no library left
 - [x] Manga colorized/monochrome variants *(pulled forward from post-1.0)*: manga stays **one** library (unlike the ebook/audiobook split) with a variant as a sub-dimension of its files. Each manga root folder is tagged colorized or monochrome (a variant selector appears when adding a manga root; monochrome is the default and existing roots backfill there), and a volume tracks each variant's ownership independently while sharing one series/volume metadata row. The volume list stays compact (title + owned/wanted badge); an owned volume expands to show which variants it owns (colorized/monochrome) and each file's on-disk location. Imports stay variant-agnostic (a release doesn't reveal its variant); the scanner records per-variant ownership as files land under their variant root
-- [x] Manga series get the full author/book treatment: the series page has series-scoped **Search wanted** (`POST /series/{id}/search`), **Organize…** (`?seriesId=` on rename), **Scan files**, and **Refresh**; each volume expands to the same controls an individual book has (monitor toggle, **Auto grab**, **Search releases**, **Remove from library** with opt-in delete-files); and a per-series **Missing** section lists volumes neither monitored nor owned, each with a one-click **Monitor** to add it back. Removing a volume forgets its file records so it's no longer owned and drops into Missing (files stay on disk unless delete-files is checked; the next scan re-finds them)
+- [x] Manga series get the full author/book treatment: the series page has series-scoped **Search wanted** (`POST /series/{id}/search`), **Organize…** (`?seriesId=` on rename), **Scan files**, and **Refresh**; each volume expands to the same controls an individual book has (monitor toggle, **Auto grab**, **Search releases**, **Remove from library** with opt-in delete-files); and a per-series **Missing** section lists volumes neither monitored nor owned, each with a one-click **Monitor** to add it back. Removing a volume forgets its file records so it's no longer owned and drops into Missing (files stay on disk unless delete-files is checked; the next scan re-finds them). **Comics later got the same treatment** — expandable issue rows with per-item controls, the library/Missing split, and `library:"comic"` on `PUT /book/{id}/library` — everything except the manga-only colorized/monochrome variants
 
 ### Phase 5.5 — Pre-1.0 hardening
 Everything is built; this phase proves it. Nothing here adds features — it

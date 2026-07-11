@@ -79,20 +79,20 @@ reissue/box-set/omnibus editions are dropped in favor of one standard
 edition per volume, and sequential numbering is only a fallback for series
 with no positions at all.
 
-Manga series get the full author/book treatment. The series page carries
-series-scoped **Search wanted**, **Organize…**, **Scan files**, and
-**Refresh** (each touches only this series). The volume list stays compact
-— title + owned/wanted badge — and every volume expands to a cover, blurb,
-and the same controls an individual book has: a monitor toggle, **Auto
-grab**, **Search releases**, and **Remove from library** (opt-in
-delete-files). Manga volume covers default to the provider's art, comic
-issue covers to extraction from the owned archive's first page (CBZ or CBR,
-the latter read via pure-Go rardecode) — **Settings → Metadata** has a
-per-library toggle to switch either, and extraction always falls back to the
-provider's art when it yields nothing. A per-series **Missing** section
-lists volumes you're not
+Manga and comic series get the full author/book treatment. The series page
+carries series-scoped **Search wanted**, **Organize…**, **Scan files**, and
+**Refresh** (each touches only this series). The volume/issue list stays
+compact — title + owned/wanted badge — and every row expands to a cover,
+blurb, file locations, and the same controls an individual book has: a
+monitor toggle, **Auto grab**, **Search releases**, and **Remove from
+library** (opt-in delete-files). Manga volume covers default to the
+provider's art, comic issue covers to extraction from the owned archive's
+first page (CBZ or CBR, the latter read via pure-Go rardecode) —
+**Settings → Metadata** has a per-library toggle to switch either, and
+extraction always falls back to the provider's art when it yields nothing.
+A per-series **Missing** section lists the volumes/issues you're not
 tracking — neither monitored nor owned — each with a one-click **Monitor**;
-removing a volume forgets its file records so it drops into Missing, and the
+removing one forgets its file records so it drops into Missing, and the
 next scan re-finds any files left on disk.
 
 ### Colorized & monochrome variants

@@ -265,6 +265,12 @@ func (p fakeSeriesProvider) GetSeries(_ context.Context, id string) (*metadata.S
 	return result, nil
 }
 
+// fakeComicProvider is fakeSeriesProvider serving the comic media type.
+type fakeComicProvider struct{ fakeSeriesProvider }
+
+func (fakeComicProvider) Name() string      { return "fakecomic" }
+func (fakeComicProvider) MediaType() string { return "comic" }
+
 func TestSeriesFlow(t *testing.T) {
 	a := newTestAPI(t, nil)
 	volumes := 3
@@ -441,6 +447,60 @@ func TestMangaVolumeRemoveOwned(t *testing.T) {
 	}
 	if _, err := os.Stat(cbz); !os.IsNotExist(err) {
 		t.Fatalf("file should be deleted from disk: %v", err)
+	}
+}
+
+// TestComicIssueLibrary: comic issues get the same library flow as manga
+// volumes — PUT /book/{id}/library with library=comic unmonitors an issue and
+// forgets its file records (it drops to the series' Missing section, the file
+// stays on disk), and member=true monitors it back.
+func TestComicIssueLibrary(t *testing.T) {
+	a := newTestAPI(t, nil)
+	issues := 3
+	a.mgr.SetSeries(fakeComicProvider{fakeSeriesProvider{volumes: &issues}})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "comic", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+	if len(series.Volumes) != 3 || !series.Volumes[0].Monitored {
+		t.Fatalf("series after add = %+v", series.Volumes)
+	}
+	v1 := series.Volumes[0].ID
+
+	// A comic root with issue 1 on disk.
+	root := t.TempDir()
+	cbz := filepath.Join(root, "Berserk", "Berserk v01.cbz")
+	if err := os.MkdirAll(filepath.Dir(cbz), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cbz, []byte("pages"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "comic", "path": root}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	var book library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", v1), nil, &book), http.StatusOK)
+	if !book.HasFile {
+		t.Fatalf("issue 1 not owned after scan: %+v", book)
+	}
+
+	// Remove WITHOUT deleting files: unmonitored, no longer owned, file stays.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "comic", "member": false}, &book), http.StatusOK)
+	if book.HasFile || book.Monitored {
+		t.Fatalf("removed issue still owned/monitored: %+v", book)
+	}
+	if _, err := os.Stat(cbz); err != nil {
+		t.Fatalf("file should remain on disk when delete-files is off: %v", err)
+	}
+
+	// Monitor it back from Missing.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "comic", "member": true}, &book), http.StatusOK)
+	if !book.Monitored {
+		t.Fatalf("re-added issue not monitored: %+v", book)
 	}
 }
 
