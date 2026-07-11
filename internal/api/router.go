@@ -4,12 +4,14 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/librinode/librinode/internal/autosearch"
 	"github.com/librinode/librinode/internal/config"
@@ -191,6 +193,18 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // handleHealthCheck re-runs every check now — the System page's button.
 func (s *server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.health.Check(r.Context()))
+}
+
+// refreshHealth re-runs the health checks in the background after a change
+// that can raise or resolve an issue (indexer/download-client/root-folder/
+// provider edits — including Prowlarr's sync writes), so the warning banner
+// updates without waiting for the 15-minute tick.
+func (s *server) refreshHealth() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		s.health.Check(ctx)
+	}()
 }
 
 // auth admits requests carrying the API key (scripts, Prowlarr) or a valid

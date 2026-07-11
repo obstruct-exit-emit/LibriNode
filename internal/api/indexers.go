@@ -122,6 +122,7 @@ func (s *server) handleAddIndexer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "could not save indexer (duplicate name?): "+err.Error())
 		return
 	}
+	s.refreshHealth()
 	writeJSON(w, http.StatusCreated, mergedIndexerResource(in))
 }
 
@@ -146,6 +147,7 @@ func (s *server) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		writeIndexerError(w, err)
 		return
 	}
+	s.refreshHealth()
 	writeJSON(w, http.StatusOK, mergedIndexerResource(updated))
 }
 
@@ -159,6 +161,7 @@ func (s *server) handleDeleteIndexer(w http.ResponseWriter, r *http.Request) {
 		writeIndexerError(w, err)
 		return
 	}
+	s.refreshHealth()
 	w.WriteHeader(http.StatusNoContent)
 }
 

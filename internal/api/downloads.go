@@ -69,6 +69,7 @@ func (s *server) handleAddDownloadClient(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusConflict, "could not save client (duplicate name?): "+err.Error())
 		return
 	}
+	s.refreshHealth()
 	writeJSON(w, http.StatusCreated, c)
 }
 
@@ -93,6 +94,7 @@ func (s *server) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Reque
 		writeDownloadError(w, err)
 		return
 	}
+	s.refreshHealth()
 	writeJSON(w, http.StatusOK, updated)
 }
 
@@ -106,6 +108,7 @@ func (s *server) handleDeleteDownloadClient(w http.ResponseWriter, r *http.Reque
 		writeDownloadError(w, err)
 		return
 	}
+	s.refreshHealth()
 	w.WriteHeader(http.StatusNoContent)
 }
 

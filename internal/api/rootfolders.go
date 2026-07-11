@@ -100,6 +100,7 @@ func (s *server) handleAddRootFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.Accessible = true
+	s.refreshHealth()
 	writeJSON(w, http.StatusCreated, f)
 }
 
@@ -118,6 +119,7 @@ func (s *server) handleDeleteRootFolder(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "root folder not found")
 		return
 	}
+	s.refreshHealth()
 	w.WriteHeader(http.StatusNoContent)
 }
 
