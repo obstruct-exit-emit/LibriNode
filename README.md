@@ -450,6 +450,7 @@ turns "works on the dev box" into "trustable release".
 - [ ] `ComicInfo.xml` for CBR archives (needs a RAR writer)
 - [ ] Multi-user / permissions
 - [ ] Additional metadata providers (Open Library, Google Books) as fallbacks
+- [ ] Magazine metadata, two tiers (magazines are fully provider-less today): **Wikidata** as the default series enricher — description, publisher, ISSN, and publication frequency (no key; structured properties, not Wikipedia infobox scraping), with frequency feeding expected-issue prediction for the Calendar and wanted logic — plus **Internet Archive** as an optional per-issue provider for archived/vintage titles (its collections carry real per-issue records with dates and covers, so it can populate an issue list the way Hardcover does for comics). Neither source has per-issue data for *current* magazines — those stay grab/scan-materialized — and commercial newsstand catalogs (Zinio/PressReader) have the right data but no public APIs
 - [ ] Localization
 
 ### Maybe ideas
