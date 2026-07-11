@@ -35,6 +35,18 @@ export default function SystemView({
           <dd>{status.uptime}</dd>
           <dt>Started</dt>
           <dd>{status.startTime}</dd>
+          <dt>IP address{(status.ipAddresses ?? []).length === 1 ? "" : "es"}</dt>
+          <dd>
+            {(status.ipAddresses ?? []).length === 0
+              ? "—"
+              : status.ipAddresses.map((ip) => (
+                  <div key={ip}>
+                    <code>
+                      http://{ip}:{status.port}
+                    </code>
+                  </div>
+                ))}
+          </dd>
           <dt>Data directory</dt>
           <dd>
             <code>{status.dataDir}</code>

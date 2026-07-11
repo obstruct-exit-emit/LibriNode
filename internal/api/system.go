@@ -2,6 +2,7 @@ package api
 
 import (
 	"io/fs"
+	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -12,6 +13,35 @@ var startTime = time.Now()
 
 func (s *server) handlePing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// localIPs lists the machine's non-loopback IPv4 addresses — what a user
+// puts in another device's browser to reach LibriNode on the LAN.
+func localIPs() []string {
+	ips := []string{}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ips
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok || ipNet.IP.IsLoopback() {
+				continue
+			}
+			if ip4 := ipNet.IP.To4(); ip4 != nil {
+				ips = append(ips, ip4.String())
+			}
+		}
+	}
+	return ips
 }
 
 func (s *server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
@@ -27,6 +57,8 @@ func (s *server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"uptime":     time.Since(startTime).Round(time.Second).String(),
 		"dataDir":    s.cfg.DataDir(),
 		"startTime":  startTime.UTC().Format(time.RFC3339),
+		"ipAddresses": localIPs(),
+		"port":        s.cfg.Port,
 	})
 }
 

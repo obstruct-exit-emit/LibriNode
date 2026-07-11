@@ -10,6 +10,8 @@ export interface SystemStatus {
   uptime: string;
   dataDir: string;
   startTime: string;
+  ipAddresses: string[];
+  port: number;
 }
 
 export interface Author {
