@@ -20,8 +20,11 @@
    author pulls their bibliography as metadata and joins the library,
    but monitors nothing yet — every book starts in that author's **Missing**
    section for you to monitor selectively. Adding a specific book pulls its
-   editions and monitors just that one. Adding a manga/comic series pulls
-   its volumes; magazines are added by name.
+   editions and monitors just that one. Manga/comic series work like
+   authors: adding one pulls its volumes as metadata, all starting in the
+   series' **Missing** section — monitor volumes selectively, or flip the
+   series' monitor toggle to monitor everything (including future volumes).
+   Magazines are added by name and start unmonitored too.
 
 5. **Scan what you own.** **Scan files** on a library page matches existing
    files to your books — every item gets an owned/wanted badge. Strays land

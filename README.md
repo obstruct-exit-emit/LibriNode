@@ -169,9 +169,12 @@ Switching a provider re-sources existing series on their next
 refresh: LibriNode re-matches each series on the newly selected provider by
 title, re-binds it in place (keeping your monitoring and owned files), and
 pulls that provider's volumes — so moving from AniList to Hardcover swaps in
-Hardcover's real per-volume descriptions. "Monitor future volumes" is the
-series' monitor toggle — refreshes (manual or the daily sweep) discover new
-volumes and start monitoring them. Provider quirks: *ongoing* manga on
+Hardcover's real per-volume descriptions. Like adding an author, **adding a
+series pulls metadata only**: every volume/issue starts unmonitored in the
+series' Missing section (and a fresh magazine doesn't auto-grab), until you
+monitor items selectively or flip the series' monitor toggle — which
+monitors every volume at once and doubles as "monitor future volumes", so
+refreshes (manual or the daily sweep) monitor newly discovered ones too. Provider quirks: *ongoing* manga on
 AniList often report no volume count yet (they add with zero volumes and fill
 in on later refresh) and synthesize volumes without per-volume descriptions
 (left blank rather than repeating the series blurb); Hardcover carries real

@@ -65,7 +65,11 @@ func (s *server) handleListSeries(w http.ResponseWriter, r *http.Request) {
 
 // handleAddSeries syncs a manga/comic series (with all volumes) from its
 // provider — or creates a magazine by name (magazines have no provider;
-// issues materialize from grabs and scans).
+// issues materialize from grabs and scans). Like adding an author, this
+// pulls metadata only: volumes start unmonitored (in the series' Missing
+// section) and magazines don't auto-grab, until the user monitors volumes
+// selectively or flips the series' monitor toggle. Explicit monitored/
+// monitorNew in the request override that for API callers.
 func (s *server) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		MediaType       string `json:"mediaType"`
@@ -83,7 +87,7 @@ func (s *server) handleAddSeries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "mediaType must be manga, comic, or magazine")
 		return
 	}
-	monitored := true
+	monitored := false
 	if req.Monitored != nil {
 		monitored = *req.Monitored
 	}

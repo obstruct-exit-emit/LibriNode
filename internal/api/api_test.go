@@ -285,10 +285,11 @@ func TestSeriesFlow(t *testing.T) {
 	// Comic search has no provider configured.
 	a.want(a.call("GET", "/api/v1/search?term=x&type=comic", nil, nil), http.StatusServiceUnavailable)
 
-	// Add the series: volumes become monitored manga books.
+	// Add the series with explicit monitoring (the default pulls metadata
+	// only): volumes become monitored manga books.
 	var series library.Series
 	a.want(a.call("POST", "/api/v1/series",
-		map[string]any{"mediaType": "manga", "foreignSeriesId": "500", "monitorNew": true}, &series), http.StatusCreated)
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500", "monitored": true, "monitorNew": true}, &series), http.StatusCreated)
 	if series.Title != "Berserk" || !series.Monitored || !series.MonitorNew || series.MediaType != "manga" {
 		t.Fatalf("series = %+v", series)
 	}
@@ -358,33 +359,33 @@ func TestMangaVolumeLibrary(t *testing.T) {
 	}
 	v1 := series.Volumes[0].ID
 
-	// Adding a series monitors every volume — nothing is Missing yet.
-	if !series.Volumes[0].Monitored {
-		t.Fatal("freshly added volume should be monitored")
+	// Like adding an author, adding a series pulls metadata only: every
+	// volume starts unmonitored — the whole series begins in Missing.
+	if series.Volumes[0].Monitored {
+		t.Fatal("freshly added volume must NOT be monitored (metadata only)")
 	}
 
-	// Remove volume 1 from the library: it unmonitors (unowned → it belongs
-	// in Missing now).
+	// Monitor volume 1 from Missing (member=true adds it to the library).
 	var book library.Book
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "manga", "member": true}, &book), http.StatusOK)
+	if !book.Monitored {
+		t.Fatalf("monitored volume from Missing = %+v", book)
+	}
+
+	// Remove it again: it unmonitors (unowned → back to Missing).
 	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
 		map[string]any{"library": "manga", "member": false}, &book), http.StatusOK)
 	if book.Monitored {
 		t.Fatalf("removed volume still monitored: %+v", book)
 	}
 
-	// Monitor it back from Missing (member=true).
-	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
-		map[string]any{"library": "manga", "member": true}, &book), http.StatusOK)
-	if !book.Monitored {
-		t.Fatalf("re-added volume not monitored: %+v", book)
-	}
-
 	// The per-volume monitor toggle flips the same flag.
 	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/monitor", v1),
-		map[string]bool{"monitored": false}, nil), http.StatusOK)
+		map[string]bool{"monitored": true}, nil), http.StatusOK)
 	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", v1), nil, &book), http.StatusOK)
-	if book.Monitored {
-		t.Fatalf("volume still monitored after monitor toggle: %+v", book)
+	if !book.Monitored {
+		t.Fatalf("volume not monitored after monitor toggle: %+v", book)
 	}
 }
 
@@ -462,10 +463,14 @@ func TestComicIssueLibrary(t *testing.T) {
 	var series library.Series
 	a.want(a.call("POST", "/api/v1/series",
 		map[string]any{"mediaType": "comic", "foreignSeriesId": "500"}, &series), http.StatusCreated)
-	if len(series.Volumes) != 3 || !series.Volumes[0].Monitored {
-		t.Fatalf("series after add = %+v", series.Volumes)
+	if len(series.Volumes) != 3 || series.Volumes[0].Monitored {
+		t.Fatalf("series after add = %+v (issues must start unmonitored)", series.Volumes)
 	}
 	v1 := series.Volumes[0].ID
+
+	// Monitor issue 1 from Missing (metadata-only adds start everything there).
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", v1),
+		map[string]any{"library": "comic", "member": true}, nil), http.StatusOK)
 
 	// A comic root with issue 1 on disk.
 	root := t.TempDir()
@@ -513,10 +518,11 @@ func TestSeriesSearchWanted(t *testing.T) {
 
 	var series library.Series
 	a.want(a.call("POST", "/api/v1/series",
-		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500", "monitored": true}, &series), http.StatusCreated)
 
-	// All 3 volumes are monitored and unowned → all wanted. No indexers are
-	// configured, so nothing is grabbed, but every wanted volume is searched.
+	// Added with explicit monitoring: all 3 volumes are monitored and unowned
+	// → all wanted. No indexers are configured, so nothing is grabbed, but
+	// every wanted volume is searched.
 	var res struct {
 		Searched int `json:"searched"`
 		Grabbed  int `json:"grabbed"`
@@ -1374,8 +1380,15 @@ func TestMagazineSeries(t *testing.T) {
 	var mag library.Series
 	a.want(a.call("POST", "/api/v1/series",
 		map[string]any{"mediaType": "magazine", "title": "The Economist"}, &mag), http.StatusCreated)
-	if mag.MediaType != "magazine" || !mag.Monitored || !mag.MonitorNew || mag.Source != "manual" {
+	// Adds are metadata-only: the magazine starts unmonitored (no auto-grab
+	// until the user flips the series toggle).
+	if mag.MediaType != "magazine" || mag.Monitored || mag.MonitorNew || mag.Source != "manual" {
 		t.Fatalf("magazine = %+v", mag)
+	}
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/monitor", mag.ID),
+		map[string]bool{"monitored": true, "monitorNew": true}, &mag), http.StatusOK)
+	if !mag.Monitored || !mag.MonitorNew {
+		t.Fatalf("magazine after monitor toggle = %+v", mag)
 	}
 
 	// Listed alongside other series types; filterable.
