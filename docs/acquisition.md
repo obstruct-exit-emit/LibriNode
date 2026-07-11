@@ -24,7 +24,7 @@ clears it.
 Search results are parsed (author/title/year, formats, retail, language,
 narrator/bitrate/abridged for audio, volume numbers, issue dates) and scored
 against the **default quality profile** for the media type (**Settings →
-Libraries**): ordered format preferences, language, size bounds, retail
+Quality Profiles**): ordered format preferences, language, size bounds, retail
 bonus. Candidates that can't be the book you asked for are rejected outright.
 
 With **upgrades allowed**, owning a lesser format keeps the book wanted

@@ -18,7 +18,7 @@ import {
 // long scroll. Order matches the README spec.
 const settingsGroups = [
   "Media Management",
-  "Libraries",
+  "Quality Profiles",
   "Metadata",
   "Indexers",
   "Download Clients",
@@ -72,7 +72,7 @@ export default function SettingsView({
           <NamingCard onError={onError} activeTypes={activeTypes} />
         </>
       )}
-      {group === "Libraries" && (
+      {group === "Quality Profiles" && (
         <QualityProfilesCard onError={onError} activeTypes={activeTypes} />
       )}
       {group === "Metadata" && <MetadataCard onError={onError} />}

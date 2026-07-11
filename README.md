@@ -67,7 +67,7 @@ Settings are grouped by concern, not dumped on one page:
 ```
 Settings
 ├── Media Management     (root folders per type, file naming templates)
-├── Libraries            (quality profiles per media type: formats, language, upgrades)
+├── Quality Profiles     (per media type: formats, language, upgrades)
 ├── Metadata             (provider choice + API tokens: Hardcover, ComicVine)
 ├── Indexers             (manual Newznab/Torznab or Prowlarr sync; per-type categories under Advanced)
 ├── Download Clients     (qBittorrent, SABnzbd; category mapping under Advanced)
@@ -144,7 +144,7 @@ language, date formats) is planned post-1.0.
    sweeps everything at once, and a background pass does the same every six
    hours. Finished downloads import automatically (checked every minute, or
    via **Import now**), the **Activity** tab shows the live queue and grab
-   history, and format preferences live under **Settings → Libraries**
+   history, and format preferences live under **Settings → Quality Profiles**
    (quality profiles).
 8. Beyond the library pages: every library has a **Wanted** card with
    per-item search, the **Calendar** page lists dated releases across all
@@ -415,7 +415,7 @@ metadata endpoints return 503.
 ### Phase 5 — Polish & 1.0
 - [x] **Plex-style library layout**: a media type appears in the UI only once the user creates its library by adding a root folder (content alone never surfaces one); each active library gets its own sidebar area with *arr-style browsing — a poster grid (author-first for books, series-first for manga/comics/magazines, owned/total counts on each card), scoped add-and-search, and unmatched files. Prose books browse three levels deep: library grid → author page (bio, author-scoped actions, a poster grid of that author's books, and Missing below it) → book page (cover, description, acquisition controls); manga/comics/magazines stay two levels deep, with volumes/issues as rows on the series page. The Home page is the only place types meet, as stacked per-library sections (Recently added / Wanted with cover art) that never interleave types; type-specific settings render only for active libraries
 - [x] **Explicit per-format library membership**: both authors and books carry their own independent membership per format library — an author (and their books) appears in Audiobooks only if you added them there or own an audiobook of theirs (and vice versa for ebooks); adding/removing in one format never touches the other. Book membership is set by scanning/importing (owning it), by which library you add from, or by cross-add from the book detail ("Add to Audiobooks" with a monitor prompt); each book membership has its own monitored flag, replacing edition monitoring as the wanted signal. A library's Books grid lists only the books you've actually added — monitored or owned in that format; unmonitored, unowned members stay enrolled but hidden, surfaced instead in the author's Missing section. Refreshing metadata never enrolls, un-enrolls, or re-monitors anything — it only updates descriptions/covers/new-book metadata
-- [x] Full settings UI as specced above: grouped pages (Media Management / Libraries / Metadata / Indexers / Download Clients / General) with Test buttons on every connection — including saved indexers and download clients — advanced options behind toggles, and a General page with instance info and per-browser API key. UI-preferences page (theme/language/dates) deferred post-1.0
+- [x] Full settings UI as specced above: grouped pages (Media Management / Quality Profiles / Metadata / Indexers / Download Clients / General — the profiles group was named "Libraries" until it proved to hold only profiles) with Test buttons on every connection — including saved indexers and download clients — advanced options behind toggles, and a General page with instance info and per-browser API key. UI-preferences page (theme/language/dates) deferred post-1.0
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
 - [x] Health checks: background monitoring every 15 minutes — root folder unreachable, indexer failing its connection check, download client down or misconfigured, metadata provider token invalid, plus warnings when no indexer/download client/provider is set up at all. Issues show as a warning banner on every page and in a System-page Health card with a run-now button (`GET /health`, `POST /health/check`)
 - [x] Authentication: optional login account (Settings → General → Security) switches the UI from the API-key prompt to a username/password login page with 30-day cookie sessions (in-memory — a restart signs everyone out); passwords stored as PBKDF2-SHA256 hashes only; failed logins logged and throttled; the API key keeps working for Prowlarr/scripts and can be regenerated from the UI; SSL/reverse-proxy guidance in the README
