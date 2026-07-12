@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   api,
   getApiKey,
@@ -26,6 +26,47 @@ const settingsGroups = [
   "General",
 ] as const;
 type SettingsGroup = (typeof settingsGroups)[number];
+
+// --- Shared layout primitives (visual polish; no behavior of their own) ---
+
+// Section groups related fields inside a card under a small heading, with
+// optional help text — so a long form reads as a few labelled blocks.
+function Section({
+  title,
+  help,
+  children,
+}: {
+  title: string;
+  help?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-section">
+      <h3>{title}</h3>
+      {help != null && <p className="muted">{help}</p>}
+      {children}
+    </div>
+  );
+}
+
+// Disclosure hides advanced/optional fields behind a native <details> toggle,
+// collapsed by default, so the common path stays uncluttered.
+function Disclosure({
+  summary,
+  defaultOpen,
+  children,
+}: {
+  summary: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="disclosure" open={defaultOpen}>
+      <summary>{summary}</summary>
+      <div className="disclosure-body">{children}</div>
+    </details>
+  );
+}
 
 export default function SettingsView({
   onError,
@@ -317,7 +358,6 @@ function DownloadClientsCard({
 }) {
   const [clients, setClients] = useState<DownloadClient[]>([]);
   const [draft, setDraft] = useState(emptyDownloadClient);
-  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -407,7 +447,8 @@ function DownloadClientsCard({
         </ul>
       )}
 
-      <div className="settings-form" style={{ marginTop: "0.75rem" }}>
+      <h3 className="settings-subhead">{clients.length > 0 ? "Add another client" : "Add a download client"}</h3>
+      <div className="settings-form">
         <label>
           Name
           <input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
@@ -458,24 +499,20 @@ function DownloadClientsCard({
             />
           </label>
         )}
-        <button
-          type="button"
-          className="toggle"
-          style={{ alignSelf: "flex-start" }}
-          onClick={() => setAdvanced(!advanced)}
-        >
-          {advanced ? "▾ hide advanced" : "▸ advanced (category)"}
-        </button>
-        {advanced && (
+        <Disclosure summary="Advanced">
           <label>
             Category
             <input
-              title="Downloads are tagged with this category so LibriNode only tracks its own"
               value={draft.category}
               onChange={(e) => set({ category: e.target.value })}
             />
           </label>
-        )}
+          <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
+            Downloads are tagged with this category so LibriNode only tracks its
+            own — change it only if it collides with another app on the same
+            client.
+          </p>
+        </Disclosure>
         <div className="settings-actions">
           <button
             disabled={busy || !draftValid}
@@ -558,64 +595,74 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
   };
 
   return (
-    <div className="settings-form" style={{ marginTop: "1.25rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Import options</h3>
-      <label className="check">
-        <span>
-          <input
-            type="checkbox"
-            checked={settings.packImportAll}
-            onChange={(e) => update({ packImportAll: e.target.checked })}
-          />{" "}
-          Import whole packs — when a grabbed release is a multi-book bundle,
-          import every book it matches, not just monitored ones
-        </span>
-      </label>
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        On (default): a multi-book pack fills every book it matches. Off: a pack
-        only fills the grabbed book plus other <strong>monitored</strong> books.
-        Either way, a book that already owns the format is only replaced by a
-        genuine quality upgrade, and nothing gets monitored automatically.
-      </p>
+    <div style={{ marginTop: "1.25rem" }}>
+      <Section
+        title="Import handling"
+        help="How LibriNode imports finished downloads and tidies up afterwards. All on by default — changes save immediately."
+      >
+        <div className="opt">
+          <label className="check">
+            <span>
+              <input
+                type="checkbox"
+                checked={settings.packImportAll}
+                onChange={(e) => update({ packImportAll: e.target.checked })}
+              />{" "}
+              Import whole packs
+            </span>
+          </label>
+          <p className="muted opt-help">
+            On (default): a multi-book pack fills every book it matches. Off: a
+            pack only fills the grabbed book plus other{" "}
+            <strong>monitored</strong> books. Either way, a book that already
+            owns the format is only replaced by a genuine quality upgrade, and
+            nothing gets monitored automatically.
+          </p>
+        </div>
 
-      <label className="check">
-        <span>
-          <input
-            type="checkbox"
-            checked={settings.removeCompleted}
-            onChange={(e) => update({ removeCompleted: e.target.checked })}
-          />{" "}
-          Remove completed downloads from the client after import
-        </span>
-      </label>
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        On (default): the download is removed from the client — for torrents too
-        — once LibriNode has imported it. Off: usenet history entries are cleared
-        either way (the file stays), and torrents keep seeding until the client's
-        own goal is met.
-      </p>
+        <div className="opt">
+          <label className="check">
+            <span>
+              <input
+                type="checkbox"
+                checked={settings.removeCompleted}
+                onChange={(e) => update({ removeCompleted: e.target.checked })}
+              />{" "}
+              Remove completed downloads from the client after import
+            </span>
+          </label>
+          <p className="muted opt-help">
+            On (default): the download is removed from the client — for torrents
+            too — once LibriNode has imported it. Off: usenet history entries are
+            cleared either way (the file stays), and torrents keep seeding until
+            the client's own goal is met.
+          </p>
+        </div>
 
-      <label className="check">
-        <span>
-          <input
-            type="checkbox"
-            checked={settings.deleteCompletedFiles}
-            onChange={(e) => update({ deleteCompletedFiles: e.target.checked })}
-          />{" "}
-          Delete the downloaded files after import
-        </span>
-      </label>
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        On (default): LibriNode copies imported files into the library, then
-        deletes the originals (this also removes the download from the client).
-        Turn off if the download folder is shared with other apps.
-      </p>
+        <div className="opt">
+          <label className="check">
+            <span>
+              <input
+                type="checkbox"
+                checked={settings.deleteCompletedFiles}
+                onChange={(e) => update({ deleteCompletedFiles: e.target.checked })}
+              />{" "}
+              Delete the downloaded files after import
+            </span>
+          </label>
+          <p className="muted opt-help">
+            On (default): LibriNode copies imported files into the library, then
+            deletes the originals (this also removes the download from the
+            client). Turn off if the download folder is shared with other apps.
+          </p>
+        </div>
 
-      {notice && (
-        <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
-          {notice}
-        </span>
-      )}
+        {notice && (
+          <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
+            {notice}
+          </span>
+        )}
+      </Section>
     </div>
   );
 }
@@ -732,7 +779,8 @@ function QualityProfilesCard({
         ))}
       </ul>
 
-      <div className="settings-form" style={{ marginTop: "0.75rem" }}>
+      <h3 className="settings-subhead">Add a quality profile</h3>
+      <div className="settings-form">
         <label>
           Name
           <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -816,7 +864,6 @@ function IndexersCard({
 }) {
   const [indexers, setIndexers] = useState<Indexer[]>([]);
   const [draft, setDraft] = useState(emptyIndexer);
-  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -933,7 +980,8 @@ function IndexersCard({
         </ul>
       )}
 
-      <div className="settings-form" style={{ marginTop: "0.75rem" }}>
+      <h3 className="settings-subhead">{indexers.length > 0 ? "Add another indexer" : "Add an indexer"}</h3>
+      <div className="settings-form">
         <label>
           Name
           <input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
@@ -960,50 +1008,44 @@ function IndexersCard({
           API key
           <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
         </label>
-        <button
-          type="button"
-          className="toggle"
-          style={{ alignSelf: "flex-start" }}
-          onClick={() => setAdvanced(!advanced)}
-        >
-          {advanced ? "▾ hide advanced" : "▸ advanced (per-type categories)"}
-        </button>
-        {advanced && (
-          <>
-            <label>
-              Book categories
-              <input
-                title="Newznab categories used for ebook searches (7000 = Books, 7020 = Books/Ebook)"
-                value={draft.categories}
-                onChange={(e) => set({ categories: e.target.value })}
-              />
-            </label>
-            <label>
-              Audio categories
-              <input
-                title="Newznab categories used for audiobook searches (3030 = Audio/Audiobook)"
-                value={draft.audioCategories}
-                onChange={(e) => set({ audioCategories: e.target.value })}
-              />
-            </label>
-            <label>
-              Comic categories
-              <input
-                title="Newznab categories used for manga and comic searches (7030 = Books/Comics)"
-                value={draft.comicCategories}
-                onChange={(e) => set({ comicCategories: e.target.value })}
-              />
-            </label>
-            <label>
-              Magazine categories
-              <input
-                title="Newznab categories used for magazine searches (7010 = Books/Mags)"
-                value={draft.magazineCategories}
-                onChange={(e) => set({ magazineCategories: e.target.value })}
-              />
-            </label>
-          </>
-        )}
+        <Disclosure summary="Advanced — per-type categories">
+          <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
+            Newznab/Torznab category IDs searched per media type. Defaults cover
+            the standard book categories; change only for an unusual indexer.
+          </p>
+          <label>
+            Book categories
+            <input
+              title="7000 = Books, 7020 = Books/Ebook"
+              value={draft.categories}
+              onChange={(e) => set({ categories: e.target.value })}
+            />
+          </label>
+          <label>
+            Audio categories
+            <input
+              title="3030 = Audio/Audiobook"
+              value={draft.audioCategories}
+              onChange={(e) => set({ audioCategories: e.target.value })}
+            />
+          </label>
+          <label>
+            Comic categories
+            <input
+              title="7030 = Books/Comics (manga and comics)"
+              value={draft.comicCategories}
+              onChange={(e) => set({ comicCategories: e.target.value })}
+            />
+          </label>
+          <label>
+            Magazine categories
+            <input
+              title="7010 = Books/Mags"
+              value={draft.magazineCategories}
+              onChange={(e) => set({ magazineCategories: e.target.value })}
+            />
+          </label>
+        </Disclosure>
         <div className="settings-actions">
           <button disabled={busy || !draftValid} onClick={testDraft}>
             Test
@@ -1090,44 +1132,44 @@ function NamingCard({
       </p>
       <div className="settings-form">
         {show("ebook") && (
-          <>
-            {field("Ebook folder template", "ebookFolder")}
-            {field("Ebook file template", "ebookFile")}
-            <p className="muted">
+          <Section title="Ebooks">
+            {field("Folder template", "ebookFolder")}
+            {field("File template", "ebookFile")}
+            <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
               Example: <code>{settings.example}</code>
             </p>
-          </>
+          </Section>
         )}
         {show("audiobook") && (
-          <>
-            {field("Audiobook folder template", "audiobookFolder")}
+          <Section title="Audiobooks">
+            {field("Folder template", "audiobookFolder")}
             {field(
-              "Audiobook book-folder template",
+              "Book-folder template",
               "audiobookFile",
               "Names the per-book folder (Audiobookshelf layout); multi-file books keep their track names inside it",
             )}
-            <p className="muted">
-              Audiobook example: <code>{settings.audiobookExample}</code>
+            <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
+              Example: <code>{settings.audiobookExample}</code>
             </p>
-          </>
+          </Section>
         )}
         {show("manga") && (
-          <>
-            {field("Manga folder template", "mangaFolder")}
-            {field("Manga file template", "mangaFile")}
-          </>
+          <Section title="Manga">
+            {field("Folder template", "mangaFolder")}
+            {field("File template", "mangaFile")}
+          </Section>
         )}
         {show("comic") && (
-          <>
-            {field("Comic folder template", "comicFolder")}
-            {field("Comic file template", "comicFile")}
-          </>
+          <Section title="Comics">
+            {field("Folder template", "comicFolder")}
+            {field("File template", "comicFile")}
+          </Section>
         )}
         {show("magazine") && (
-          <>
-            {field("Magazine folder template", "magazineFolder")}
-            {field("Magazine file template", "magazineFile")}
-          </>
+          <Section title="Magazines">
+            {field("Folder template", "magazineFolder")}
+            {field("File template", "magazineFile")}
+          </Section>
         )}
         <div className="settings-actions">
           <button disabled={busy} onClick={save}>
@@ -1487,8 +1529,9 @@ function MetadataCard({
         </div>
       </div>
 
-      <div className="settings-form" style={{ marginTop: "1.25rem" }}>
-        <p className="muted" style={{ margin: 0 }}>
+      <div style={{ marginTop: "1.25rem" }}>
+        <Disclosure summary="Cache maintenance">
+        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
           Cached metadata rebuilds on demand. <strong>Provider art</strong>
           {" "}(author portraits, cover images) and <strong>extracted
           covers</strong> (the first page of your owned manga/comic archives)
@@ -1530,6 +1573,7 @@ function MetadataCard({
             </span>
           )}
         </div>
+        </Disclosure>
       </div>
     </section>
   );
@@ -1629,7 +1673,8 @@ function RootFoldersCard({
         </ul>
       )}
 
-      <form onSubmit={add} className="search-form" style={{ marginTop: "0.75rem" }}>
+      <h3 className="settings-subhead">Add a root folder</h3>
+      <form onSubmit={add} className="search-form">
         <select value={mediaType} onChange={(e) => setMediaType(e.target.value)}>
           {mediaTypes.map((t) => (
             <option key={t} value={t}>
