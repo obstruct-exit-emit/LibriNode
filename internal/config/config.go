@@ -207,20 +207,22 @@ type AuthSettings struct {
 // Enabled reports whether a login account is configured.
 func (a AuthSettings) Enabled() bool { return a.Username != "" }
 
-// ImportSettings tunes Completed Download Handling.
+// ImportSettings tunes Completed Download Handling. All three default to on
+// (see defaults()); the fields carry no omitempty so an explicit "off" is
+// written to the file and survives a reload instead of falling back to the
+// default.
 type ImportSettings struct {
 	// PackImportAll imports every matching book from a multi-book pack, not
-	// just monitored ones. Opt-in: the default (false) fills monitored books
-	// only, so grabbing one volume never auto-imports the rest of a bundle.
-	PackImportAll bool `yaml:"pack_import_all,omitempty" json:"packImportAll"`
+	// just monitored ones. On by default. Off fills monitored books only, so
+	// grabbing one volume never auto-imports the rest of a bundle.
+	PackImportAll bool `yaml:"pack_import_all" json:"packImportAll"`
 	// RemoveCompleted removes a download from its client once LibriNode has
-	// imported it. Off by default: usenet history entries are cleared either
-	// way (the file stays — LibriNode only copies it), and torrents keep
-	// seeding until their client's own goal is met.
-	RemoveCompleted bool `yaml:"remove_completed,omitempty" json:"removeCompleted"`
+	// imported it. On by default. Off leaves torrents seeding until their
+	// client's own goal is met (usenet history is cleared either way).
+	RemoveCompleted bool `yaml:"remove_completed" json:"removeCompleted"`
 	// DeleteCompletedFiles also deletes the downloaded files from disk when a
-	// download is removed after import. Implies RemoveCompleted.
-	DeleteCompletedFiles bool `yaml:"delete_completed_files,omitempty" json:"deleteCompletedFiles"`
+	// download is removed after import. On by default; implies RemoveCompleted.
+	DeleteCompletedFiles bool `yaml:"delete_completed_files" json:"deleteCompletedFiles"`
 }
 
 type Config struct {
@@ -232,7 +234,9 @@ type Config struct {
 	Auth     AuthSettings     `yaml:"auth,omitempty"`
 	Metadata MetadataSettings `yaml:"metadata"`
 	Naming   NamingSettings   `yaml:"naming"`
-	Import   ImportSettings   `yaml:"import,omitempty"`
+	// No omitempty: Import defaults to all-on, so an all-off choice must be
+	// written explicitly rather than dropped and re-defaulted on load.
+	Import ImportSettings `yaml:"import"`
 
 	// Legacy flat field, migrated into Metadata.Providers on load and
 	// dropped from the file on the next save.
@@ -252,6 +256,14 @@ func defaults() *Config {
 			Providers: map[string]metadata.Settings{},
 		},
 		Naming: defaultNaming(),
+		// Completed Download Handling is fully automatic by default: import
+		// whole packs, remove the download from its client, and delete the
+		// source files once imported.
+		Import: ImportSettings{
+			PackImportAll:        true,
+			RemoveCompleted:      true,
+			DeleteCompletedFiles: true,
+		},
 	}
 }
 

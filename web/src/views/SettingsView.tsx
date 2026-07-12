@@ -516,9 +516,9 @@ function DownloadClientsCard({
 
 // ImportOptions: Completed Download Handling knobs (saved on toggle).
 const DEFAULT_IMPORT_SETTINGS: ImportSettings = {
-  packImportAll: false,
-  removeCompleted: false,
-  deleteCompletedFiles: false,
+  packImportAll: true,
+  removeCompleted: true,
+  deleteCompletedFiles: true,
 };
 
 function ImportOptions({ onError }: { onError: (message: string) => void }) {
@@ -572,10 +572,10 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
         </span>
       </label>
       <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Off (default): a pack only fills the grabbed book plus other{" "}
-        <strong>monitored</strong> books. Either way, a book that already owns
-        the format is only replaced by a genuine quality upgrade, and nothing
-        gets monitored automatically.
+        On (default): a multi-book pack fills every book it matches. Off: a pack
+        only fills the grabbed book plus other <strong>monitored</strong> books.
+        Either way, a book that already owns the format is only replaced by a
+        genuine quality upgrade, and nothing gets monitored automatically.
       </p>
 
       <label className="check">
@@ -589,10 +589,10 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
         </span>
       </label>
       <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Off (default): usenet history entries are cleared either way (the file
-        stays), and torrents keep seeding until the client's own goal is met. On:
-        the download is removed from the client — for torrents too — once
-        LibriNode has imported it.
+        On (default): the download is removed from the client — for torrents too
+        — once LibriNode has imported it. Off: usenet history entries are cleared
+        either way (the file stays), and torrents keep seeding until the client's
+        own goal is met.
       </p>
 
       <label className="check">
@@ -606,9 +606,9 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
         </span>
       </label>
       <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        LibriNode copies imported files into the library, so the originals can be
-        deleted. Turning this on also removes the download from the client. Leave
-        off if the download folder is shared with other apps.
+        On (default): LibriNode copies imported files into the library, then
+        deletes the originals (this also removes the download from the client).
+        Turn off if the download folder is shared with other apps.
       </p>
 
       {notice && (
