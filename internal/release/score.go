@@ -2,6 +2,7 @@ package release
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -9,6 +10,38 @@ import (
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/scanner"
 )
+
+// titleStopwords are words that, right after a matched title, mean the release
+// is actually a longer, different title ("Saga" vs "Saga of the Swamp Thing")
+// rather than a scene/publisher tag ("Berserk Dark Horse v05") or metadata
+// ("Berserk v05"). A tag or metadata token never starts with one of these.
+var titleStopwords = map[string]bool{
+	"of": true, "the": true, "a": true, "an": true, "and": true,
+	"or": true, "in": true, "to": true, "vs": true, "versus": true, "for": true,
+}
+
+// titleMatches reports whether any normalized title key appears in the
+// normalized release title as a whole-word run not immediately continued by a
+// stopword. Matching whole words (not substrings) avoids "Saga" hitting "Saga
+// of the Swamp Thing", while still allowing a leading group/scanlator tag.
+func titleMatches(relNorm string, keys []string) bool {
+	relWords := strings.Fields(relNorm)
+	for _, key := range keys {
+		kw := strings.Fields(key)
+		if len(kw) == 0 {
+			continue
+		}
+		for i := 0; i+len(kw) <= len(relWords); i++ {
+			if slices.Equal(relWords[i:i+len(kw)], kw) {
+				next := i + len(kw)
+				if next >= len(relWords) || !titleStopwords[relWords[next]] {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 // Preferences drive scoring. Each media type's default quality profile
 // produces these (PreferencesFor); the Default*Preferences constructors are
@@ -47,7 +80,7 @@ func PreferencesFor(store *library.Store, mediaType string) Preferences {
 	if p, err := store.DefaultProfile(mediaType); err == nil {
 		prefs := PreferencesFromProfile(*p)
 		prefs.RejectAbridged = mediaType == "audiobook"
-		prefs.AllowUnknownFormat = isImageMedia(mediaType)
+		prefs.AllowUnknownFormat = formatOptional(mediaType)
 		return prefs
 	}
 	switch mediaType {
@@ -67,6 +100,14 @@ func PreferencesFor(store *library.Store, mediaType string) Preferences {
 // or periodicals whose release names routinely omit the format.
 func isImageMedia(mediaType string) bool {
 	return mediaType == "manga" || mediaType == "comic" || mediaType == "magazine"
+}
+
+// formatOptional reports media types whose release names routinely omit the
+// file format, so a format-less name shouldn't be rejected — image media
+// (cbz/cbr) plus audiobooks (bitrate/narrator instead of m4b/mp3). The importer
+// verifies the real format from the downloaded files.
+func formatOptional(mediaType string) bool {
+	return isImageMedia(mediaType) || mediaType == "audiobook"
 }
 
 // DefaultMagazinePreferences scores pdf first — periodicals ship as pdf.
@@ -105,14 +146,17 @@ func DefaultComicPreferences() Preferences {
 
 // DefaultAudiobookPreferences prefers single-file m4b (Audiobookshelf's
 // favorite), then space-efficient formats; abridged versions are rejected.
+// Format is optional: audiobook release names routinely carry the bitrate or
+// narrator instead of m4b/mp3 (the importer reads the real format from files).
 func DefaultAudiobookPreferences() Preferences {
 	return Preferences{
-		FormatScores:   map[string]int{"m4b": 100, "m4a": 85, "opus": 75, "mp3": 70, "flac": 55},
-		RetailBonus:    10,
-		Language:       "english",
-		MinSize:        5 << 20, // 5 MiB — shorter than a short story
-		MaxSize:        4 << 30, // 4 GiB — beyond even long unabridged epics
-		RejectAbridged: true,
+		FormatScores:       map[string]int{"m4b": 100, "m4a": 85, "opus": 75, "mp3": 70, "flac": 55},
+		RetailBonus:        10,
+		Language:           "english",
+		MinSize:            5 << 20, // 5 MiB — shorter than a short story
+		MaxSize:            4 << 30, // 4 GiB — beyond even long unabridged epics
+		RejectAbridged:     true,
+		AllowUnknownFormat: true,
 	}
 }
 
@@ -232,14 +276,7 @@ func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, num
 	c := Score(rel, prefs, nil, nil)
 
 	relNorm := scanner.Normalize(rel.Title)
-	matched := false
-	for _, key := range scanner.TitleKeys(seriesTitle) {
-		if key != "" && strings.Contains(relNorm, key) {
-			matched = true
-			break
-		}
-	}
-	if !matched {
+	if !titleMatches(relNorm, scanner.TitleKeys(seriesTitle)) {
 		c.reject("does not contain the series title")
 	}
 
@@ -262,14 +299,7 @@ func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned m
 	c := Score(rel, prefs, nil, nil)
 
 	relNorm := scanner.Normalize(rel.Title)
-	matched := false
-	for _, key := range scanner.TitleKeys(title) {
-		if key != "" && strings.Contains(relNorm, key) {
-			matched = true
-			break
-		}
-	}
-	if !matched {
+	if !titleMatches(relNorm, scanner.TitleKeys(title)) {
 		c.reject("does not contain the magazine title")
 	}
 
@@ -288,14 +318,7 @@ func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned m
 func (c *Candidate) matchBook(book *library.Book, author *library.Author) {
 	relNorm := scanner.Normalize(c.Release.Title)
 
-	matched := false
-	for _, key := range scanner.TitleKeys(book.Title) {
-		if key != "" && strings.Contains(relNorm, key) {
-			matched = true
-			break
-		}
-	}
-	if !matched {
+	if !titleMatches(relNorm, scanner.TitleKeys(book.Title)) {
 		c.reject("does not contain the book title")
 	}
 

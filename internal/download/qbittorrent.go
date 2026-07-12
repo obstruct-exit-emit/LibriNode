@@ -25,8 +25,14 @@ type qbittorrent struct {
 func newQBittorrent(cfg *ClientConfig) *qbittorrent {
 	jar, _ := cookiejar.New(nil)
 	return &qbittorrent{
-		cfg:   cfg,
-		httpc: &http.Client{Timeout: 30 * time.Second, Jar: jar},
+		cfg: cfg,
+		// A debrid bridge (TorBox/Real-Debrid presenting a qBittorrent API)
+		// adds a magnet synchronously — it waits on the debrid service to
+		// accept it, which routinely takes longer than a plain qBittorrent's
+		// instant add. A short timeout fires mid-add: the torrent still lands,
+		// but the grab goes unrecorded. Give adds generous headroom; List
+		// bounds its own context so a hung bridge can't stall the import loop.
+		httpc: &http.Client{Timeout: 120 * time.Second, Jar: jar},
 	}
 }
 
@@ -141,12 +147,55 @@ func (q *qbittorrent) addURLs(ctx context.Context, urls, title string) (string, 
 	body, err := q.do(ctx, "/api/v2/torrents/add",
 		url.Values{"urls": {urls}, "category": {q.cfg.Category}, "rename": {title}})
 	if err != nil {
+		// A debrid bridge can accept the magnet yet respond too slowly, tripping
+		// the client timeout even though the torrent lands. Confirm via the list
+		// before giving up, so the grab is still recorded.
+		if q.landed(title) {
+			return "", nil
+		}
 		return "", err
 	}
 	if strings.HasPrefix(string(body), "Fails") {
 		return "", fmt.Errorf("qbittorrent rejected the torrent")
 	}
 	return "", nil
+}
+
+// landed reports whether a torrent matching title is now in our category. It
+// confirms a slow add (see addURLs/addFile) actually took effect, using a fresh
+// short-lived context so a stalled add request doesn't taint the check.
+func (q *qbittorrent) landed(title string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	items, err := q.List(ctx)
+	if err != nil {
+		return false
+	}
+	want := normalizeTitle(title)
+	for _, it := range items {
+		got := normalizeTitle(it.Title)
+		if want != "" && (got == want || strings.Contains(got, want)) {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeTitle lowercases a title to space-separated alphanumeric runs so
+// cosmetic punctuation differences don't defeat the landed() match.
+func normalizeTitle(s string) string {
+	var b strings.Builder
+	space := false
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			space = false
+		} else if !space {
+			b.WriteByte(' ')
+			space = true
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // resolve follows a release's download URL to what the client actually needs:
@@ -156,7 +205,7 @@ func (q *qbittorrent) addURLs(ctx context.Context, urls, title string) (string, 
 // Location header instead.
 func (q *qbittorrent) resolve(ctx context.Context, dlURL string) (string, []byte, error) {
 	client := &http.Client{
-		Timeout:       30 * time.Second,
+		Timeout:       60 * time.Second,
 		Jar:           q.httpc.Jar,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
@@ -237,6 +286,10 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 	}
 	resp, err := attempt()
 	if err != nil {
+		// Slow bridge: the upload may have landed despite the timeout.
+		if q.landed(title) {
+			return "", nil
+		}
 		return "", fmt.Errorf("qbittorrent: %w", err)
 	}
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
@@ -245,6 +298,9 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 			return "", err
 		}
 		if resp, err = attempt(); err != nil {
+			if q.landed(title) {
+				return "", nil
+			}
 			return "", fmt.Errorf("qbittorrent: %w", err)
 		}
 	}
@@ -275,6 +331,10 @@ func torrentFilename(title string) string {
 }
 
 func (q *qbittorrent) List(ctx context.Context) ([]Item, error) {
+	// The client timeout is generous for slow adds; listing should stay snappy
+	// so a hung bridge can't stall the periodic import loop.
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
 	body, err := q.do(ctx, "/api/v2/torrents/info?category="+url.QueryEscape(q.cfg.Category), nil)
 	if err != nil {
 		return nil, err

@@ -11,7 +11,11 @@ import (
 	"github.com/librinode/librinode/internal/download"
 )
 
-const downloadTimeout = 60 * time.Second
+// downloadTimeout bounds a grab/import request. It's generous because a debrid
+// bridge accepts a magnet synchronously (waiting on the debrid service), which
+// can take over a minute; a tighter bound would abandon adds that then land
+// unrecorded.
+const downloadTimeout = 150 * time.Second
 
 func writeDownloadError(w http.ResponseWriter, err error) {
 	if errors.Is(err, download.ErrNotFound) {

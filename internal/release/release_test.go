@@ -245,6 +245,15 @@ func TestScoreAudiobook(t *testing.T) {
 	if tiny.Approved {
 		t.Error("1 MiB audiobook should be rejected")
 	}
+	// Audiobook names routinely omit the format (bitrate/narrator instead), so
+	// a format-less release must still approve — ranked below a named format.
+	noFmt := Score(rel("Ready Player One Unabridged 192k", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	if !noFmt.Approved {
+		t.Errorf("format-less audiobook should approve: %v", noFmt.Rejections)
+	}
+	if noFmt.Score >= m4b.Score {
+		t.Errorf("format-less audiobook (%d) should rank below m4b (%d)", noFmt.Score, m4b.Score)
+	}
 }
 
 func TestScoreVolume(t *testing.T) {
@@ -265,6 +274,17 @@ func TestScoreVolume(t *testing.T) {
 	wrongSeries := ScoreVolume(rel("One Piece v05 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
 	if wrongSeries.Approved {
 		t.Error("wrong series approved")
+	}
+	// A short series title must not match a longer, different title that only
+	// starts with it ("Saga" vs "Saga of the Swamp Thing").
+	prefixSeries := ScoreVolume(rel("Saga of the Swamp Thing v01 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1)
+	if prefixSeries.Approved {
+		t.Errorf("longer prefix-title series wrongly approved: %+v", prefixSeries.Rejections)
+	}
+	// …but a leading publisher/scanlator tag before the title still matches.
+	tagged := ScoreVolume(rel("Berserk Dark Horse v05 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if !tagged.Approved {
+		t.Errorf("tagged release wrongly rejected: %v", tagged.Rejections)
 	}
 	epubUnderComic := ScoreVolume(rel("Berserk v05 EPUB", indexer.ProtocolUsenet, 50<<20, -1), DefaultComicPreferences(), "Berserk", 5)
 	if epubUnderComic.Approved {
