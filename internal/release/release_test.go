@@ -123,6 +123,34 @@ func TestScoreGeneric(t *testing.T) {
 	}
 }
 
+// Manga/comic/magazine releases routinely omit the format from the name (the
+// real format is read from the files at import), so a format-less release must
+// still approve — but rank below one that names a format.
+func TestScoreImageMediaAllowsUnknownFormat(t *testing.T) {
+	prefs := DefaultMangaPreferences()
+
+	noFormat := Score(rel("Death Note Vol. 01 (2005) (Digital)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil)
+	if !noFormat.Approved {
+		t.Fatalf("format-less manga release should approve: %v", noFormat.Rejections)
+	}
+
+	cbz := Score(rel("Death Note Vol. 01 (cbz)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil)
+	if !cbz.Approved || cbz.Score <= noFormat.Score {
+		t.Errorf("named cbz (%d) should approve and outrank unknown-format (%d)", cbz.Score, noFormat.Score)
+	}
+
+	// A stated but unwanted format is still rejected, even for image media.
+	badFmt := Score(rel("Death Note Vol. 01 (mp3)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil)
+	if badFmt.Approved {
+		t.Error("an unwanted format should still be rejected for manga")
+	}
+
+	// Ebooks keep requiring a format.
+	if Score(rel("Mort", indexer.ProtocolUsenet, 1<<20, -1), DefaultEbookPreferences(), nil, nil).Approved {
+		t.Error("ebook without a format must still reject")
+	}
+}
+
 func TestScoreAgainstBook(t *testing.T) {
 	prefs := DefaultEbookPreferences()
 	book := &library.Book{Title: "The Colour of Magic", ReleaseDate: "1983-11-24"}

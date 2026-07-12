@@ -29,7 +29,17 @@ type Preferences struct {
 	// RejectAbridged drops releases that state they are abridged
 	// (audiobook profiles default to true).
 	RejectAbridged bool
+	// AllowUnknownFormat accepts releases whose name states no format instead
+	// of rejecting them — manga/comic/magazine scene names routinely omit it
+	// (the real format is read from the files at import). Ebooks/audiobooks
+	// keep requiring a recognized format.
+	AllowUnknownFormat bool
 }
+
+// unknownFormatScore is the baseline a format-less release gets when
+// AllowUnknownFormat is set — positive so it can approve, but below any named
+// format so a release that does state cbz/cbr/pdf outranks it.
+const unknownFormatScore = 30
 
 // PreferencesFor resolves the active scoring rules for a media type: its
 // default quality profile when one exists, built-in defaults otherwise.
@@ -37,6 +47,7 @@ func PreferencesFor(store *library.Store, mediaType string) Preferences {
 	if p, err := store.DefaultProfile(mediaType); err == nil {
 		prefs := PreferencesFromProfile(*p)
 		prefs.RejectAbridged = mediaType == "audiobook"
+		prefs.AllowUnknownFormat = isImageMedia(mediaType)
 		return prefs
 	}
 	switch mediaType {
@@ -52,13 +63,20 @@ func PreferencesFor(store *library.Store, mediaType string) Preferences {
 	return DefaultEbookPreferences()
 }
 
+// isImageMedia reports whether a media type ships as image archives (cbz/cbr)
+// or periodicals whose release names routinely omit the format.
+func isImageMedia(mediaType string) bool {
+	return mediaType == "manga" || mediaType == "comic" || mediaType == "magazine"
+}
+
 // DefaultMagazinePreferences scores pdf first — periodicals ship as pdf.
 func DefaultMagazinePreferences() Preferences {
 	return Preferences{
-		FormatScores: map[string]int{"pdf": 100, "epub": 70, "cbz": 50},
-		Language:     "english",
-		MinSize:      1 << 20,
-		MaxSize:      1 << 30,
+		FormatScores:       map[string]int{"pdf": 100, "epub": 70, "cbz": 50},
+		Language:           "english",
+		MinSize:            1 << 20,
+		MaxSize:            1 << 30,
+		AllowUnknownFormat: true,
 	}
 }
 
@@ -66,20 +84,22 @@ func DefaultMagazinePreferences() Preferences {
 // from a few MB per volume to a GB+ for omnibus scans.
 func DefaultMangaPreferences() Preferences {
 	return Preferences{
-		FormatScores: map[string]int{"cbz": 100, "cbr": 80, "epub": 60, "pdf": 40},
-		Language:     "english",
-		MinSize:      2 << 20,
-		MaxSize:      2 << 30,
+		FormatScores:       map[string]int{"cbz": 100, "cbr": 80, "epub": 60, "pdf": 40},
+		Language:           "english",
+		MinSize:            2 << 20,
+		MaxSize:            2 << 30,
+		AllowUnknownFormat: true,
 	}
 }
 
 // DefaultComicPreferences mirror manga but drop epub (comics don't ship it).
 func DefaultComicPreferences() Preferences {
 	return Preferences{
-		FormatScores: map[string]int{"cbz": 100, "cbr": 80, "pdf": 40},
-		Language:     "english",
-		MinSize:      2 << 20,
-		MaxSize:      2 << 30,
+		FormatScores:       map[string]int{"cbz": 100, "cbr": 80, "pdf": 40},
+		Language:           "english",
+		MinSize:            2 << 20,
+		MaxSize:            2 << 30,
+		AllowUnknownFormat: true,
 	}
 }
 
@@ -151,6 +171,10 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 		}
 	}
 	switch {
+	case len(c.Parsed.Formats) == 0 && prefs.AllowUnknownFormat:
+		// No format stated, but manga/comic/magazine names often omit it; the
+		// importer verifies the actual file's format. Give a low baseline.
+		c.Score += unknownFormatScore
 	case len(c.Parsed.Formats) == 0:
 		c.reject("no recognized ebook format in release name")
 	case best < 0:

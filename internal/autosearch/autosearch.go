@@ -308,6 +308,14 @@ func (s *Service) wants(book *library.Book) []want {
 	return wants
 }
 
+// SearchMagazineSeries searches one magazine for new issues and grabs them —
+// the per-series Search button's magazine path. Magazine issues are
+// materialized on grab, so there are no per-volume books to sweep; this drives
+// searchMagazine directly.
+func (s *Service) SearchMagazineSeries(ctx context.Context, series *library.Series) ([]BookOutcome, error) {
+	return s.searchMagazine(ctx, series)
+}
+
 // searchMagazine looks for new issues of a monitored magazine: any release
 // matching the title whose issue date/number isn't in the library yet. Found
 // issues are materialized as books and grabbed (capped per pass so a fresh
