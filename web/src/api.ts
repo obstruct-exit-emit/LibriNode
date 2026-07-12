@@ -368,6 +368,8 @@ export interface MetadataSettings {
 
 export interface ImportSettings {
   packImportAll: boolean;
+  removeCompleted: boolean;
+  deleteCompletedFiles: boolean;
 }
 
 const KEY_STORAGE = "librinode-api-key";

@@ -28,7 +28,11 @@ type fx struct {
 	book    *library.Book
 	history []map[string]any // mutable mock SAB history
 	removed []string         // nzo ids deleted from history
+	delData []string         // nzo ids deleted WITH their files (del_files=1)
 	packAll bool             // the pack-import-all setting
+	// post-import cleanup settings
+	removeCompleted bool
+	deleteFiles     bool
 }
 
 func fixture(t *testing.T) *fx {
@@ -58,6 +62,9 @@ func fixture(t *testing.T) *fx {
 		case "history":
 			if q.Get("name") == "delete" {
 				f.removed = append(f.removed, q.Get("value"))
+				if q.Get("del_files") == "1" {
+					f.delData = append(f.delData, q.Get("value"))
+				}
 				w.Write([]byte(`{"status": true}`))
 				return
 			}
@@ -93,7 +100,13 @@ func fixture(t *testing.T) *fx {
 		t.Fatal(err)
 	}
 
-	f.svc = New(store, downloads, organize.New(store, cfg), func() bool { return f.packAll })
+	f.svc = New(store, downloads, organize.New(store, cfg), func() config.ImportSettings {
+		return config.ImportSettings{
+			PackImportAll:        f.packAll,
+			RemoveCompleted:      f.removeCompleted,
+			DeleteCompletedFiles: f.deleteFiles,
+		}
+	})
 	return f
 }
 
@@ -283,6 +296,98 @@ func TestImportTrackedGrab(t *testing.T) {
 	}
 	if result.Imported != 0 {
 		t.Errorf("re-import happened: %+v", result)
+	}
+}
+
+// TestImportDeletesDownloadedFilesWhenEnabled: with DeleteCompletedFiles on, a
+// usenet import removes the download from the client WITH its files.
+func TestImportDeletesDownloadedFilesWhenEnabled(t *testing.T) {
+	f := fixture(t)
+	f.deleteFiles = true // implies remove; also delete the source files
+	ctx := context.Background()
+
+	dir := f.completedDownload(t, "nzo_del", "Terry Pratchett - Mort Retail EPUB", "Mort.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_del",
+		Title: "Terry Pratchett - Mort Retail EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	// Client was told to delete the files…
+	if len(f.delData) != 1 || f.delData[0] != "nzo_del" {
+		t.Errorf("download not deleted with its files: delData = %v", f.delData)
+	}
+	// …and the source folder is gone from disk (clients that ignore the flag).
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("source download folder not deleted: stat err = %v", err)
+	}
+}
+
+// TestImportRemovesTorrentFromClientWhenEnabled: with RemoveCompleted on, a
+// finished torrent is removed from the client right after import (keeping its
+// files), instead of being left to seed.
+func TestImportRemovesTorrentFromClientWhenEnabled(t *testing.T) {
+	f := fixture(t)
+	f.removeCompleted = true // remove from client after import; keep files
+	ctx := context.Background()
+
+	dir := filepath.Join(t.TempDir(), "Mort")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Mort.epub"), []byte("bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var deleted []string
+	qbit := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/login"):
+			w.Write([]byte("Ok."))
+		case strings.HasSuffix(r.URL.Path, "/torrents/info"):
+			// Finished but still seeding (not the paused "seeded" state).
+			fmt.Fprintf(w, `[{"hash":"h9","name":"Terry Pratchett - Mort EPUB","state":"uploading","progress":1,"content_path":%q}]`, dir)
+		case strings.HasSuffix(r.URL.Path, "/torrents/delete"):
+			r.ParseForm()
+			deleted = append(deleted, r.FormValue("hashes")+":"+r.FormValue("deleteFiles"))
+			w.Write([]byte("Ok."))
+		default:
+			w.Write([]byte("{}"))
+		}
+	}))
+	t.Cleanup(qbit.Close)
+	if err := f.grabs.Add(&download.ClientConfig{
+		Name: "qbit", Type: download.TypeQBittorrent, Host: qbit.URL,
+		Category: "librinode", Enabled: true, Priority: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 2,
+		Title: "Terry Pratchett - Mort EPUB", Protocol: download.ProtocolTorrent,
+		MediaType: "ebook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	// Removed from the client, but files kept (deleteFiles=false).
+	if len(deleted) != 1 || deleted[0] != "h9:false" {
+		t.Errorf("torrent removal = %v, want [h9:false]", deleted)
 	}
 }
 

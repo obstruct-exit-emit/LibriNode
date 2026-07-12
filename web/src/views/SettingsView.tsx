@@ -5,6 +5,7 @@ import {
   setApiKey,
   type AuthStatus,
   type DownloadClient,
+  type ImportSettings,
   type Indexer,
   type MetadataSettings,
   type NamingSettings,
@@ -514,8 +515,14 @@ function DownloadClientsCard({
 }
 
 // ImportOptions: Completed Download Handling knobs (saved on toggle).
+const DEFAULT_IMPORT_SETTINGS: ImportSettings = {
+  packImportAll: false,
+  removeCompleted: false,
+  deleteCompletedFiles: false,
+};
+
 function ImportOptions({ onError }: { onError: (message: string) => void }) {
-  const [packImportAll, setPackImportAll] = useState(false);
+  const [settings, setSettings] = useState<ImportSettings>(DEFAULT_IMPORT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -523,7 +530,7 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
     api
       .getImportSettings()
       .then((s) => {
-        setPackImportAll(s.packImportAll);
+        setSettings(s);
         setLoaded(true);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
@@ -531,17 +538,21 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
 
   if (!loaded) return null;
 
-  const toggle = (value: boolean) => {
-    setPackImportAll(value);
+  const update = (patch: Partial<ImportSettings>) => {
+    const next = { ...settings, ...patch };
+    // Deleting the files necessarily removes the download from the client.
+    if (next.deleteCompletedFiles) next.removeCompleted = true;
+    const prev = settings;
+    setSettings(next);
     setNotice("");
     api
-      .saveImportSettings({ packImportAll: value })
+      .saveImportSettings(next)
       .then((s) => {
-        setPackImportAll(s.packImportAll);
+        setSettings(s);
         setNotice("✓ Saved");
       })
       .catch((err: unknown) => {
-        setPackImportAll(!value);
+        setSettings(prev);
         setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`);
       });
   };
@@ -553,8 +564,8 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
         <span>
           <input
             type="checkbox"
-            checked={packImportAll}
-            onChange={(e) => toggle(e.target.checked)}
+            checked={settings.packImportAll}
+            onChange={(e) => update({ packImportAll: e.target.checked })}
           />{" "}
           Import whole packs — when a grabbed release is a multi-book bundle,
           import every book it matches, not just monitored ones
@@ -566,6 +577,40 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
         the format is only replaced by a genuine quality upgrade, and nothing
         gets monitored automatically.
       </p>
+
+      <label className="check">
+        <span>
+          <input
+            type="checkbox"
+            checked={settings.removeCompleted}
+            onChange={(e) => update({ removeCompleted: e.target.checked })}
+          />{" "}
+          Remove completed downloads from the client after import
+        </span>
+      </label>
+      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        Off (default): usenet history entries are cleared either way (the file
+        stays), and torrents keep seeding until the client's own goal is met. On:
+        the download is removed from the client — for torrents too — once
+        LibriNode has imported it.
+      </p>
+
+      <label className="check">
+        <span>
+          <input
+            type="checkbox"
+            checked={settings.deleteCompletedFiles}
+            onChange={(e) => update({ deleteCompletedFiles: e.target.checked })}
+          />{" "}
+          Delete the downloaded files after import
+        </span>
+      </label>
+      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        LibriNode copies imported files into the library, so the originals can be
+        deleted. Turning this on also removes the download from the client. Leave
+        off if the download folder is shared with other apps.
+      </p>
+
       {notice && (
         <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
           {notice}

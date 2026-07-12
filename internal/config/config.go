@@ -213,6 +213,14 @@ type ImportSettings struct {
 	// just monitored ones. Opt-in: the default (false) fills monitored books
 	// only, so grabbing one volume never auto-imports the rest of a bundle.
 	PackImportAll bool `yaml:"pack_import_all,omitempty" json:"packImportAll"`
+	// RemoveCompleted removes a download from its client once LibriNode has
+	// imported it. Off by default: usenet history entries are cleared either
+	// way (the file stays — LibriNode only copies it), and torrents keep
+	// seeding until their client's own goal is met.
+	RemoveCompleted bool `yaml:"remove_completed,omitempty" json:"removeCompleted"`
+	// DeleteCompletedFiles also deletes the downloaded files from disk when a
+	// download is removed after import. Implies RemoveCompleted.
+	DeleteCompletedFiles bool `yaml:"delete_completed_files,omitempty" json:"deleteCompletedFiles"`
 }
 
 type Config struct {

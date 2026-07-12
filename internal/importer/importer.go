@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/librinode/librinode/internal/comicinfo"
+	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/opf"
@@ -30,13 +31,21 @@ type Service struct {
 	store     *library.Store
 	downloads *download.Service
 	organize  *organize.Service
-	// packAll (optional) reports the pack-import-all setting: import every
-	// matching book from a multi-book pack, not just monitored ones.
-	packAll func() bool
+	// settings (optional) reports the current Completed Download Handling
+	// options — pack-import-all, and the post-import client/file cleanup.
+	settings func() config.ImportSettings
 }
 
-func New(store *library.Store, downloads *download.Service, org *organize.Service, packAll func() bool) *Service {
-	return &Service{store: store, downloads: downloads, organize: org, packAll: packAll}
+func New(store *library.Store, downloads *download.Service, org *organize.Service, settings func() config.ImportSettings) *Service {
+	return &Service{store: store, downloads: downloads, organize: org, settings: settings}
+}
+
+// opts returns the current import settings, tolerating a nil provider.
+func (s *Service) opts() config.ImportSettings {
+	if s.settings == nil {
+		return config.ImportSettings{}
+	}
+	return s.settings()
 }
 
 // errDownloadPending marks a download the client reports as done but whose
@@ -263,20 +272,65 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 			message = "upgraded (" + replacing[0].Format + " → " + format + "), imported to " + target
 		}
 		s.resolve(grab, download.GrabStatusImported, message)
-		// Usenet leaves nothing to seed; clear the history entry (data stays
-		// on disk — we only copied from it). Torrents keep seeding.
-		if grab.Protocol == download.ProtocolUsenet {
-			if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, false); err != nil {
-				result.note("cleaning up %s: %v", item.Title, err)
-			}
-		}
 	}
 	result.Imported++
 	slog.Info("imported download", "book", book.Title, "path", target)
 
-	// Multi-book pack: the download's other files fill more books.
+	// Multi-book pack: the download's other files fill more books. This reads
+	// from the download folder, so it must run before any cleanup deletes it.
 	if grab != nil && pack != nil {
 		s.importPackExtras(pack, sources[0], book, mediaType, result)
+	}
+	if grab != nil {
+		s.cleanupAfterImport(ctx, item, grab, result)
+	}
+}
+
+// cleanupAfterImport removes an imported download from its client per the
+// Completed Download Handling settings. With both options off (the default),
+// usenet history entries are cleared — the file stays, LibriNode only copied
+// it — and torrents keep seeding. RemoveCompleted removes the download from the
+// client for both protocols; DeleteCompletedFiles additionally deletes the
+// downloaded files from disk.
+func (s *Service) cleanupAfterImport(ctx context.Context, item *download.Item, grab *download.GrabRecord, result *Result) {
+	opts := s.opts()
+	if opts.RemoveCompleted || opts.DeleteCompletedFiles {
+		if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, opts.DeleteCompletedFiles); err != nil {
+			result.note("removing %s from client: %v", item.Title, err)
+		}
+		// Some clients (debrid bridges) acknowledge the removal but ignore the
+		// delete-files flag. LibriNode imported from this path, so delete it
+		// directly to be sure the source is gone.
+		if opts.DeleteCompletedFiles {
+			deleteDownloadData(item.Path, result)
+		}
+		return
+	}
+	// Default: clear the usenet history entry (no data deleted); leave torrents
+	// seeding until the client's own goal is reached.
+	if grab.Protocol == download.ProtocolUsenet {
+		if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, false); err != nil {
+			result.note("cleaning up %s: %v", item.Title, err)
+		}
+	}
+}
+
+// deleteDownloadData removes the download's own files after import, for the
+// DeleteCompletedFiles option, guarding against a misreported path: it must be
+// absolute and nested at least three segments deep (…/downloads/<client>/
+// <release>) so a bad path can never wipe a mount root or top-level directory.
+func deleteDownloadData(path string, result *Result) {
+	if path == "" || !filepath.IsAbs(path) {
+		return
+	}
+	clean := filepath.Clean(path)
+	segs := strings.FieldsFunc(clean, func(r rune) bool { return r == '/' || r == '\\' })
+	if len(segs) < 3 {
+		result.note("refusing to delete shallow download path %q", clean)
+		return
+	}
+	if err := os.RemoveAll(clean); err != nil {
+		result.note("deleting download files %s: %v", clean, err)
 	}
 }
 
@@ -382,7 +436,7 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 // already has this format's file is only replaced when the pack's copy is a
 // genuine quality upgrade.
 func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *library.Book, mediaType string, result *Result) {
-	importAll := s.packAll != nil && s.packAll()
+	importAll := s.opts().PackImportAll
 	done := map[int64]bool{grabbed.ID: true}
 	for _, f := range pack.files {
 		if f == primary {
