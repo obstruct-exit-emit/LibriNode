@@ -1,10 +1,12 @@
 package download
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -106,21 +108,170 @@ func (q *qbittorrent) Test(ctx context.Context) error {
 	return err
 }
 
+// Add sends a release to qBittorrent. Like the SABnzbd client, it resolves the
+// release on LibriNode's side first: the download client is often a NAT'd/cloud
+// client (or a debrid bridge) that can't fetch our LAN indexer/Prowlarr URL, so
+// handing it that URL fails ("hostname could not be parsed") or stalls.
+// LibriNode can reach the indexer, so it follows the URL to the magnet, or
+// downloads the .torrent and uploads its bytes — either way the client gets
+// something self-contained. A magnet URL is passed straight through; if
+// resolution fails, it falls back to handing the client the URL.
 func (q *qbittorrent) Add(ctx context.Context, dlURL, title string) (string, error) {
 	// Make sure our category exists; qBittorrent 409s when it already does.
 	_, _ = q.do(ctx, "/api/v2/torrents/createCategory",
 		url.Values{"category": {q.cfg.Category}, "savePath": {""}})
 
+	if strings.HasPrefix(dlURL, "magnet:") {
+		return q.addURLs(ctx, dlURL, title)
+	}
+	if magnet, torrent, err := q.resolve(ctx, dlURL); err == nil {
+		if magnet != "" {
+			return q.addURLs(ctx, magnet, title)
+		}
+		if len(torrent) > 0 {
+			return q.addFile(ctx, torrent, title)
+		}
+	}
+	return q.addURLs(ctx, dlURL, title)
+}
+
+// addURLs hands qBittorrent a magnet (or a URL it can fetch itself) via the
+// urls field. The add endpoint doesn't return the hash, so the id is empty.
+func (q *qbittorrent) addURLs(ctx context.Context, urls, title string) (string, error) {
 	body, err := q.do(ctx, "/api/v2/torrents/add",
-		url.Values{"urls": {dlURL}, "category": {q.cfg.Category}, "rename": {title}})
+		url.Values{"urls": {urls}, "category": {q.cfg.Category}, "rename": {title}})
 	if err != nil {
 		return "", err
 	}
 	if strings.HasPrefix(string(body), "Fails") {
 		return "", fmt.Errorf("qbittorrent rejected the torrent")
 	}
-	// The add endpoint doesn't return the hash.
 	return "", nil
+}
+
+// resolve follows a release's download URL to what the client actually needs:
+// a magnet link (indexers redirect magnet-only results to one) or the raw
+// .torrent bytes. It doesn't follow redirects automatically — a redirect to a
+// magnet: scheme isn't an HTTP URL the client can follow — inspecting the
+// Location header instead.
+func (q *qbittorrent) resolve(ctx context.Context, dlURL string) (string, []byte, error) {
+	client := &http.Client{
+		Timeout:       30 * time.Second,
+		Jar:           q.httpc.Jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	cur := dlURL
+	for i := 0; i < 5; i++ {
+		if strings.HasPrefix(cur, "magnet:") {
+			return cur, nil, nil
+		}
+		if !strings.HasPrefix(cur, "http://") && !strings.HasPrefix(cur, "https://") {
+			return "", nil, fmt.Errorf("unsupported url scheme")
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, cur, nil)
+		if err != nil {
+			return "", nil, err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", nil, err
+		}
+		if loc := resp.Header.Get("Location"); resp.StatusCode >= 300 && resp.StatusCode < 400 && loc != "" {
+			resp.Body.Close()
+			cur = loc
+			continue
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+		ct := resp.Header.Get("Content-Type")
+		status := resp.StatusCode
+		resp.Body.Close()
+		if status != http.StatusOK {
+			return "", nil, fmt.Errorf("resolving torrent: HTTP %d", status)
+		}
+		trimmed := bytes.TrimSpace(body)
+		if bytes.HasPrefix(trimmed, []byte("magnet:")) {
+			return string(trimmed), nil, nil
+		}
+		// A bencoded .torrent starts with a dictionary ('d') and names the
+		// info/announce keys; some indexers omit the content-type.
+		if strings.Contains(ct, "bittorrent") ||
+			(len(trimmed) > 0 && trimmed[0] == 'd' &&
+				(bytes.Contains(trimmed, []byte("4:info")) || bytes.Contains(trimmed, []byte("announce")))) {
+			return "", body, nil
+		}
+		return "", nil, fmt.Errorf("response is neither a magnet nor a .torrent")
+	}
+	return "", nil, fmt.Errorf("too many redirects")
+}
+
+// addFile uploads .torrent bytes to qBittorrent (multipart torrents field), so
+// a client that can't reach our indexer still gets the file.
+func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string) (string, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("category", q.cfg.Category)
+	if title != "" {
+		_ = mw.WriteField("rename", title)
+	}
+	fw, err := mw.CreateFormFile("torrents", torrentFilename(title))
+	if err != nil {
+		return "", err
+	}
+	if _, err := fw.Write(torrent); err != nil {
+		return "", err
+	}
+	if err := mw.Close(); err != nil {
+		return "", err
+	}
+	payload := buf.Bytes()
+	ct := mw.FormDataContentType()
+
+	attempt := func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			q.base()+"/api/v2/torrents/add", bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", ct)
+		return q.httpc.Do(req)
+	}
+	resp, err := attempt()
+	if err != nil {
+		return "", fmt.Errorf("qbittorrent: %w", err)
+	}
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close()
+		if err := q.login(ctx); err != nil {
+			return "", err
+		}
+		if resp, err = attempt(); err != nil {
+			return "", fmt.Errorf("qbittorrent: %w", err)
+		}
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("qbittorrent: /api/v2/torrents/add: HTTP %d: %.100s", resp.StatusCode, body)
+	}
+	if strings.HasPrefix(string(body), "Fails") {
+		return "", fmt.Errorf("qbittorrent rejected the torrent")
+	}
+	return "", nil
+}
+
+// torrentFilename makes a filesystem-safe "<title>.torrent" for the upload.
+func torrentFilename(title string) string {
+	safe := strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\n', '\r':
+			return '_'
+		}
+		return r
+	}, title)
+	if safe == "" {
+		safe = "download"
+	}
+	return safe + ".torrent"
 }
 
 func (q *qbittorrent) List(ctx context.Context) ([]Item, error) {
@@ -165,7 +316,16 @@ func (q *qbittorrent) List(ctx context.Context) ([]Item, error) {
 // paused by hand) reports "seeded": done seeding, safe to remove.
 func qbitStatus(state string, progress float64) string {
 	switch state {
-	case "error", "missingFiles":
+	case "missingFiles":
+		return "failed"
+	case "error":
+		// A finished torrent the client flags as errored still has its data on
+		// disk — some debrid bridges mark a cached torrent "error" once it's
+		// done downloading. Import it; only an error before completion is a
+		// real failure.
+		if progress >= 1 {
+			return "completed"
+		}
 		return "failed"
 	case "pausedDL", "stoppedDL":
 		return "paused"

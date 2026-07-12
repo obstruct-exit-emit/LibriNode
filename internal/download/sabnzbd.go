@@ -1,10 +1,12 @@
 package download
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -76,7 +78,23 @@ func (s *sabnzbd) Test(ctx context.Context) error {
 	return s.api(ctx, url.Values{"mode": {"queue"}, "limit": {"1"}}, nil)
 }
 
+// Add sends a release to SABnzbd. It first fetches the NZB itself and uploads
+// the file content (addfile): LibriNode can reach the indexer/proxy on the
+// LAN, but the download client often can't (SABnzbd behind NAT, or a
+// Real-Debrid usenet bridge whose cloud side can't fetch a LAN URL) — handing
+// it a URL leaves grabs stuck at 0 bytes. Uploading the content sidesteps
+// that and names the job properly. If the fetch fails (unreachable, not an
+// NZB), it falls back to handing SABnzbd the URL (addurl).
 func (s *sabnzbd) Add(ctx context.Context, dlURL, title string) (string, error) {
+	if nzb, err := s.fetchNZB(ctx, dlURL); err == nil {
+		if id, err := s.addFile(ctx, nzb, title); err == nil {
+			return id, nil
+		}
+	}
+	return s.addURL(ctx, dlURL, title)
+}
+
+func (s *sabnzbd) addURL(ctx context.Context, dlURL, title string) (string, error) {
 	var out struct {
 		Status bool     `json:"status"`
 		NzoIDs []string `json:"nzo_ids"`
@@ -94,6 +112,111 @@ func (s *sabnzbd) Add(ctx context.Context, dlURL, title string) (string, error) 
 		return "", fmt.Errorf("sabnzbd did not accept the NZB")
 	}
 	return out.NzoIDs[0], nil
+}
+
+// fetchNZB downloads the NZB from the release URL (following the indexer's
+// redirect to the actual NZB). It rejects non-NZB bodies — HTML error pages,
+// a magnet/torrent redirect — so those fall back to addurl instead of being
+// uploaded as junk.
+func (s *sabnzbd) fetchNZB(ctx context.Context, dlURL string) ([]byte, error) {
+	if !strings.HasPrefix(dlURL, "http://") && !strings.HasPrefix(dlURL, "https://") {
+		return nil, fmt.Errorf("not an http url")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.httpc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching nzb: HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
+	if err != nil {
+		return nil, err
+	}
+	head := bytes.ToLower(bytes.TrimSpace(body))
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	if !bytes.Contains(head, []byte("<nzb")) && !bytes.HasPrefix(head, []byte("<?xml")) {
+		return nil, fmt.Errorf("response is not an nzb")
+	}
+	return body, nil
+}
+
+// addFile uploads NZB content to SABnzbd (mode=addfile, multipart). nzbname
+// gives the job a readable name regardless of the URL it came from.
+func (s *sabnzbd) addFile(ctx context.Context, nzb []byte, title string) (string, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("name", nzbFilename(title))
+	if err != nil {
+		return "", err
+	}
+	if _, err := fw.Write(nzb); err != nil {
+		return "", err
+	}
+	if err := mw.Close(); err != nil {
+		return "", err
+	}
+
+	params := url.Values{
+		"mode":    {"addfile"},
+		"nzbname": {title},
+		"cat":     {s.cfg.Category},
+		"apikey":  {s.cfg.APIKey},
+		"output":  {"json"},
+	}
+	endpoint := strings.TrimRight(s.cfg.Host, "/") + "/api?" + params.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	resp, err := s.httpc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("sabnzbd: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("sabnzbd: HTTP %d: %.100s", resp.StatusCode, respBody)
+	}
+	var out struct {
+		Status bool     `json:"status"`
+		NzoIDs []string `json:"nzo_ids"`
+		Error  string   `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return "", fmt.Errorf("sabnzbd: decoding response: %w", err)
+	}
+	if out.Error != "" {
+		return "", fmt.Errorf("sabnzbd: %s", out.Error)
+	}
+	if !out.Status || len(out.NzoIDs) == 0 {
+		return "", fmt.Errorf("sabnzbd did not accept the NZB")
+	}
+	return out.NzoIDs[0], nil
+}
+
+// nzbFilename makes a filesystem-safe "<title>.nzb" for the upload.
+func nzbFilename(title string) string {
+	safe := strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\n', '\r':
+			return '_'
+		}
+		return r
+	}, title)
+	if safe == "" {
+		safe = "download"
+	}
+	return safe + ".nzb"
 }
 
 // sabSlots covers both queue and history slot shapes (numbers arrive as

@@ -15,6 +15,17 @@ import (
 func mockQbit(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Release download endpoints resolve() fetches — no auth, like an indexer.
+		switch r.URL.Path {
+		case "/dl/magnet": // magnet-only indexer redirects to the magnet
+			w.Header().Set("Location", "magnet:?xt=urn:btih:redirected")
+			w.WriteHeader(http.StatusFound)
+			return
+		case "/dl/torrent": // indexer serves a .torrent file
+			w.Header().Set("Content-Type", "application/x-bittorrent")
+			w.Write([]byte("d8:announce9:udp://x:04:infod4:name9:Mort.epub6:lengthi123eee"))
+			return
+		}
 		switch r.URL.Path {
 		case "/api/v2/auth/login":
 			r.ParseForm()
@@ -35,6 +46,21 @@ func mockQbit(t *testing.T) *httptest.Server {
 			case "/api/v2/torrents/createCategory":
 				w.WriteHeader(http.StatusConflict) // already exists
 			case "/api/v2/torrents/add":
+				// Either a form (urls=magnet) or a multipart .torrent upload.
+				if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
+					if err := r.ParseMultipartForm(1 << 20); err != nil {
+						w.Write([]byte("Fails."))
+						return
+					}
+					f, _, err := r.FormFile("torrents")
+					if err != nil || r.FormValue("category") != "librinode" {
+						w.Write([]byte("Fails."))
+						return
+					}
+					f.Close()
+					w.Write([]byte("Ok."))
+					return
+				}
 				r.ParseForm()
 				if r.Form.Get("category") != "librinode" || r.Form.Get("urls") == "" {
 					w.Write([]byte("Fails."))
@@ -97,6 +123,15 @@ func TestQBittorrent(t *testing.T) {
 	if _, err := c.Add(ctx, "magnet:?xt=urn:btih:abc", "Mort"); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
+	// A non-magnet URL that redirects to a magnet is resolved on our side (the
+	// client often can't reach the LAN indexer) and the magnet is added.
+	if _, err := c.Add(ctx, srv.URL+"/dl/magnet", "Mort"); err != nil {
+		t.Fatalf("Add via magnet redirect: %v", err)
+	}
+	// A .torrent file URL is fetched and uploaded via multipart.
+	if _, err := c.Add(ctx, srv.URL+"/dl/torrent", "Mort"); err != nil {
+		t.Fatalf("Add via torrent file: %v", err)
+	}
 
 	items, err := c.List(ctx)
 	if err != nil {
@@ -124,10 +159,16 @@ func TestQBittorrent(t *testing.T) {
 	}
 }
 
-// mockSab fakes SABnzbd's single-endpoint API.
+// mockSab fakes SABnzbd's single-endpoint API plus an NZB download path (Add
+// fetches the NZB and uploads it via addfile).
 func mockSab(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/get/") {
+			w.Header().Set("Content-Type", "application/x-nzb")
+			w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"><file subject="Mort"></file></nzb>`))
+			return
+		}
 		q := r.URL.Query()
 		if q.Get("apikey") != "sab-key" {
 			w.Write([]byte(`{"status": false, "error": "API Key Incorrect"}`))
@@ -136,6 +177,24 @@ func mockSab(t *testing.T) *httptest.Server {
 		switch q.Get("mode") {
 		case "version":
 			w.Write([]byte(`{"version": "4.3.2"}`))
+		case "addfile":
+			// The NZB content arrives as a multipart file; the name comes from
+			// nzbname (not the URL), so the job is identifiable.
+			if q.Get("cat") != "librinode" || q.Get("nzbname") == "" {
+				w.Write([]byte(`{"status": false, "error": "bad request"}`))
+				return
+			}
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				w.Write([]byte(`{"status": false, "error": "no file"}`))
+				return
+			}
+			f, _, err := r.FormFile("name")
+			if err != nil {
+				w.Write([]byte(`{"status": false, "error": "no file field"}`))
+				return
+			}
+			f.Close()
+			w.Write([]byte(`{"status": true, "nzo_ids": ["SABnzbd_nzo_x1"]}`))
 		case "addurl":
 			if q.Get("cat") != "librinode" || q.Get("name") == "" {
 				w.Write([]byte(`{"status": false, "error": "bad request"}`))
@@ -184,12 +243,21 @@ func TestSABnzbd(t *testing.T) {
 		t.Fatalf("bad key: err = %v", err)
 	}
 
-	id, err := c.Add(ctx, "https://indexer/get/abc.nzb", "Mort")
+	// Add fetches the NZB from the URL and uploads it via addfile.
+	id, err := c.Add(ctx, srv.URL+"/get/abc.nzb", "Mort")
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	if id != "SABnzbd_nzo_x1" {
 		t.Errorf("nzo id = %q", id)
+	}
+
+	// A non-NZB URL (unfetchable/HTML) falls back to addurl and still works.
+	if id, err = c.Add(ctx, srv.URL+"/api?mode=version", "Mort"); err != nil {
+		t.Fatalf("Add (addurl fallback): %v", err)
+	}
+	if id != "SABnzbd_nzo_x1" {
+		t.Errorf("fallback nzo id = %q", id)
 	}
 
 	items, err := c.List(ctx)
@@ -253,7 +321,7 @@ func TestServiceGrabAndQueue(t *testing.T) {
 	if torrentGrab.Client != "qbit" {
 		t.Errorf("torrent grab = %+v", torrentGrab)
 	}
-	usenetGrab, err := svc.Grab(ctx, ProtocolUsenet, "https://indexer/get/abc.nzb", "Mort")
+	usenetGrab, err := svc.Grab(ctx, ProtocolUsenet, sab.URL+"/get/abc.nzb", "Mort")
 	if err != nil {
 		t.Fatalf("usenet grab: %v", err)
 	}

@@ -39,6 +39,13 @@ func New(store *library.Store, downloads *download.Service, org *organize.Servic
 	return &Service{store: store, downloads: downloads, organize: org, packAll: packAll}
 }
 
+// errDownloadPending marks a download the client reports as done but whose
+// files aren't readable yet — the path is missing because it's still syncing
+// (a network share, or a debrid bridge that finalizes after reporting
+// complete). The import is retried on the next pass instead of being failed and
+// the release blocklisted.
+var errDownloadPending = errors.New("download not ready")
+
 // Result summarizes one import pass.
 type Result struct {
 	Imported int      `json:"imported"`
@@ -220,10 +227,12 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		format = fileFormat(source)
 	}
 	if err != nil {
-		if grab != nil {
+		if grab != nil && !errors.Is(err, errDownloadPending) {
 			s.resolve(grab, download.GrabStatusFailed, err.Error())
 			result.Failed++
 		} else {
+			// Files not ready yet (still syncing), or an untracked download —
+			// leave the grab pending and retry next pass rather than failing.
 			result.Skipped++
 		}
 		return
@@ -624,11 +633,11 @@ type candidateFile struct {
 // accepts, with sizes; an error when there are none.
 func listAcceptable(path string, accept func(string) bool, kind string) ([]candidateFile, error) {
 	if path == "" {
-		return nil, fmt.Errorf("client reported no path")
+		return nil, fmt.Errorf("client reported no path yet: %w", errDownloadPending)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("download path missing: %w", err)
+		return nil, fmt.Errorf("download path missing (%v): %w", err, errDownloadPending)
 	}
 	if !info.IsDir() {
 		if !accept(path) {
@@ -709,11 +718,11 @@ func pickLargestFile(path string, accept func(string) bool, kind string) (string
 // format is the largest file's extension.
 func pickAudioFiles(path string) ([]string, string, error) {
 	if path == "" {
-		return nil, "", fmt.Errorf("client reported no path")
+		return nil, "", fmt.Errorf("client reported no path yet: %w", errDownloadPending)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, "", fmt.Errorf("download path missing: %w", err)
+		return nil, "", fmt.Errorf("download path missing (%v): %w", err, errDownloadPending)
 	}
 	if !info.IsDir() {
 		if !scanner.IsAudioPath(path) {
