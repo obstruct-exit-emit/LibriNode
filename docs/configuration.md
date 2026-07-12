@@ -28,10 +28,15 @@ naming:
   ebook_folder: "{Author Name}"
   ebook_file: "{Series Title} {Series Position} - {Book Title}"
   # audiobook_*, manga_*, comic_*, magazine_* — all editable in the UI
-import:
-  pack_import_all: false   # opt-in: multi-book packs fill every matching
-                           # book, not just monitored ones (Settings →
-                           # Download Clients → Import options)
+import:                          # Completed Download Handling (Settings →
+                                 # Download Clients → Import handling).
+                                 # All default to true.
+  pack_import_all: true          # multi-book packs fill every matching book,
+                                 #   not just monitored ones
+  remove_completed: true         # remove the download from the client once
+                                 #   imported (torrents too, else they seed)
+  delete_completed_files: true   # also delete the downloaded files after
+                                 #   import (implies remove_completed)
 ```
 
 Environment variables override the file: `LIBRINODE_HOST`, `LIBRINODE_PORT`,
