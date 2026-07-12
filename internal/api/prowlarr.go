@@ -11,10 +11,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/indexer"
+	"github.com/librinode/librinode/internal/library"
 )
 
 // arrField is the name/value pair *arr resources use for provider settings.
@@ -187,6 +190,13 @@ func (s *server) handleIndexerSchema(w http.ResponseWriter, r *http.Request) {
 				{Name: "baseUrl"}, {Name: "apiPath", Value: "/api"}, {Name: "apiKey"},
 				{Name: "categories", Value: []int{7000, 7020}}, {Name: "additionalParameters"},
 				{Name: "minimumSeeders", Value: 1},
+				// Torrent seed-management fields real Readarr's Torznab schema
+				// carries; Prowlarr populates these when building a torrent
+				// indexer, and a template missing them makes it dereference null.
+				{Name: "seedCriteria.seedRatio"},
+				{Name: "seedCriteria.seedTime"},
+				{Name: "seedCriteria.discographySeedTime"},
+				{Name: "rejectBlocklistedTorrentHashesWhileGrabbing", Value: false},
 			},
 		},
 	}
@@ -197,4 +207,123 @@ func (s *server) handleIndexerSchema(w http.ResponseWriter, r *http.Request) {
 // LibriNode has no tag system yet.
 func (s *server) handleListTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, []any{})
+}
+
+// handleListMetadataProfiles serves Readarr's metadata-profile list — a
+// books-only concept Prowlarr's Readarr proxy reads during application sync.
+// Without it Prowlarr got a 404 where it expected a profile array and threw
+// a NullReferenceException (which is why Sonarr/Radarr synced but the Readarr
+// app didn't). LibriNode has no metadata profiles, so one static default is
+// enough for Prowlarr to reference.
+func (s *server) handleListMetadataProfiles(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, []map[string]any{{
+		"id":                  1,
+		"name":                "Standard",
+		"minPopularity":       0,
+		"skipMissingDate":     false,
+		"skipMissingIsbn":     false,
+		"skipPartsAndSets":    false,
+		"skipSeriesSecondary": false,
+		"allowedLanguages":    "",
+		"minPages":            0,
+		"ignored":             "",
+	}})
+}
+
+// --- Readarr-compatible capability resources ---
+//
+// During an application sync Prowlarr reads the target's root folders,
+// quality profiles, and download clients (its Readarr proxy deserializes
+// them into Readarr resources and dereferences fields). LibriNode's native
+// JSON lacks those fields, so Prowlarr threw a NullReferenceException and
+// aborted before syncing any indexer. These endpoints merge the Readarr
+// fields onto the native ones — LibriNode's own UI keeps reading its native
+// keys, Prowlarr gets a shape it can parse. Crucially, download clients
+// carry a `protocol`, so Prowlarr sees the torrent client and will sync
+// torrent (Torznab) indexers, not just usenet.
+
+// isProwlarr reports whether a request comes from Prowlarr (its HTTP client
+// sends a "Prowlarr/…" User-Agent). LibriNode's own web UI is a browser, so
+// this cleanly separates the two consumers — the capability endpoints serve
+// Readarr-shaped resources to Prowlarr and native JSON to everything else,
+// avoiding field-type clashes (e.g. quality-profile cutoff: string vs int).
+func isProwlarr(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("User-Agent"), "Prowlarr")
+}
+
+// mergeArr overlays arr-style fields onto a native resource without clobbering
+// keys the native shape already provides.
+func mergeArr(native any, arr map[string]any) map[string]any {
+	merged := map[string]any{}
+	raw, _ := json.Marshal(native)
+	_ = json.Unmarshal(raw, &merged)
+	for k, v := range arr {
+		if _, exists := merged[k]; !exists {
+			merged[k] = v
+		}
+	}
+	return merged
+}
+
+func readarrRootFolder(f rootFolder) map[string]any {
+	name := filepath.Base(f.Path)
+	if name == "" || name == "." || name == "/" {
+		name = f.MediaType
+	}
+	return mergeArr(f, map[string]any{
+		"name":                        name,
+		"accessible":                  f.Accessible,
+		"freeSpace":                   0,
+		"totalSpace":                  0,
+		"defaultQualityProfileId":     1,
+		"defaultMetadataProfileId":    1,
+		"defaultMonitorOption":        "all",
+		"defaultNewItemMonitorOption": "all",
+		"defaultTags":                 []int{},
+		"isCalibreLibrary":            false,
+	})
+}
+
+func readarrQualityProfile(p library.QualityProfile) map[string]any {
+	// Readarr resolves `cutoff` (a quality id) against `items`, so an empty
+	// items list with a non-zero cutoff makes Prowlarr's proxy dereference a
+	// null. Provide a single quality whose id matches the cutoff.
+	items := []any{
+		map[string]any{
+			"quality": map[string]any{"id": 1, "name": "eBook"},
+			"items":   []any{},
+			"allowed": true,
+		},
+	}
+	return mergeArr(p, map[string]any{
+		"upgradeAllowed":    p.UpgradesAllowed,
+		"cutoff":            1,
+		"minFormatScore":    0,
+		"cutoffFormatScore": 0,
+		"items":             items,
+		"formatItems":       []any{},
+	})
+}
+
+func readarrDownloadClient(c download.ClientConfig) map[string]any {
+	impl := "Sabnzbd"
+	contract := "SabnzbdSettings"
+	if c.Protocol() == download.ProtocolTorrent {
+		impl = "QBittorrent"
+		contract = "QBittorrentSettings"
+	}
+	return mergeArr(c, map[string]any{
+		"protocol":                 c.Protocol(), // "usenet" | "torrent"
+		"enable":                   c.Enabled,
+		"priority":                 c.Priority,
+		"implementation":           impl,
+		"implementationName":       impl,
+		"configContract":           contract,
+		"fields":                   []any{},
+		"tags":                     []int{},
+		"categories":               []any{},
+		"supportsCategories":       false,
+		"removeCompletedDownloads": false,
+		"removeFailedDownloads":    false,
+	})
 }

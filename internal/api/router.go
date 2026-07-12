@@ -163,6 +163,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("DELETE /api/v1/indexer/{id}", s.auth(s.handleDeleteIndexer))
 	mux.HandleFunc("POST /api/v1/indexer/test", s.auth(s.handleTestIndexer))
 	mux.HandleFunc("GET /api/v1/tag", s.auth(s.handleListTags))
+	// Readarr-only capability Prowlarr reads during app sync (see handler).
+	mux.HandleFunc("GET /api/v1/metadataprofile", s.auth(s.handleListMetadataProfiles))
 	mux.HandleFunc("GET /api/v1/release", s.auth(s.handleSearchReleases))
 	mux.HandleFunc("POST /api/v1/release/grab", s.auth(s.handleGrabRelease))
 

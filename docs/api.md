@@ -42,5 +42,10 @@ Notes:
   one-click monitor is the existing `PUT /book/{id}/library`.
 - The Prowlarr-facing surface emulates Readarr v1 (`/api/v1/indexer` accepts
   Readarr resources; `/system/status` reports a Readarr-compatible
-  `version`, LibriNode's own in `appVersion`).
+  `version`, LibriNode's own in `appVersion`). During application sync
+  Prowlarr also reads `/api/v1/rootfolder`, `/qualityprofile`,
+  `/metadataprofile` (Readarr-only), and `/downloadclient` — these return
+  Readarr-shaped resources (download clients carry `protocol` so torrent
+  indexers sync) when the caller's User-Agent is Prowlarr, native JSON
+  otherwise.
 - Without a metadata token, metadata endpoints return 503.

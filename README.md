@@ -225,11 +225,15 @@ as `Magazine/Magazine - date.pdf`.
 (any Newznab/Torznab endpoint, including per-indexer feed URLs from
 Prowlarr or Jackett), or automatically via **Prowlarr application sync** —
 in Prowlarr, add an application of type **Readarr** with LibriNode's URL
-(`http://localhost:7845`) and API key, and Prowlarr will push its indexers
-into LibriNode and keep them in sync. The indexer endpoints accept both
-LibriNode's native JSON and Readarr v1 resources, and
-`/api/v1/system/status` reports a Readarr-compatible `version` for
-Prowlarr's checks (LibriNode's own version is `appVersion`).
+(`http://localhost:7845`) and API key, and Prowlarr will push its indexers —
+both Newznab (usenet) and Torznab (torrent) — into LibriNode and keep them in
+sync. LibriNode emulates the Readarr v1 API completely enough for Prowlarr's
+sync: the indexer endpoints accept both LibriNode's native JSON and Readarr
+resources, and the capability endpoints Prowlarr reads during sync — root
+folders, quality profiles, **metadata profiles** (a Readarr-only concept),
+download clients (which advertise `protocol` so torrent indexers sync), and
+`system/status` — return Readarr-shaped resources to Prowlarr while the web UI
+keeps its native shapes.
 
 File naming templates live under **Settings → Media Management**. Tokens:
 `{Author Name}`, `{Author SortName}`, `{Book Title}`, `{Series Title}`,
@@ -386,7 +390,7 @@ metadata endpoints return 503.
 
 ### Phase 2 — Acquisition pipeline
 - [x] Indexer framework: Newznab + Torznab clients (add/test in Settings, manual release search across enabled indexers)
-- [x] **Prowlarr application sync** — add LibriNode to Prowlarr as a *Readarr* application; Prowlarr pushes/updates/removes indexers automatically *(Readarr v1 API emulation; live verification against a real Prowlarr pending)*
+- [x] **Prowlarr application sync** — add LibriNode to Prowlarr as a *Readarr* application; Prowlarr pushes/updates/removes indexers automatically *(Readarr v1 API emulation; **verified live against a real Prowlarr** — syncs both Newznab and Torznab indexers. Getting there required completing the emulation: the capability endpoints Prowlarr reads mid-sync (root folders, quality profiles, the Readarr-only metadata-profile endpoint, and download clients carrying `protocol`) must return Readarr-shaped resources or Prowlarr's `BuildReadarrIndexer` throws a NullReferenceException and refuses torrent indexers)*
 - [x] Release parsing + scoring (formats, retail, language, year, scene names; book-aware search rejects wrong author/title/dead torrents and ranks the rest)
 - [x] Quality profiles per library (ordered format preferences, language, size bounds; default profile drives search scoring; managed in Settings)
 - [x] **qBittorrent** client: add, track, remove (category-scoped; seed goals with CDH)
@@ -468,7 +472,7 @@ turns "works on the dev box" into "trustable release".
 
 ## Status
 
-🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga flows series-first from AniList or Hardcover and comics from Hardcover or ComicVine (both selectable) — series adds pull metadata only, with volumes/issues monitored selectively from a per-series Missing section or in bulk via the series toggle ("monitor future volumes" included), and manga ownable in colorized and monochrome variants at once; magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover and AniList are verified against their live APIs; Prowlarr, the download clients, and ComicVine are mock-tested and await live confirmation. **1.0 waits on [Phase 5.5 — Pre-1.0 hardening](#phase-55--pre-10-hardening)**: live-verifying the mock-tested integrations, real-world burn-in, upgrade-path and restore drills, failure-mode/security/performance passes, and signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
+🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga flows series-first from AniList or Hardcover and comics from Hardcover or ComicVine (both selectable) — series adds pull metadata only, with volumes/issues monitored selectively from a per-series Missing section or in bulk via the series toggle ("monitor future volumes" included), and manga ownable in colorized and monochrome variants at once; magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover, AniList, and **Prowlarr** (application sync, both usenet and torrent indexers) are verified against the live services; the download clients and ComicVine are mock-tested and await live confirmation. **1.0 waits on [Phase 5.5 — Pre-1.0 hardening](#phase-55--pre-10-hardening)**: live-verifying the mock-tested integrations, real-world burn-in, upgrade-path and restore drills, failure-mode/security/performance passes, and signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
 
 ## License
 

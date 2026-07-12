@@ -141,6 +141,35 @@ func (a *testAPI) call(method, path string, body any, out any) *http.Response {
 	return resp
 }
 
+// callUA is call with a custom User-Agent — Prowlarr identifies itself in the
+// UA, so the capability endpoints serve Readarr-shaped resources to it.
+func (a *testAPI) callUA(userAgent, method, path string, body, out any) *http.Response {
+	a.t.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+			a.t.Fatalf("encoding body: %v", err)
+		}
+	}
+	req, err := http.NewRequest(method, a.srv.URL+path, &buf)
+	if err != nil {
+		a.t.Fatalf("building request: %v", err)
+	}
+	req.Header.Set("X-Api-Key", a.apiKey)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		a.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	if out != nil && resp.StatusCode != http.StatusNoContent {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			a.t.Fatalf("%s %s: decoding response: %v", method, path, err)
+		}
+	}
+	return resp
+}
+
 func (a *testAPI) want(resp *http.Response, status int) {
 	a.t.Helper()
 	if resp.StatusCode != status {
@@ -1124,6 +1153,65 @@ func TestDownloadClientsAndGrab(t *testing.T) {
 }
 
 // TestProwlarrSyncFlow simulates the conversation Prowlarr has with a
+// TestProwlarrCapabilityResources: the endpoints Prowlarr's Readarr proxy
+// reads during application sync must return Readarr-shaped resources. A null
+// field (or a 404 on Readarr's metadataprofile endpoint) made Prowlarr throw
+// a NullReferenceException in BuildReadarrIndexer and refuse to sync torrent
+// indexers — the browser UI keeps its native shape.
+func TestProwlarrCapabilityResources(t *testing.T) {
+	a := newTestAPI(t, nil)
+	const ua = "Prowlarr/1.30.2.4939 (windows 10.0)"
+
+	// metadataprofile is Readarr-only; a 404 here was the NRE root cause.
+	var mps []map[string]any
+	a.want(a.call("GET", "/api/v1/metadataprofile", nil, &mps), http.StatusOK)
+	if len(mps) == 0 || mps[0]["name"] == "" || mps[0]["id"] == nil {
+		t.Fatalf("metadataprofile = %+v (want a named default profile)", mps)
+	}
+
+	// A torrent download client so Prowlarr can detect torrent support — the
+	// resource must carry protocol=torrent (without it Prowlarr syncs usenet
+	// indexers only).
+	a.want(a.call("POST", "/api/v1/downloadclient", map[string]any{
+		"name": "qbit", "type": "qbittorrent", "host": "http://localhost:8080",
+		"username": "u", "password": "p",
+	}, nil), http.StatusCreated)
+	var dcs []map[string]any
+	a.want(a.callUA(ua, "GET", "/api/v1/downloadclient", nil, &dcs), http.StatusOK)
+	if len(dcs) != 1 || dcs[0]["protocol"] != "torrent" || dcs[0]["implementation"] != "QBittorrent" {
+		t.Fatalf("prowlarr download client = %+v (want protocol torrent)", dcs)
+	}
+	// The browser UI keeps the native shape (no arr protocol/implementation).
+	var nativeDcs []map[string]any
+	a.want(a.call("GET", "/api/v1/downloadclient", nil, &nativeDcs), http.StatusOK)
+	if _, leaked := nativeDcs[0]["implementation"]; leaked {
+		t.Fatalf("native download client leaked the arr shape: %+v", nativeDcs[0])
+	}
+
+	// Root folders as Readarr resources: non-null name and defaultTags.
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]any{"mediaType": "ebook", "path": t.TempDir()}, nil), http.StatusCreated)
+	var rfs []map[string]any
+	a.want(a.callUA(ua, "GET", "/api/v1/rootfolder", nil, &rfs), http.StatusOK)
+	if len(rfs) != 1 || rfs[0]["name"] == "" || rfs[0]["defaultTags"] == nil {
+		t.Fatalf("prowlarr root folder = %+v (want name + defaultTags)", rfs)
+	}
+
+	// The Torznab schema entry must exist (its absence in Prowlarr's cache was
+	// what BuildReadarrIndexer dereferenced as null).
+	var schema []map[string]any
+	a.want(a.call("GET", "/api/v1/indexer/schema", nil, &schema), http.StatusOK)
+	var torznab map[string]any
+	for _, e := range schema {
+		if e["implementation"] == "Torznab" {
+			torznab = e
+		}
+	}
+	if torznab == nil || torznab["protocol"] != "torrent" {
+		t.Fatalf("schema missing a usable Torznab entry: %+v", schema)
+	}
+}
+
 // Readarr-type application: status check, schema fetch, then indexer
 // add/list/update/delete using arr-style resources with fields[].
 func TestProwlarrSyncFlow(t *testing.T) {
