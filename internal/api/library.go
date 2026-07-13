@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/librinode/librinode/internal/comiccover"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 const metadataTimeout = 60 * time.Second
@@ -912,7 +914,44 @@ func (s *server) writeBookDetail(w http.ResponseWriter, status int, id int64) {
 		writeStoreError(w, err)
 		return
 	}
+	fillAudioTracks(book.Files)
 	writeJSON(w, status, book)
+}
+
+// fillAudioTracks lists the tracks of multi-file audiobook units (records
+// whose path is the book folder) so the UI can show every file, not just the
+// folder. Best-effort: an unreadable folder simply carries no track list.
+func fillAudioTracks(files []library.BookFile) {
+	for i := range files {
+		f := &files[i]
+		if f.MediaType != "audiobook" {
+			continue
+		}
+		info, err := os.Stat(f.Path)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		var tracks []library.Track
+		_ = filepath.WalkDir(f.Path, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !scanner.IsAudioPath(p) {
+				return nil
+			}
+			rel, err := filepath.Rel(f.Path, p)
+			if err != nil {
+				rel = filepath.Base(p)
+			}
+			var size int64
+			if fi, err := d.Info(); err == nil {
+				size = fi.Size()
+			}
+			tracks = append(tracks, library.Track{Name: filepath.ToSlash(rel), Size: size})
+			return nil
+		})
+		slices.SortFunc(tracks, func(a, b library.Track) int {
+			return strings.Compare(a.Name, b.Name)
+		})
+		f.Tracks = tracks
+	}
 }
 
 func (s *server) handleMonitorBook(w http.ResponseWriter, r *http.Request) {

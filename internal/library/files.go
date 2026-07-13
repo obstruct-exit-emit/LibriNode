@@ -32,6 +32,15 @@ type BookFile struct {
 	Format       string `json:"format"`
 	ModifiedAt   string `json:"modifiedAt"`
 	AddedAt      string `json:"addedAt"`
+	// Tracks lists the audio files inside a multi-file audiobook unit (whose
+	// Path is the book folder). Not persisted — the API fills it on demand.
+	Tracks []Track `json:"tracks,omitempty"`
+}
+
+// Track is one audio file inside a multi-file audiobook unit.
+type Track struct {
+	Name string `json:"name"` // path relative to the book folder
+	Size int64  `json:"size"`
 }
 
 func (s *Store) ListRootFolders() ([]RootFolder, error) {

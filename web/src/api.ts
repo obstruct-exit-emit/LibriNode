@@ -88,6 +88,8 @@ export interface BookFile {
   format: string;
   modifiedAt: string;
   addedAt: string;
+  // Multi-file audiobook units list their audio files (relative to the folder).
+  tracks?: { name: string; size: number }[];
 }
 
 export interface RootFolder {

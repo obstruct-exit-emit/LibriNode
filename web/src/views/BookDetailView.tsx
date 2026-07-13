@@ -8,6 +8,13 @@ import {
 } from "../api";
 import RemovePanel from "../components/RemovePanel";
 
+// formatSize renders a byte count in the most readable unit.
+function formatSize(bytes: number): string {
+  if (bytes >= 1 << 30) return `${(bytes / (1 << 30)).toFixed(1)} GiB`;
+  if (bytes >= 1 << 20) return `${(bytes / (1 << 20)).toFixed(1)} MiB`;
+  return `${(bytes / 1024).toFixed(0)} KiB`;
+}
+
 // Full-page book detail, mirroring the author page: header with cover art,
 // about text, and per-format status/actions, then releases, files, and
 // edition info as their own cards. The back button returns to the author.
@@ -237,11 +244,30 @@ export default function BookDetailView({
             {files.map((f) => (
               <li key={f.id}>
                 <div className="row">
-                  <span className="file-path">📄 {f.path}</span>
+                  <span className="file-path">
+                    {f.tracks?.length ? "📁" : "📄"} {f.path}
+                  </span>
                   <span className="muted">
-                    {f.format} · {(f.size / 1024).toFixed(0)} KiB
+                    {f.format} · {formatSize(f.size)}
                   </span>
                 </div>
+                {(f.tracks?.length ?? 0) > 0 && (
+                  <details className="track-list">
+                    <summary className="muted">
+                      {f.tracks!.length} file{f.tracks!.length === 1 ? "" : "s"}
+                    </summary>
+                    <ul className="rows nested">
+                      {f.tracks!.map((t) => (
+                        <li key={t.name}>
+                          <div className="row">
+                            <span className="file-path">🎵 {t.name}</span>
+                            <span className="muted">{formatSize(t.size)}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </li>
             ))}
           </ul>

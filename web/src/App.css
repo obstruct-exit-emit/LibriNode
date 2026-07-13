@@ -294,6 +294,17 @@ button.toggle.on {
   font-size: 0.95rem;
 }
 
+/* Track list of a multi-file audiobook unit, tucked under its folder row. */
+.track-list {
+  margin: 0.15rem 0 0.25rem 1.4rem;
+}
+
+.track-list > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  user-select: none;
+}
+
 /* One toggle-plus-its-help block, kept tight so help pairs with its control. */
 .opt {
   display: flex;
