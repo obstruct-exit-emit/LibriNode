@@ -74,6 +74,9 @@ client's list so a slow response never loses the grab.
   seeding to the ratio/time limit set in qBittorrent; when it finishes and
   pauses (goal reached), LibriNode removes the torrent *and its data* — but
   only for downloads it grabbed and imported.
-- **Failed downloads** are blocklisted (never grabbed again; search falls to
-  the next candidate) and cleaned out of the client. The blocklist is
-  managed from the Activity page.
+- **Failed and junk downloads** are blocklisted (never grabbed again; a
+  replacement search starts immediately) and deleted — out of the client and
+  off disk. This covers client-side failures, spam whose content isn't the
+  book (an `.exe` instead of a media file), and completed downloads whose
+  files never become readable. The blocklist is managed from the Activity
+  page.

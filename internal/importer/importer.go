@@ -127,10 +127,13 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 			if err := s.downloads.Store().AddBlock(grab.GUID, grab.Title, "download failed in client"); err != nil {
 				result.note("blocklisting %s: %v", grab.Title, err)
 			}
-			// Failed downloads are junk in the client; clean up data too.
+			// Failed downloads are junk in the client; clean up data too. Some
+			// clients (debrid bridges) ignore the delete-files flag, so also
+			// delete the download's folder directly.
 			if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, true); err != nil {
 				result.note("removing failed %s: %v", item.Title, err)
 			}
+			deleteDownloadData(item.Path, result)
 			result.Failed++
 		}
 	}
@@ -256,7 +259,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 			if junk := junkFile(item.Path); junk != "" {
 				reason = fmt.Sprintf("spam release — contains %q, not a %s file", junk, mediaType)
 			}
-			s.abandon(grab, mediaType, reason, result)
+			s.abandon(ctx, item, grab, mediaType, reason, result)
 		case unresolvablePath(item.Path, grab):
 			// The client reports the download done but its files never became
 			// readable, while the download area itself IS reachable — a path
@@ -264,7 +267,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 			// 8.3-style folders the client reports under a mangled path). Give
 			// up instead of retrying forever. A transient share/mount outage
 			// (parent unreachable) is excluded, so good releases survive it.
-			s.abandon(grab, mediaType,
+			s.abandon(ctx, item, grab, mediaType,
 				"download completed but its files never became readable (unresolvable path)", result)
 		default:
 			// Files not ready yet (still syncing) or a momentary share hiccup —
@@ -788,13 +791,18 @@ const stalePendingGrace = 30 * time.Minute
 
 // abandon fails a grab whose download can't yield the book (wrong content,
 // spam, or a path that never became readable), blocklists the release so it is
-// never grabbed again, and kicks off a replacement search so acquisition moves
-// straight to another release.
-func (s *Service) abandon(grab *download.GrabRecord, mediaType, reason string, result *Result) {
+// never grabbed again, deletes the junk — out of the client and off disk (some
+// clients ignore the delete-files flag) — and kicks off a replacement search so
+// acquisition moves straight to another release.
+func (s *Service) abandon(ctx context.Context, item *download.Item, grab *download.GrabRecord, mediaType, reason string, result *Result) {
 	s.resolve(grab, download.GrabStatusFailed, reason)
 	if err := s.downloads.Store().AddBlock(grab.GUID, grab.Title, reason); err != nil {
 		result.note("blocklisting %s: %v", grab.Title, err)
 	}
+	if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, true); err != nil {
+		result.note("removing junk %s from client: %v", item.Title, err)
+	}
+	deleteDownloadData(item.Path, result)
 	if s.research != nil && grab.BookID > 0 {
 		go s.research(grab.BookID, mediaType)
 	}

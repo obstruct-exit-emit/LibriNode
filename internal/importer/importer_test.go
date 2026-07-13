@@ -413,7 +413,7 @@ func TestImportBlocklistsSpamDownload(t *testing.T) {
 	researched := make(chan int64, 1)
 	f.svc.OnJunkBlocklist(func(bookID int64, mediaType string) { researched <- bookID })
 
-	f.completedDownload(t, "nzo_spam", "Terry Pratchett - Mort Retail EPUB",
+	spamDir := f.completedDownload(t, "nzo_spam", "Terry Pratchett - Mort Retail EPUB",
 		"Mort - Retail.exe")
 	if err := f.grabs.AddGrab(&download.GrabRecord{
 		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_spam",
@@ -457,6 +457,15 @@ func TestImportBlocklistsSpamDownload(t *testing.T) {
 	// No file was imported.
 	if bookFiles, _ := f.store.ListBookFiles(f.book.ID); len(bookFiles) != 0 {
 		t.Errorf("spam import produced files: %+v", bookFiles)
+	}
+	// The junk was removed from the client with its data…
+	if len(f.delData) != 1 || f.delData[0] != "nzo_spam" {
+		t.Errorf("junk not removed from client with data: delData = %v", f.delData)
+	}
+	// …and its folder deleted from disk directly (clients that ignore the
+	// delete-files flag).
+	if _, err := os.Stat(spamDir); !os.IsNotExist(err) {
+		t.Errorf("spam folder not deleted from disk: stat err = %v", err)
 	}
 }
 
