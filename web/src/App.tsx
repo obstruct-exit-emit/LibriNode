@@ -256,10 +256,14 @@ export default function App() {
         )}
         {connected && page.name === "book" && (
           <BookDetailView
+            key={`${page.id}-${page.library}`}
             id={page.id}
             library={page.library}
             onError={setError}
             onBack={() => go({ name: "author", id: page.authorId, library: page.library })}
+            onSwitchLibrary={(library) =>
+              go({ name: "book", id: page.id, library, authorId: page.authorId })
+            }
           />
         )}
         {connected && page.name === "series-detail" && (

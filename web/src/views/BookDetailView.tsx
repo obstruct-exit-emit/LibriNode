@@ -23,11 +23,15 @@ export default function BookDetailView({
   library,
   onError,
   onBack,
+  onSwitchLibrary,
 }: {
   id: number;
   library: "ebook" | "audiobook";
   onError: (message: string) => void;
   onBack: () => void;
+  // Navigate to this same book in the other format library (the cross-format
+  // badge links there when the book is already in it).
+  onSwitchLibrary?: (library: "ebook" | "audiobook") => void;
 }) {
   const [book, setBook] = useState<Book | null>(null);
   const [author, setAuthor] = useState<Author | null>(null);
@@ -166,17 +170,14 @@ export default function BookDetailView({
               <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
             )}
             {inOther ? (
-              <span
-                className={`cross-format ${ownedOther ? "owned yes" : "owned no"}`}
-                title={
-                  ownedOther
-                    ? `You own the ${otherLibrary} of this book`
-                    : `Also in the ${otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"} library, not owned yet`
-                }
+              <button
+                className={`cross-format owned-link ${ownedOther ? "owned yes" : "owned no"}`}
+                title={`Open this book in the ${otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"} library${ownedOther ? " (owned there)" : " (not owned there yet)"}`}
+                onClick={() => onSwitchLibrary?.(otherLibrary)}
               >
                 {otherLibrary === "audiobook" ? "🎧" : "📖"}{" "}
-                {otherLibrary} {ownedOther ? "owned" : "in library"}
-              </span>
+                {otherLibrary} {ownedOther ? "owned" : "in library"} →
+              </button>
             ) : (
               <button
                 className="toggle cross-format"

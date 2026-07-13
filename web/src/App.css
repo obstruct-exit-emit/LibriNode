@@ -373,6 +373,18 @@ button.toggle.on {
   color: var(--muted);
 }
 
+/* The cross-format badge as a link: keeps the pill look (the .owned classes
+   above win over the global button accent) but reads as clickable. */
+button.owned-link {
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+button.owned-link:hover {
+  filter: none;
+  border-color: currentColor;
+}
+
 .file-path {
   font-size: 0.85rem;
   overflow-wrap: anywhere;
