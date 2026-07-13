@@ -230,12 +230,28 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 		}
 		hasAudio := false
 		hasSubdir := false
+		allDisc := true
 		for _, e := range entries {
 			if e.IsDir() {
 				hasSubdir = true
+				if !IsDiscFolder(e.Name()) {
+					allDisc = false
+				}
 			} else if IsAudioPath(e.Name()) {
 				hasAudio = true
 			}
+		}
+		// A book unit is a leaf dir with audio, or a dir whose subdirs are all
+		// disc-style (CD1/CD2 …) with audio somewhere inside — a multi-disc
+		// book, not a navigation level.
+		if hasSubdir && allDisc {
+			if size, format, modified := audiobookDirInfo(path); size > 0 {
+				if err := record(path, size, format, modified); err != nil {
+					return err
+				}
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if !hasAudio || hasSubdir {
 			return nil

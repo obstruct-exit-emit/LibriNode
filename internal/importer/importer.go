@@ -376,21 +376,57 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 	var target string
 	var size int64
 	if mediaType == "audiobook" && len(sources) > 1 {
-		// Multi-file audiobook: the per-book folder is the unit; original
-		// track names are preserved inside it.
+		// Multi-file audiobook: the per-book folder is the unit. Tracks keep
+		// their names AND their layout relative to the download (disc
+		// subfolders like CD1/CD2 survive — Audiobookshelf supports them, and
+		// flattening would collide same-named tracks and break disc order).
 		target = place.Dir
-		if _, err := os.Stat(target); err == nil && len(replacing) == 0 {
-			result.note("%s: target already exists: %s", itemTitle, target)
-			result.Skipped++
-			return "", false
+		freshDir := true
+		if _, err := os.Stat(target); err == nil {
+			if len(replacing) == 0 {
+				result.note("%s: target already exists: %s", itemTitle, target)
+				result.Skipped++
+				return "", false
+			}
+			freshDir = false
 		}
+		base := commonDir(sources)
+		var copied []string
+		used := map[string]bool{}
 		for _, src := range sources {
-			n, err := copyFile(src, filepath.Join(target, filepath.Base(src)))
+			rel, err := filepath.Rel(base, src)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				rel = filepath.Base(src)
+			}
+			// Disc-style subfolders (CD1/CD2 …) are kept — the scanner and
+			// Audiobookshelf understand them. Any other nesting is flattened
+			// (a book folder must otherwise hold only files), qualifying the
+			// name with its folder when flattening would collide.
+			if dir := filepath.Dir(rel); dir != "." && !discPath(dir) {
+				name := filepath.Base(rel)
+				if used[name] {
+					name = strings.ReplaceAll(filepath.ToSlash(rel), "/", " - ")
+				}
+				rel = name
+			}
+			used[rel] = true
+			dest := filepath.Join(target, rel)
+			n, err := copyFile(src, dest)
 			if err != nil {
+				// Remove what landed so the retry isn't blocked by a
+				// half-copied book folder ("target already exists").
+				if freshDir {
+					os.RemoveAll(target)
+				} else {
+					for _, c := range copied {
+						os.Remove(c)
+					}
+				}
 				result.note("%s: %v", itemTitle, err)
 				result.Skipped++
 				return "", false
 			}
+			copied = append(copied, dest)
 			size += n
 		}
 	} else {
@@ -813,6 +849,35 @@ func junkFile(path string) string {
 		return nil
 	})
 	return found
+}
+
+// commonDir returns the deepest directory containing every path — the download
+// root the tracks' relative layout is preserved from (callers guarantee at
+// least one path).
+func commonDir(paths []string) string {
+	dir := filepath.Dir(paths[0])
+	for _, p := range paths[1:] {
+		for dir != "" && !strings.HasPrefix(p, dir+string(filepath.Separator)) {
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return dir // filesystem root; nothing shallower to try
+			}
+			dir = parent
+		}
+	}
+	return dir
+}
+
+// discPath reports whether every segment of a relative directory path is a
+// disc-style folder name (CD1, Disc 02 …) — the only nesting a book folder
+// keeps on import.
+func discPath(dir string) bool {
+	for _, seg := range strings.Split(filepath.ToSlash(dir), "/") {
+		if !scanner.IsDiscFolder(seg) {
+			return false
+		}
+	}
+	return true
 }
 
 // largestFile picks the biggest candidate (callers guarantee at least one).

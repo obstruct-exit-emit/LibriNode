@@ -246,6 +246,109 @@ func TestImportAudiobookGrab(t *testing.T) {
 	}
 }
 
+// TestImportAudiobookDiscSubfolders: a multi-disc download (CD1/CD2 with
+// same-named tracks) imports with its layout preserved — flattening would
+// collide the names, abort the copy, and strand the grab behind the
+// half-copied folder.
+func TestImportAudiobookDiscSubfolders(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_cd", "Terry Pratchett - Mort Unabridged",
+		filepath.Join("CD1", "01 - Opening.mp3"),
+		filepath.Join("CD1", "02 - Death.mp3"),
+		filepath.Join("CD2", "01 - Opening.mp3"), // same name as CD1's first track
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_cd",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	for _, rel := range []string{
+		filepath.Join("CD1", "01 - Opening.mp3"),
+		filepath.Join("CD1", "02 - Death.mp3"),
+		filepath.Join("CD2", "01 - Opening.mp3"),
+	} {
+		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
+			t.Errorf("track missing after import: %v", err)
+		}
+	}
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 || files[0].Path != bookDir {
+		t.Fatalf("files = %+v", files)
+	}
+}
+
+// TestImportAudiobookFlattensNonDiscNesting: non-disc nesting (an "mp3s"
+// wrapper folder) is flattened — the scanner only recognizes book folders
+// holding files and disc subfolders — and a name collision while flattening is
+// qualified with its folder instead of aborting the copy.
+func TestImportAudiobookFlattensNonDiscNesting(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_flat", "Terry Pratchett - Mort Unabridged",
+		filepath.Join("mp3s", "01 - Opening.mp3"),
+		filepath.Join("mp3s", "02 - Death.mp3"),
+		filepath.Join("extras", "01 - Opening.mp3"), // collides once flattened
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_flat",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	for _, name := range []string{
+		"01 - Opening.mp3", // extras' copy flattened first (lexical walk order)
+		"02 - Death.mp3",
+		"mp3s - 01 - Opening.mp3", // the collision, qualified with its folder
+	} {
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
+			t.Errorf("expected flattened track %q: %v", name, err)
+		}
+	}
+	// No non-disc subfolders survive in the book folder.
+	entries, _ := os.ReadDir(bookDir)
+	for _, e := range entries {
+		if e.IsDir() {
+			t.Errorf("book folder should be flat, found subdir %q", e.Name())
+		}
+	}
+}
+
 func TestImportTrackedGrab(t *testing.T) {
 	f := fixture(t)
 	ctx := context.Background()

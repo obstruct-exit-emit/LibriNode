@@ -65,6 +65,17 @@ func IsMagazinePath(name string) bool {
 	return magazineExtensions[strings.ToLower(filepath.Ext(name))]
 }
 
+// discFolder matches disc-style subdivisions of a multi-file audiobook folder
+// (CD1, Disc 02, Part 3, Vol. 1) — the one kind of subfolder a book folder may
+// contain (Audiobookshelf convention).
+var discFolder = regexp.MustCompile(`(?i)^(cd|disc|disk|part|vol(?:ume)?)[ ._-]*\d+$`)
+
+// IsDiscFolder reports whether a directory name is a disc-style subdivision of
+// an audiobook folder.
+func IsDiscFolder(name string) bool {
+	return discFolder.MatchString(name)
+}
+
 // unwantedExtensions are file types a book/media download must never contain:
 // executables and installers mark a release as spam or malware masquerading as
 // the book it claims to be (usenet magazine feeds are rife with these).

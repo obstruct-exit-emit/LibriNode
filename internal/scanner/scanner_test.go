@@ -218,6 +218,69 @@ func TestScanUnmatchedGainsMatchAfterBookAdded(t *testing.T) {
 	}
 }
 
+// TestScanAudiobookDiscSubfolders: a book folder holding only disc-style
+// subfolders (CD1/CD2) is one multi-disc book unit, not a navigation level —
+// and never two bogus "CD1"/"CD2" books.
+func TestScanAudiobookDiscSubfolders(t *testing.T) {
+	f := fixture(t)
+
+	abRoot := t.TempDir()
+	write := func(rel string, size int) {
+		path := filepath.Join(abRoot, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Terry Pratchett/Mort/CD1/01 - Opening.mp3", 100)
+	write("Terry Pratchett/Mort/CD1/02 - Death.mp3", 150)
+	write("Terry Pratchett/Mort/CD2/01 - Opening.mp3", 250)
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	books, _ := f.store.ListBooks(0)
+	var mort library.Book
+	for _, b := range books {
+		if b.Title == "Mort" {
+			mort = b
+		}
+	}
+	if !mort.HasAudiobookFile {
+		t.Fatal("multi-disc book not recognized as an audiobook unit")
+	}
+	var ab *library.BookFile
+	files, _ := f.store.ListBookFiles(mort.ID)
+	for i := range files {
+		if files[i].MediaType == "audiobook" {
+			ab = &files[i]
+		}
+	}
+	if ab == nil {
+		t.Fatal("no audiobook file recorded")
+	}
+	if want := filepath.Join(abRoot, "Terry Pratchett", "Mort"); ab.Path != want {
+		t.Errorf("unit path = %q, want the book folder %q", ab.Path, want)
+	}
+	if ab.Size != 500 {
+		t.Errorf("unit size = %d, want 500 (all discs summed)", ab.Size)
+	}
+	// The discs themselves must not surface as unmatched "books".
+	unmatched, _ := f.store.ListUnmatchedBookFiles()
+	for _, u := range unmatched {
+		base := filepath.Base(u.Path)
+		if base == "CD1" || base == "CD2" {
+			t.Errorf("disc folder leaked as a unit: %s", u.Path)
+		}
+	}
+}
+
 func TestScanAudiobookRoot(t *testing.T) {
 	f := fixture(t)
 
