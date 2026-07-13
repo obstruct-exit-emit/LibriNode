@@ -146,9 +146,17 @@ func run(dataDir string) error {
 	store := library.NewStore(db)
 	downloads := download.NewService(download.NewStore(db))
 	go refresh.New(store, providers).RunPeriodic(bgCtx, metadataRefreshInterval)
-	go importer.New(store, downloads, organize.New(store, cfg), cfg.ImportSettings).RunPeriodic(bgCtx, importInterval)
-	go autosearch.New(store, indexer.NewService(indexer.NewStore(db)), downloads).
-		RunPeriodic(bgCtx, wantedSearchInterval)
+	imp := importer.New(store, downloads, organize.New(store, cfg), cfg.ImportSettings)
+	search := autosearch.New(store, indexer.NewService(indexer.NewStore(db)), downloads)
+	// After the importer blocklists a junk/spam download, search for a
+	// replacement right away instead of waiting for the next periodic sweep.
+	imp.OnJunkBlocklist(func(bookID int64, mediaType string) {
+		ctx, cancel := context.WithTimeout(bgCtx, 5*time.Minute)
+		defer cancel()
+		_, _ = search.SearchBook(ctx, bookID, mediaType)
+	})
+	go imp.RunPeriodic(bgCtx, importInterval)
+	go search.RunPeriodic(bgCtx, wantedSearchInterval)
 
 	handler, healthSvc := api.NewRouter(cfg, db, providers, version)
 	go healthSvc.RunPeriodic(bgCtx, healthCheckInterval)

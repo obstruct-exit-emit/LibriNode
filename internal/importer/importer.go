@@ -34,10 +34,20 @@ type Service struct {
 	// settings (optional) reports the current Completed Download Handling
 	// options — pack-import-all, and the post-import client/file cleanup.
 	settings func() config.ImportSettings
+	// research (optional) starts a fresh search for a book whose download was
+	// blocklisted as junk, so acquisition moves straight to another release.
+	research func(bookID int64, mediaType string)
 }
 
 func New(store *library.Store, downloads *download.Service, org *organize.Service, settings func() config.ImportSettings) *Service {
 	return &Service{store: store, downloads: downloads, organize: org, settings: settings}
+}
+
+// OnJunkBlocklist registers a callback the importer fires (in the background)
+// after it blocklists a bad/spam download, so a replacement is searched for
+// immediately instead of waiting for the next periodic sweep. Optional.
+func (s *Service) OnJunkBlocklist(fn func(bookID int64, mediaType string)) {
+	s.research = fn
 }
 
 // opts returns the current import settings, tolerating a nil provider.
@@ -237,7 +247,21 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	}
 	if err != nil {
 		if grab != nil && !errors.Is(err, errDownloadPending) {
-			s.resolve(grab, download.GrabStatusFailed, err.Error())
+			// The download finished but its content is wrong: mislabeled, or —
+			// common on usenet — spam/malware (an .exe in place of the book).
+			reason := err.Error()
+			if junk := junkFile(item.Path); junk != "" {
+				reason = fmt.Sprintf("spam release — contains %q, not a %s file", junk, mediaType)
+			}
+			s.resolve(grab, download.GrabStatusFailed, reason)
+			// Blocklist so this exact release is never grabbed again, then kick
+			// off a fresh search so acquisition moves on to another release.
+			if err := s.downloads.Store().AddBlock(grab.GUID, grab.Title, reason); err != nil {
+				result.note("blocklisting %s: %v", grab.Title, err)
+			}
+			if s.research != nil && grab.BookID > 0 {
+				go s.research(grab.BookID, mediaType)
+			}
 			result.Failed++
 		} else {
 			// Files not ready yet (still syncing), or an untracked download —
@@ -716,6 +740,27 @@ func listAcceptable(path string, accept func(string) bool, kind string) ([]candi
 		return nil, fmt.Errorf("no %s found in download", kind)
 	}
 	return files, nil
+}
+
+// junkFile returns the name of the first executable/installer found anywhere in
+// a completed download — the signature of a spam/malware release masquerading
+// as the book (common on usenet). Empty when the download has none.
+func junkFile(path string) string {
+	if path == "" {
+		return ""
+	}
+	var found string
+	_ = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if scanner.IsUnwantedFile(p) {
+			found = filepath.Base(p)
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 // largestFile picks the biggest candidate (callers guarantee at least one).

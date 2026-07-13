@@ -207,6 +207,14 @@ type Candidate struct {
 func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *library.Author) Candidate {
 	c := Candidate{Release: rel, Parsed: Parse(rel.Title)}
 
+	// Spam guard: a release whose name states an executable/installer extension
+	// is malware masquerading as the book — reject before it can be grabbed.
+	// (Most spam hides a clean name and is only caught at import; this catches
+	// the ones that name it outright.)
+	if scanner.NamesExecutable(rel.Title) {
+		c.reject("release names an executable — likely spam")
+	}
+
 	// Format: best recognized format wins; none recognized is fatal.
 	best := -1
 	for _, f := range c.Parsed.Formats {

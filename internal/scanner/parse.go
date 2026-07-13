@@ -65,6 +65,35 @@ func IsMagazinePath(name string) bool {
 	return magazineExtensions[strings.ToLower(filepath.Ext(name))]
 }
 
+// unwantedExtensions are file types a book/media download must never contain:
+// executables and installers mark a release as spam or malware masquerading as
+// the book it claims to be (usenet magazine feeds are rife with these).
+var unwantedExtensions = map[string]bool{
+	".exe": true, ".scr": true, ".bat": true, ".cmd": true, ".com": true,
+	".msi": true, ".vbs": true, ".ps1": true, ".lnk": true, ".apk": true,
+	".jar": true, ".iso": true, ".dll": true, ".dmg": true, ".pkg": true,
+	".deb": true, ".rpm": true, ".app": true,
+}
+
+// IsUnwantedFile reports whether a filename has an executable/installer
+// extension — a strong spam/malware signal in a book download. Used by the
+// importer to reject (and blocklist) a completed download whose real content
+// isn't the book it was named after.
+func IsUnwantedFile(name string) bool {
+	return unwantedExtensions[strings.ToLower(filepath.Ext(name))]
+}
+
+// namesExecutable matches an executable/installer extension appearing as a
+// token inside a release name (e.g. "Some.Book.exe" or "Title-scr").
+var namesExecutable = regexp.MustCompile(`(?i)[.\-\s](exe|scr|bat|cmd|com|msi|vbs|ps1|lnk|apk|jar|iso|dll|dmg|pkg|deb|rpm|app)\b`)
+
+// NamesExecutable reports whether a release title itself names an executable/
+// installer extension — a pre-download spam signal (the real .exe is only seen
+// after download, but some junk names it outright).
+func NamesExecutable(title string) bool {
+	return namesExecutable.MatchString(title)
+}
+
 var (
 	numericDate = regexp.MustCompile(`\b((?:19|20)\d{2})[-._ ](\d{1,2})(?:[-._ ](\d{1,2}))?\b`)
 	wordedDate  = regexp.MustCompile(`(?i)\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(?:(\d{1,2})(?:st|nd|rd|th)?,?\s+)?((?:19|20)\d{2})\b`)

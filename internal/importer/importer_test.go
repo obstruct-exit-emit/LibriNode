@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
@@ -296,6 +297,63 @@ func TestImportTrackedGrab(t *testing.T) {
 	}
 	if result.Imported != 0 {
 		t.Errorf("re-import happened: %+v", result)
+	}
+}
+
+// TestImportBlocklistsSpamDownload: a completed download whose content is an
+// executable (spam masquerading as the book) is failed, blocklisted, and
+// triggers a search for a replacement — not left to be re-grabbed.
+func TestImportBlocklistsSpamDownload(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	researched := make(chan int64, 1)
+	f.svc.OnJunkBlocklist(func(bookID int64, mediaType string) { researched <- bookID })
+
+	f.completedDownload(t, "nzo_spam", "Terry Pratchett - Mort Retail EPUB",
+		"Mort - Retail.exe")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_spam",
+		Title: "Terry Pratchett - Mort Retail EPUB", GUID: "guid-spam",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusFailed {
+		t.Errorf("grab status = %s, want failed", grabs[0].Status)
+	}
+	if !strings.Contains(grabs[0].Message, "spam") {
+		t.Errorf("grab message = %q, want a spam reason", grabs[0].Message)
+	}
+	// The release is blocklisted so it can never be grabbed again.
+	blocked, err := f.grabs.BlockedKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !blocked["guid-spam"] {
+		t.Errorf("spam release not blocklisted: %v", blocked)
+	}
+	// …and a replacement search was kicked off for the book.
+	select {
+	case id := <-researched:
+		if id != f.book.ID {
+			t.Errorf("research callback bookID = %d, want %d", id, f.book.ID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("replacement search was not triggered")
+	}
+	// No file was imported.
+	if bookFiles, _ := f.store.ListBookFiles(f.book.ID); len(bookFiles) != 0 {
+		t.Errorf("spam import produced files: %+v", bookFiles)
 	}
 }
 

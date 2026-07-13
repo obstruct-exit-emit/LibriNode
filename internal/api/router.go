@@ -75,6 +75,13 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	if dist, ok := web.FS(); ok {
 		s.webFS = dist
 	}
+	// When the importer blocklists a junk/spam download, search for a
+	// replacement immediately (the API-side importer runs on-demand imports).
+	s.importer.OnJunkBlocklist(func(bookID int64, mediaType string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		_, _ = s.search.SearchBook(ctx, bookID, mediaType)
+	})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ping", s.handlePing)
