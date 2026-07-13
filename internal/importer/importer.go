@@ -246,26 +246,29 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		format = fileFormat(source)
 	}
 	if err != nil {
-		if grab != nil && !errors.Is(err, errDownloadPending) {
+		switch {
+		case grab == nil:
+			result.Skipped++ // untracked download, not ours to fail
+		case !errors.Is(err, errDownloadPending):
 			// The download finished but its content is wrong: mislabeled, or —
 			// common on usenet — spam/malware (an .exe in place of the book).
 			reason := err.Error()
 			if junk := junkFile(item.Path); junk != "" {
 				reason = fmt.Sprintf("spam release — contains %q, not a %s file", junk, mediaType)
 			}
-			s.resolve(grab, download.GrabStatusFailed, reason)
-			// Blocklist so this exact release is never grabbed again, then kick
-			// off a fresh search so acquisition moves on to another release.
-			if err := s.downloads.Store().AddBlock(grab.GUID, grab.Title, reason); err != nil {
-				result.note("blocklisting %s: %v", grab.Title, err)
-			}
-			if s.research != nil && grab.BookID > 0 {
-				go s.research(grab.BookID, mediaType)
-			}
-			result.Failed++
-		} else {
-			// Files not ready yet (still syncing), or an untracked download —
-			// leave the grab pending and retry next pass rather than failing.
+			s.abandon(grab, mediaType, reason, result)
+		case unresolvablePath(item.Path, grab):
+			// The client reports the download done but its files never became
+			// readable, while the download area itself IS reachable — a path
+			// that will never resolve (special-character names land in short
+			// 8.3-style folders the client reports under a mangled path). Give
+			// up instead of retrying forever. A transient share/mount outage
+			// (parent unreachable) is excluded, so good releases survive it.
+			s.abandon(grab, mediaType,
+				"download completed but its files never became readable (unresolvable path)", result)
+		default:
+			// Files not ready yet (still syncing) or a momentary share hiccup —
+			// leave the grab pending and retry next pass.
 			result.Skipped++
 		}
 		return
@@ -740,6 +743,55 @@ func listAcceptable(path string, accept func(string) bool, kind string) ([]candi
 		return nil, fmt.Errorf("no %s found in download", kind)
 	}
 	return files, nil
+}
+
+// stalePendingGrace is how long a completed-but-unreadable download keeps being
+// retried before it's abandoned — long enough for a slow share to finish
+// syncing, short enough that a permanently unresolvable path clears itself.
+const stalePendingGrace = 30 * time.Minute
+
+// abandon fails a grab whose download can't yield the book (wrong content,
+// spam, or a path that never became readable), blocklists the release so it is
+// never grabbed again, and kicks off a replacement search so acquisition moves
+// straight to another release.
+func (s *Service) abandon(grab *download.GrabRecord, mediaType, reason string, result *Result) {
+	s.resolve(grab, download.GrabStatusFailed, reason)
+	if err := s.downloads.Store().AddBlock(grab.GUID, grab.Title, reason); err != nil {
+		result.note("blocklisting %s: %v", grab.Title, err)
+	}
+	if s.research != nil && grab.BookID > 0 {
+		go s.research(grab.BookID, mediaType)
+	}
+	result.Failed++
+}
+
+// unresolvablePath reports that a completed download's path will never become
+// readable and should be abandoned: the grab is past the grace period, the path
+// isn't there, but the download area (its parent) IS reachable — so it's a
+// wrong/mangled path, not a still-syncing file or a share outage.
+func unresolvablePath(path string, grab *download.GrabRecord) bool {
+	if grabAge(grab) < stalePendingGrace {
+		return false
+	}
+	if path == "" {
+		return true // long done, yet the client never reported a usable path
+	}
+	if _, err := os.Stat(path); err == nil {
+		return false // readable after all
+	}
+	_, err := os.Stat(filepath.Dir(path))
+	return err == nil // parent reachable but the download folder is missing
+}
+
+// grabAge is how long ago the grab was sent. Unparseable timestamps report as
+// fresh (0) so a bad row keeps retrying rather than being abandoned wrongly.
+func grabAge(grab *download.GrabRecord) time.Duration {
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if t, err := time.Parse(layout, grab.GrabbedAt); err == nil {
+			return time.Since(t)
+		}
+	}
+	return 0
 }
 
 // junkFile returns the name of the first executable/installer found anywhere in

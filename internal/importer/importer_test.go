@@ -357,6 +357,98 @@ func TestImportBlocklistsSpamDownload(t *testing.T) {
 	}
 }
 
+// TestImportAbandonsUnresolvablePath: a completed download whose folder never
+// appears at the reported path — while the download area IS reachable — is
+// abandoned (failed + blocklisted + re-searched) once past the grace period,
+// instead of retrying forever. Covers special-char names that land in
+// short-name folders the client reports under a mangled path.
+func TestImportAbandonsUnresolvablePath(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	researched := make(chan int64, 1)
+	f.svc.OnJunkBlocklist(func(bookID int64, mediaType string) { researched <- bookID })
+
+	// Reported storage points inside a real parent dir, but the folder itself
+	// was never created there (it landed under a mangled short name elsewhere).
+	parent := t.TempDir()
+	missing := filepath.Join(parent, "Mort – Retail (never here)")
+	f.history = append(f.history, map[string]any{
+		"nzo_id": "nzo_stuck", "name": "Terry Pratchett - Mort Retail EPUB",
+		"status": "Completed", "storage": missing, "category": "librinode",
+	})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_stuck",
+		Title: "Terry Pratchett - Mort Retail EPUB", GUID: "guid-stuck",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	// Age the grab past the grace period.
+	if _, err := f.db.Exec("UPDATE grabs SET grabbed_at = ? WHERE id = ?",
+		"2020-01-01 00:00:00", grabs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	grabs, _ = f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusFailed {
+		t.Errorf("grab status = %s, want failed", grabs[0].Status)
+	}
+	blocked, _ := f.grabs.BlockedKeys()
+	if !blocked["guid-stuck"] {
+		t.Errorf("unresolvable release not blocklisted: %v", blocked)
+	}
+	select {
+	case id := <-researched:
+		if id != f.book.ID {
+			t.Errorf("research bookID = %d, want %d", id, f.book.ID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("replacement search was not triggered")
+	}
+}
+
+// TestImportRetriesFreshUnresolvablePath: the same missing-folder situation but
+// a *fresh* grab is left pending (retried), not abandoned — a slow share is
+// given time to finish syncing.
+func TestImportRetriesFreshUnresolvablePath(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	parent := t.TempDir()
+	missing := filepath.Join(parent, "Mort – Retail (syncing)")
+	f.history = append(f.history, map[string]any{
+		"nzo_id": "nzo_fresh", "name": "Terry Pratchett - Mort Retail EPUB",
+		"status": "Completed", "storage": missing, "category": "librinode",
+	})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_fresh",
+		Title: "Terry Pratchett - Mort Retail EPUB", GUID: "guid-fresh",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 0 || result.Skipped != 1 {
+		t.Fatalf("fresh pending download should be skipped, got %+v", result)
+	}
+	if grabs, _ := f.grabs.ListGrabs(""); grabs[0].Status != download.GrabStatusGrabbed {
+		t.Errorf("fresh grab status = %s, want grabbed (still pending)", grabs[0].Status)
+	}
+}
+
 // TestImportDeletesDownloadedFilesWhenEnabled: with DeleteCompletedFiles on, a
 // usenet import removes the download from the client WITH its files.
 func TestImportDeletesDownloadedFilesWhenEnabled(t *testing.T) {
