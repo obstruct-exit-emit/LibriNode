@@ -139,11 +139,16 @@ export interface DownloadClient {
 
 export interface QueueItem {
   client: string;
+  clientConfigId: number;
   id: string;
   title: string;
   status: string;
   progress: number;
   path?: string;
+  // Set when the item belongs to a tracked grab — links it to its book.
+  grabId?: number;
+  bookId?: number;
+  mediaType?: string;
 }
 
 export interface SeriesResult {
@@ -597,6 +602,11 @@ export const api = {
     ),
   queue: () =>
     request<{ items: QueueItem[]; errors: string[] }>("/api/v1/queue"),
+  removeQueueItem: (clientConfigId: number, itemId: string) =>
+    request<{ removed: string }>(
+      `/api/v1/queue/${clientConfigId}/${encodeURIComponent(itemId)}`,
+      { method: "DELETE" },
+    ),
   history: () => request<GrabRecord[]>("/api/v1/history"),
   runImport: () =>
     request<ImportResult>("/api/v1/library/import", { method: "POST" }),

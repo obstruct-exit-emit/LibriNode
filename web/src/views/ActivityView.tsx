@@ -12,6 +12,7 @@ export default function ActivityView({
   const [clientErrors, setClientErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [removing, setRemoving] = useState("");
   const [notice, setNotice] = useState("");
 
   const reload = useCallback(() => {
@@ -25,6 +26,18 @@ export default function ActivityView({
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
   }, [onError]);
+
+  const removeItem = (it: QueueItem) => {
+    if (!confirm(`Remove "${it.title}" from ${it.client}?\n\nIts downloaded data is deleted. The release is NOT blocklisted, so it can be grabbed again.`)) {
+      return;
+    }
+    setRemoving(it.id);
+    api
+      .removeQueueItem(it.clientConfigId, it.id)
+      .then(reload)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setRemoving(""));
+  };
 
   const runImport = () => {
     setImporting(true);
@@ -88,7 +101,21 @@ export default function ActivityView({
                     {it.status === "downloading" &&
                       ` ${(it.progress * 100).toFixed(0)}%`}
                   </span>
+                  <button
+                    className="danger"
+                    disabled={removing === it.id}
+                    title="Remove this download from the client (its files are deleted; the release is not blocklisted)"
+                    onClick={() => removeItem(it)}
+                  >
+                    remove
+                  </button>
                 </span>
+              </div>
+              <div className="progress" title={`${(it.progress * 100).toFixed(0)}%`}>
+                <div
+                  className={`progress-fill${it.status === "failed" ? " bad" : ""}${it.status === "completed" || it.status === "seeded" ? " done" : ""}`}
+                  style={{ width: `${Math.max(2, Math.min(100, it.progress * 100))}%` }}
+                />
               </div>
             </li>
           ))}
@@ -98,62 +125,70 @@ export default function ActivityView({
 
     {blocked.length > 0 && (
       <section className="card">
-        <h2>Blocklist ({blocked.length})</h2>
-        <p className="muted">
-          Releases that failed to download — never grabbed again. Remove an
-          entry to give a release another chance.
-        </p>
-        <ul className="rows">
-          {blocked.map((b) => (
-            <li key={b.id}>
-              <div className="row">
-                <span>
-                  {b.title}
-                  {b.reason && <span className="file-path muted"> — {b.reason}</span>}
-                </span>
-                <span className="row-actions">
-                  <button
-                    className="toggle"
-                    onClick={() =>
-                      api
-                        .unblock(b.id)
-                        .then(reload)
-                        .catch((err: unknown) =>
-                          onError(String(err instanceof Error ? err.message : err)),
-                        )
-                    }
-                  >
-                    remove
-                  </button>
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <details className="disclosure">
+          <summary>Blocklist ({blocked.length})</summary>
+          <div className="disclosure-body">
+            <p className="muted" style={{ margin: 0 }}>
+              Releases that failed to download — never grabbed again. Remove an
+              entry to give a release another chance.
+            </p>
+            <ul className="rows">
+              {blocked.map((b) => (
+                <li key={b.id}>
+                  <div className="row">
+                    <span>
+                      {b.title}
+                      {b.reason && <span className="file-path muted"> — {b.reason}</span>}
+                    </span>
+                    <span className="row-actions">
+                      <button
+                        className="toggle"
+                        onClick={() =>
+                          api
+                            .unblock(b.id)
+                            .then(reload)
+                            .catch((err: unknown) =>
+                              onError(String(err instanceof Error ? err.message : err)),
+                            )
+                        }
+                      >
+                        remove
+                      </button>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
       </section>
     )}
 
     {history.length > 0 && (
       <section className="card">
-        <h2>History ({history.length})</h2>
-        <ul className="rows">
-          {history.map((g) => (
-            <li key={g.id}>
-              <div className="row">
-                <span>
-                  {g.title}
-                  {g.message && <span className="file-path muted"> — {g.message}</span>}
-                </span>
-                <span className="row-actions">
-                  <span className="muted">{g.protocol}</span>
-                  <span className={`owned ${g.status === "failed" ? "no" : "yes"}`}>
-                    {g.status}
-                  </span>
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <details className="disclosure">
+          <summary>History ({history.length})</summary>
+          <div className="disclosure-body">
+            <ul className="rows">
+              {history.map((g) => (
+                <li key={g.id}>
+                  <div className="row">
+                    <span>
+                      {g.title}
+                      {g.message && <span className="file-path muted"> — {g.message}</span>}
+                    </span>
+                    <span className="row-actions">
+                      <span className="muted">{g.protocol}</span>
+                      <span className={`owned ${g.status === "failed" ? "no" : "yes"}`}>
+                        {g.status}
+                      </span>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
       </section>
     )}
     </>

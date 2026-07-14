@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/librinode/librinode/internal/download"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 // downloadTimeout bounds a grab/import request. It's generous because a debrid
@@ -296,6 +297,52 @@ func (s *server) handleUnblock(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleQueue shows every LibriNode download across all enabled clients.
+// queueItem is a download client item enriched with the pending grab it
+// belongs to, so the UI can link a queue line to its book and show a book's
+// download progress on its own page.
+type queueItem struct {
+	download.Item
+	GrabID    int64  `json:"grabId,omitempty"`
+	BookID    int64  `json:"bookId,omitempty"`
+	MediaType string `json:"mediaType,omitempty"`
+}
+
+// enrichQueue pairs client items with pending grabs — by client item id when
+// the client reports one (SABnzbd), by normalized title otherwise
+// (qBittorrent's add returns no id) — mirroring the importer's matching.
+func (s *server) enrichQueue(items []download.Item) []queueItem {
+	out := make([]queueItem, len(items))
+	for i := range items {
+		out[i] = queueItem{Item: items[i]}
+	}
+	pending, err := s.downloads.Store().ListGrabs(download.GrabStatusGrabbed)
+	if err != nil {
+		return out
+	}
+	byID := map[string]*download.GrabRecord{}
+	byTitle := map[string]*download.GrabRecord{}
+	for i := range pending {
+		g := &pending[i]
+		if g.ClientItemID != "" {
+			byID[g.ClientItemID] = g
+		} else {
+			byTitle[scanner.Normalize(g.Title)] = g
+		}
+	}
+	for i := range out {
+		g := byID[out[i].ID]
+		if g == nil {
+			g = byTitle[scanner.Normalize(out[i].Title)]
+		}
+		if g != nil {
+			out[i].GrabID = g.ID
+			out[i].BookID = g.BookID
+			out[i].MediaType = g.MediaType
+		}
+	}
+	return out
+}
+
 func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
 	defer cancel()
@@ -305,5 +352,38 @@ func (s *server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		writeDownloadError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "errors": errs})
+	writeJSON(w, http.StatusOK, map[string]any{"items": s.enrichQueue(items), "errors": errs})
+}
+
+// handleRemoveQueueItem removes one download from its client (with its data)
+// and resolves the matching pending grab as failed — without blocklisting, so
+// the release stays grabbable if the user wants it again.
+func (s *server) handleRemoveQueueItem(w http.ResponseWriter, r *http.Request) {
+	configID, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid client id")
+		return
+	}
+	itemID := r.PathValue("itemId")
+	if itemID == "" {
+		writeError(w, http.StatusBadRequest, "item id is required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
+	defer cancel()
+
+	if err := s.downloads.Remove(ctx, configID, itemID, true); err != nil {
+		writeDownloadError(w, err)
+		return
+	}
+	// Resolve the pending grab this item belonged to (best-effort).
+	if pending, err := s.downloads.Store().ListGrabs(download.GrabStatusGrabbed); err == nil {
+		for i := range pending {
+			if pending[i].ClientItemID == itemID && pending[i].ClientConfigID == configID {
+				_ = s.downloads.Store().ResolveGrab(pending[i].ID, download.GrabStatusFailed, "removed from queue")
+				break
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"removed": itemID})
 }

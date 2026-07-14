@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -172,9 +173,20 @@ func (s *Store) Delete(id int64) error {
 
 // --- Service ---
 
+// queueCacheTTL is how long an aggregated queue snapshot is reused. Listing
+// hits every download client live (a debrid bridge = several HTTP calls), so
+// UI pollers — the Activity page plus any open book pages — share one snapshot
+// instead of each stampeding the clients.
+const queueCacheTTL = 15 * time.Second
+
 // Service picks clients and aggregates across them.
 type Service struct {
 	store *Store
+
+	mu        sync.Mutex
+	cachedAt  time.Time
+	cached    []Item
+	cachedErr []string
 }
 
 func NewService(store *Store) *Service {
@@ -182,6 +194,14 @@ func NewService(store *Store) *Service {
 }
 
 func (s *Service) Store() *Store { return s.store }
+
+// invalidateQueue drops the cached snapshot after anything that changes what
+// the clients hold (a grab, a removal), so the next Queue reflects it.
+func (s *Service) invalidateQueue() {
+	s.mu.Lock()
+	s.cachedAt = time.Time{}
+	s.mu.Unlock()
+}
 
 // GrabResult reports where a release was sent.
 type GrabResult struct {
@@ -210,6 +230,7 @@ func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabR
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", cfg.Name, err)
 		}
+		s.invalidateQueue()
 		return &GrabResult{Client: cfg.Name, ClientID: cfg.ID, ID: id}, nil
 	}
 	return nil, ErrNoClient
@@ -249,13 +270,24 @@ func (s *Service) Remove(ctx context.Context, configID int64, itemID string, del
 	if err != nil {
 		return err
 	}
-	return client.Remove(ctx, itemID, deleteData)
+	err = client.Remove(ctx, itemID, deleteData)
+	s.invalidateQueue()
+	return err
 }
 
-// Queue aggregates the download queues of all enabled clients. Client
-// failures come back as messages, not errors, so one dead client doesn't
-// blank the whole view.
+// Queue aggregates the download queues of all enabled clients, serving a
+// short-lived cached snapshot (queueCacheTTL) so concurrent UI pollers don't
+// stampede the clients. Client failures come back as messages, not errors, so
+// one dead client doesn't blank the whole view.
 func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
+	s.mu.Lock()
+	if time.Since(s.cachedAt) < queueCacheTTL {
+		items, errs := s.cached, s.cachedErr
+		s.mu.Unlock()
+		return items, errs, nil
+	}
+	s.mu.Unlock()
+
 	configs, err := s.store.List()
 	if err != nil {
 		return nil, nil, err
@@ -298,5 +330,9 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 		return strings.ToLower(items[a].Title) < strings.ToLower(items[b].Title)
 	})
 	sort.Strings(errs)
+
+	s.mu.Lock()
+	s.cached, s.cachedErr, s.cachedAt = items, errs, time.Now()
+	s.mu.Unlock()
 	return items, errs, nil
 }

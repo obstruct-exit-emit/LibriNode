@@ -4,6 +4,7 @@ import {
   proxiedImage,
   type Author,
   type Book,
+  type QueueItem,
   type ReleaseCandidate,
 } from "../api";
 import RemovePanel from "../components/RemovePanel";
@@ -51,6 +52,36 @@ export default function BookDetailView({
   }, [id, onError]);
 
   useEffect(reload, [reload]);
+
+  // Live download status for this book+format: poll the queue while the page
+  // is open (the server caches the snapshot, so polling is one cheap request),
+  // and when an active download disappears — imported, failed, or removed —
+  // refresh the book so the badge flips to owned or back to wanted.
+  const [dl, setDl] = useState<QueueItem | null>(null);
+  useEffect(() => {
+    let stopped = false;
+    let hadDownload = false;
+    const check = () =>
+      api
+        .queue()
+        .then((q) => {
+          if (stopped) return;
+          const item =
+            q.items.find(
+              (it) => it.bookId === id && it.mediaType === library && it.status !== "failed",
+            ) ?? null;
+          setDl(item);
+          if (hadDownload && !item) reload();
+          hadDownload = item !== null;
+        })
+        .catch(() => {}); // transient queue errors: keep the last state
+    check();
+    const timer = setInterval(check, 12_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [id, library, reload]);
 
   if (!book) return <p className="muted">Loading book…</p>;
 
@@ -140,10 +171,24 @@ export default function BookDetailView({
           <p className="muted">
             {subtitle}
             {subtitle && " · "}
-            <span className={owned ? "owned yes" : "owned no"}>
-              {owned ? "owned" : "wanted"}
-            </span>
+            {!owned && dl ? (
+              <span className="owned dl" title={`${dl.status} on ${dl.client}`}>
+                downloading {(dl.progress * 100).toFixed(0)}%
+              </span>
+            ) : (
+              <span className={owned ? "owned yes" : "owned no"}>
+                {owned ? "owned" : "wanted"}
+              </span>
+            )}
           </p>
+          {!owned && dl && (
+            <div className="progress" style={{ maxWidth: 340 }}>
+              <div
+                className="progress-fill"
+                style={{ width: `${Math.max(2, Math.min(100, dl.progress * 100))}%` }}
+              />
+            </div>
+          )}
           {book.description && <p className="detail-desc">{book.description}</p>}
           <div className="settings-actions">
             <button
