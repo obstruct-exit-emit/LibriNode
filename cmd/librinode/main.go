@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -49,10 +50,52 @@ const wantedSearchInterval = 6 * time.Hour
 // re-run them on demand.
 const healthCheckInterval = 15 * time.Minute
 
-// version is overridden at build time via -ldflags "-X main.version=x.y.z".
-var version = "0.0.1-alpha"
+// version is overridden at build time via -ldflags "-X main.version=x.y.z"
+// (the release workflow stamps tags). Unstamped builds fall back to the git
+// revision Go embeds in the binary, so even a dev build identifies itself.
+var version = "dev"
+
+// resolveVersion returns the stamped version, or derives one from the build
+// info of an unstamped build: dev-<short-sha>[+dirty] (<commit-date>).
+func resolveVersion() string {
+	if version != "dev" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	var rev, date, dirty string
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.time":
+			date = s.Value
+		case "vcs.modified":
+			if s.Value == "true" {
+				dirty = "+dirty"
+			}
+		}
+	}
+	if rev == "" {
+		return version
+	}
+	if len(rev) > 7 {
+		rev = rev[:7]
+	}
+	if len(date) > 10 {
+		date = date[:10]
+	}
+	v := "dev-" + rev + dirty
+	if date != "" {
+		v += " (" + date + ")"
+	}
+	return v
+}
 
 func main() {
+	version = resolveVersion()
 	dataDir := flag.String("data", "", "path to the data directory (default: OS-specific config dir)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()

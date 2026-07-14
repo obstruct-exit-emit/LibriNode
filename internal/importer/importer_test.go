@@ -349,6 +349,54 @@ func TestImportAudiobookFlattensNonDiscNesting(t *testing.T) {
 	}
 }
 
+// TestImportAdoptsExistingTarget: the import target already exists on disk but
+// the library has no record of it (an earlier import wrote the file before
+// recording, or it was placed by hand). The import adopts the file — records
+// it and resolves the grab — instead of skipping forever.
+func TestImportAdoptsExistingTarget(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	// The organized file is already in place, unrecorded.
+	existing := filepath.Join(f.rootDir, "Terry Pratchett", "Mort (1987)",
+		"Terry Pratchett - Mort (1987).epub")
+	if err := os.MkdirAll(filepath.Dir(existing), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(existing, []byte("already-on-disk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_adopt", "Terry Pratchett - Mort Retail EPUB", "Mort.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_adopt",
+		Title: "Terry Pratchett - Mort Retail EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	// The existing file was adopted, not overwritten.
+	data, err := os.ReadFile(existing)
+	if err != nil || string(data) != "already-on-disk" {
+		t.Fatalf("existing file clobbered: %q %v", data, err)
+	}
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 || files[0].Path != existing || files[0].Size != int64(len("already-on-disk")) {
+		t.Fatalf("files = %+v", files)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusImported {
+		t.Errorf("grab status = %s, want imported", grabs[0].Status)
+	}
+}
+
 func TestImportTrackedGrab(t *testing.T) {
 	f := fixture(t)
 	ctx := context.Background()

@@ -456,7 +456,7 @@ turns "works on the dev box" into "trustable release".
 - [ ] **Security once-over**: API-key and session handling, path traversal on delete/organize (nothing may escape a root folder), and the log viewer never leaking tokens
 - [ ] **Performance sanity check**: a few-thousand-book library — grid rendering, scan and refresh-all duration, SQLite behavior under the background loops
 - [ ] **Docs stranger-test**: a fresh person (or fresh machine) follows the quickstart and Docker compose from scratch; fix every step that needed insider knowledge
-- [ ] **Version/release hygiene**: real version stamping in builds (it still reports 0.0.1-alpha), a CHANGELOG, and a v0.9 release-candidate tag to shake out the release CI before the real one
+- [ ] **Version/release hygiene**: ~~real version stamping in builds~~ *(done: release builds stamp the tag via ldflags, and unstamped dev builds now self-identify as `dev-<sha> (<date>)` from the embedded VCS info)*, ~~a CHANGELOG~~ *(added)*, and a v0.9 release-candidate tag to shake out the release CI before the real one *(still open)*
 - [ ] **Distribution**: published Docker images (GHCR) and a code-signed Windows installer that passes Smart App Control — signing is the logistics-heavy one, so it goes last
 
 ### Post-1.0 ideas

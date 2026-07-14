@@ -378,6 +378,7 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 
 	var target string
 	var size int64
+	adopted := false // target already on disk but unrecorded — record, don't copy
 	if mediaType == "audiobook" && len(sources) > 1 {
 		// Multi-file audiobook: the per-book folder is the unit. Tracks keep
 		// their names AND their layout relative to the download (disc
@@ -387,62 +388,78 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 		freshDir := true
 		if _, err := os.Stat(target); err == nil {
 			if len(replacing) == 0 {
+				// A previous import or manual placement left the book here
+				// without a library record. Adopt what's on disk instead of
+				// skipping forever ("target already exists" every pass).
+				size = dirAudioSize(target)
+				adopted = true
+				result.note("%s: adopted existing files at %s", itemTitle, target)
+			} else {
+				freshDir = false
+			}
+		}
+		if !adopted {
+			base := commonDir(sources)
+			var copied []string
+			used := map[string]bool{}
+			for _, src := range sources {
+				rel, err := filepath.Rel(base, src)
+				if err != nil || strings.HasPrefix(rel, "..") {
+					rel = filepath.Base(src)
+				}
+				// Disc-style subfolders (CD1/CD2 …) are kept — the scanner and
+				// Audiobookshelf understand them. Any other nesting is flattened
+				// (a book folder must otherwise hold only files), qualifying the
+				// name with its folder when flattening would collide.
+				if dir := filepath.Dir(rel); dir != "." && !discPath(dir) {
+					name := filepath.Base(rel)
+					if used[name] {
+						name = strings.ReplaceAll(filepath.ToSlash(rel), "/", " - ")
+					}
+					rel = name
+				}
+				used[rel] = true
+				dest := filepath.Join(target, rel)
+				n, err := copyFile(src, dest)
+				if err != nil {
+					// Remove what landed so the retry isn't blocked by a
+					// half-copied book folder ("target already exists").
+					if freshDir {
+						os.RemoveAll(target)
+					} else {
+						for _, c := range copied {
+							os.Remove(c)
+						}
+					}
+					result.note("%s: %v", itemTitle, err)
+					result.Skipped++
+					return "", false
+				}
+				copied = append(copied, dest)
+				size += n
+			}
+		}
+	} else {
+		target = filepath.Join(place.Dir, place.FileName)
+		if info, err := os.Stat(target); err == nil {
+			if len(replacing) > 0 {
+				// Upgrade in flight and the target name is taken: never
+				// overwrite — leave the owned file alone.
 				result.note("%s: target already exists: %s", itemTitle, target)
 				result.Skipped++
 				return "", false
 			}
-			freshDir = false
+			// On disk but unrecorded (see the audiobook case above): adopt it.
+			size = info.Size()
+			adopted = true
+			result.note("%s: adopted existing file: %s", itemTitle, target)
 		}
-		base := commonDir(sources)
-		var copied []string
-		used := map[string]bool{}
-		for _, src := range sources {
-			rel, err := filepath.Rel(base, src)
-			if err != nil || strings.HasPrefix(rel, "..") {
-				rel = filepath.Base(src)
-			}
-			// Disc-style subfolders (CD1/CD2 …) are kept — the scanner and
-			// Audiobookshelf understand them. Any other nesting is flattened
-			// (a book folder must otherwise hold only files), qualifying the
-			// name with its folder when flattening would collide.
-			if dir := filepath.Dir(rel); dir != "." && !discPath(dir) {
-				name := filepath.Base(rel)
-				if used[name] {
-					name = strings.ReplaceAll(filepath.ToSlash(rel), "/", " - ")
-				}
-				rel = name
-			}
-			used[rel] = true
-			dest := filepath.Join(target, rel)
-			n, err := copyFile(src, dest)
-			if err != nil {
-				// Remove what landed so the retry isn't blocked by a
-				// half-copied book folder ("target already exists").
-				if freshDir {
-					os.RemoveAll(target)
-				} else {
-					for _, c := range copied {
-						os.Remove(c)
-					}
-				}
+		if !adopted {
+			if size, err = copyFile(sources[0], target); err != nil {
 				result.note("%s: %v", itemTitle, err)
 				result.Skipped++
 				return "", false
 			}
-			copied = append(copied, dest)
-			size += n
-		}
-	} else {
-		target = filepath.Join(place.Dir, place.FileName)
-		if _, err := os.Stat(target); err == nil {
-			result.note("%s: target already exists: %s", itemTitle, target)
-			result.Skipped++
-			return "", false
-		}
-		if size, err = copyFile(sources[0], target); err != nil {
-			result.note("%s: %v", itemTitle, err)
-			result.Skipped++
-			return "", false
 		}
 	}
 
@@ -874,6 +891,22 @@ func commonDir(paths []string) string {
 		}
 	}
 	return dir
+}
+
+// dirAudioSize sums the audio files under an existing book folder — the
+// recorded size when an on-disk but unrecorded folder is adopted.
+func dirAudioSize(dir string) int64 {
+	var total int64
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !scanner.IsAudioPath(p) {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
 }
 
 // discPath reports whether every segment of a relative directory path is a
