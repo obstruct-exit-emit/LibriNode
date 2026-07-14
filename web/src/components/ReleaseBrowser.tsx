@@ -34,6 +34,13 @@ function ageValue(publishDate?: string): number {
   return isNaN(t) ? 0 : t;
 }
 
+// leechers derives from the Torznab convention peers = seeders + leechers;
+// indexers that report leechers directly (peers < seeders) pass through.
+function leechers(c: ReleaseCandidate): number | null {
+  if (c.protocol !== "torrent" || c.peers < 0) return null;
+  return c.seeders >= 0 && c.peers >= c.seeders ? c.peers - c.seeders : c.peers;
+}
+
 export default function ReleaseBrowser({
   bookId,
   mediaType,
@@ -240,6 +247,12 @@ export default function ReleaseBrowser({
                     title={c.protocol === "torrent" ? "Seeders" : "Seeders (usenet has none)"}
                   >
                     ↑ {c.protocol === "torrent" && c.seeders >= 0 ? c.seeders : "—"}
+                  </span>
+                  <span
+                    className="metric"
+                    title={c.protocol === "torrent" ? "Leechers" : "Leechers (usenet has none)"}
+                  >
+                    ↓ {leechers(c) ?? "—"}
                   </span>
                   <span className={`metric${sort === "age" ? " on" : ""}`} title="Age (published)">
                     🕓 {fmtAge(c.publishDate) || "—"}
