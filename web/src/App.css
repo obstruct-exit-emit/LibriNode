@@ -502,9 +502,31 @@ button.owned-link:hover {
   padding-bottom: 0.5rem;
 }
 
+/* Tiles are buttons (they open the book/series page) — undo the global
+   button chrome and keep the plain poster look, with a hover lift. */
 .home-tile {
   flex: 0 0 96px;
   width: 96px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-weight: normal;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-tile:hover {
+  filter: none;
+}
+
+.home-tile:hover img,
+.home-tile:hover .home-cover-fallback {
+  border-color: var(--accent);
+}
+
+.home-tile:hover .home-tile-title {
+  text-decoration: underline;
 }
 
 .home-tile img,

@@ -7,9 +7,13 @@ import { libraryLabels } from "../App";
 export default function HomeView({
   onError,
   onOpenLibrary,
+  onOpenItem,
 }: {
   onError: (message: string) => void;
   onOpenLibrary: (mediaType: string) => void;
+  // Open a tile's own page: book detail for prose, series page for
+  // volumes/issues (falls back to the library grid without the ids).
+  onOpenItem: (mediaType: string, item: HomeItem) => void;
 }) {
   const [sections, setSections] = useState<HomeSection[] | null>(null);
 
@@ -51,9 +55,19 @@ export default function HomeView({
             </span>
           </div>
           {s.recentlyAdded.length > 0 && (
-            <HomeRow title="Recently added" items={s.recentlyAdded} />
+            <HomeRow
+              title="Recently added"
+              items={s.recentlyAdded}
+              onOpen={(it) => onOpenItem(s.mediaType, it)}
+            />
           )}
-          {s.wanted.length > 0 && <HomeRow title="Wanted" items={s.wanted} />}
+          {s.wanted.length > 0 && (
+            <HomeRow
+              title="Wanted"
+              items={s.wanted}
+              onOpen={(it) => onOpenItem(s.mediaType, it)}
+            />
+          )}
           {s.recentlyAdded.length === 0 && s.wanted.length === 0 && (
             <p className="muted">Library is empty — add something from its page.</p>
           )}
@@ -63,13 +77,26 @@ export default function HomeView({
   );
 }
 
-function HomeRow({ title, items }: { title: string; items: HomeItem[] }) {
+function HomeRow({
+  title,
+  items,
+  onOpen,
+}: {
+  title: string;
+  items: HomeItem[];
+  onOpen: (item: HomeItem) => void;
+}) {
   return (
     <div className="home-row">
       <h3 className="muted">{title}</h3>
       <div className="home-strip">
         {items.map((it) => (
-          <div className="home-tile" key={it.bookId} title={it.title}>
+          <button
+            className="home-tile"
+            key={it.bookId}
+            title={it.title}
+            onClick={() => onOpen(it)}
+          >
             {it.coverUrl ? (
               <img src={proxiedImage(it.coverUrl)} alt="" loading="lazy" />
             ) : (
@@ -77,7 +104,7 @@ function HomeRow({ title, items }: { title: string; items: HomeItem[] }) {
             )}
             <div className="home-tile-title">{it.title}</div>
             {it.subtitle && <div className="home-tile-sub muted">{it.subtitle}</div>}
-          </div>
+          </button>
         ))}
       </div>
     </div>

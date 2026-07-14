@@ -88,9 +88,13 @@ func (s *Store) LibraryStatuses() ([]LibraryStatus, error) {
 	return statuses, nil
 }
 
-// HomeItem is one entry in a Home page row.
+// HomeItem is one entry in a Home page row. AuthorID and SeriesID let the UI
+// link the tile to its detail page: prose books open the book page (which
+// needs the author for its back-navigation), volumes/issues open their series.
 type HomeItem struct {
 	BookID   int64  `json:"bookId"`
+	AuthorID int64  `json:"authorId,omitempty"`
+	SeriesID int64  `json:"seriesId,omitempty"`
 	Title    string `json:"title"`
 	Subtitle string `json:"subtitle,omitempty"` // author or series
 	CoverURL string `json:"coverUrl,omitempty"`
@@ -110,7 +114,9 @@ type HomeSection struct {
 func (s *Store) homeItems(where, order string, limit int, mediaType string) ([]HomeItem, error) {
 	fileMT := mediaType
 	rows, err := s.db.Query(`
-		SELECT books.id, books.title, COALESCE(a.name, ''), books.cover_url,
+		SELECT books.id, COALESCE(books.author_id, 0),
+			COALESCE((SELECT sb.series_id FROM series_books sb WHERE sb.book_id = books.id LIMIT 1), 0),
+			books.title, COALESCE(a.name, ''), books.cover_url,
 			EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+fileMT+`')
 		FROM books LEFT JOIN authors a ON a.id = books.author_id
 		WHERE `+where+` ORDER BY `+order+` LIMIT ?`, limit)
@@ -122,7 +128,7 @@ func (s *Store) homeItems(where, order string, limit int, mediaType string) ([]H
 	items := []HomeItem{}
 	for rows.Next() {
 		var it HomeItem
-		if err := rows.Scan(&it.BookID, &it.Title, &it.Subtitle, &it.CoverURL, &it.HasFile); err != nil {
+		if err := rows.Scan(&it.BookID, &it.AuthorID, &it.SeriesID, &it.Title, &it.Subtitle, &it.CoverURL, &it.HasFile); err != nil {
 			return nil, err
 		}
 		items = append(items, it)

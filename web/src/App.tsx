@@ -223,6 +223,17 @@ export default function App() {
           <HomeView
             onError={setError}
             onOpenLibrary={(mediaType) => go({ name: "library", mediaType })}
+            onOpenItem={(mediaType, it) => {
+              // Prose books open their detail page; volumes/issues live as
+              // rows on their series page. Without the id, the library grid.
+              if ((mediaType === "ebook" || mediaType === "audiobook") && it.authorId) {
+                go({ name: "book", id: it.bookId, library: mediaType, authorId: it.authorId });
+              } else if (it.seriesId) {
+                go({ name: "series-detail", id: it.seriesId, mediaType });
+              } else {
+                go({ name: "library", mediaType });
+              }
+            }}
           />
         )}
         {connected && page.name === "library" &&

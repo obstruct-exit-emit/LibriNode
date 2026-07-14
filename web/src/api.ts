@@ -251,6 +251,8 @@ export interface LibraryStatus {
 
 export interface HomeItem {
   bookId: number;
+  authorId?: number;
+  seriesId?: number;
   title: string;
   subtitle?: string;
   coverUrl?: string;
