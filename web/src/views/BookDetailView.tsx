@@ -142,14 +142,6 @@ export default function BookDetailView({
               </span>
             )}
           </p>
-          {!owned && dl && (
-            <div className="progress" style={{ maxWidth: 340 }}>
-              <div
-                className="progress-fill"
-                style={{ width: `${Math.max(2, Math.min(100, dl.progress * 100))}%` }}
-              />
-            </div>
-          )}
           {book.description && <p className="detail-desc">{book.description}</p>}
           <div className="settings-actions">
             <button
