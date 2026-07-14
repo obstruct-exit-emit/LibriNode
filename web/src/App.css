@@ -482,6 +482,25 @@ button.toggle.on {
   opacity: 1;
 }
 
+/* Always-visible metric values (size / seeders / age) on each release row;
+   the one matching the active sort lights up. */
+.rb-meta .metric {
+  white-space: nowrap;
+}
+
+.rb-meta .metric::before {
+  content: "· ";
+}
+
+.rb-meta .metric.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pill.rb-score.on {
+  background: rgba(122, 162, 247, 0.3);
+}
+
 .rb-errors {
   font-size: 0.82rem;
   margin: 0 0 0.4rem;

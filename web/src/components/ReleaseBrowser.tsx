@@ -207,7 +207,10 @@ export default function ReleaseBrowser({
                     <span title={c.protocol}>{protoIcon(c.protocol)}</span> {c.title}
                   </span>
                   <span className="row-actions">
-                    <span className="pill rb-score" title="Release score — higher grabs first">
+                    <span
+                      className={`pill rb-score${sort === "score" ? " on" : ""}`}
+                      title="Release score — higher grabs first"
+                    >
                       {c.score}
                     </span>
                     {state ? (
@@ -229,9 +232,18 @@ export default function ReleaseBrowser({
                 </div>
                 <div className="rb-meta muted">
                   {c.indexer}
-                  {fmtSize(c.size) && <> · {fmtSize(c.size)}</>}
-                  {c.protocol === "torrent" && c.seeders >= 0 && <> · {c.seeders} seeders</>}
-                  {fmtAge(c.publishDate) && <> · {fmtAge(c.publishDate)}</>}
+                  <span className={`metric${sort === "size" ? " on" : ""}`} title="Size">
+                    📦 {fmtSize(c.size) || "—"}
+                  </span>
+                  <span
+                    className={`metric${sort === "seeders" ? " on" : ""}`}
+                    title={c.protocol === "torrent" ? "Seeders" : "Seeders (usenet has none)"}
+                  >
+                    ↑ {c.protocol === "torrent" && c.seeders >= 0 ? c.seeders : "—"}
+                  </span>
+                  <span className={`metric${sort === "age" ? " on" : ""}`} title="Age (published)">
+                    🕓 {fmtAge(c.publishDate) || "—"}
+                  </span>
                   {(c.parsed.formats ?? []).map((f) => (
                     <span key={f} className="pill rb-format">
                       {f}
