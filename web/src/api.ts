@@ -602,9 +602,9 @@ export const api = {
     ),
   queue: () =>
     request<{ items: QueueItem[]; errors: string[] }>("/api/v1/queue"),
-  removeQueueItem: (clientConfigId: number, itemId: string) =>
+  removeQueueItem: (clientConfigId: number, itemId: string, grabId?: number) =>
     request<{ removed: string }>(
-      `/api/v1/queue/${clientConfigId}/${encodeURIComponent(itemId)}`,
+      `/api/v1/queue/${clientConfigId}/${encodeURIComponent(itemId)}${grabId ? `?grabId=${grabId}` : ""}`,
       { method: "DELETE" },
     ),
   history: () => request<GrabRecord[]>("/api/v1/history"),

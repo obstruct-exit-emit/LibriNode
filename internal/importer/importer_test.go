@@ -21,9 +21,10 @@ import (
 )
 
 type fx struct {
-	svc     *Service
-	store   *library.Store
-	grabs   *download.Store
+	svc       *Service
+	store     *library.Store
+	downloads *download.Service
+	grabs     *download.Store
 	db      *sql.DB
 	rootDir string
 	book    *library.Book
@@ -78,6 +79,7 @@ func fixture(t *testing.T) *fx {
 	t.Cleanup(srv.Close)
 
 	downloads := download.NewService(download.NewStore(db))
+	f.downloads = downloads
 	f.grabs = downloads.Store()
 	if err := downloads.Store().Add(&download.ClientConfig{
 		Name: "sab", Type: download.TypeSABnzbd, Host: srv.URL,
@@ -394,6 +396,112 @@ func TestImportAdoptsExistingTarget(t *testing.T) {
 	grabs, _ := f.grabs.ListGrabs("")
 	if grabs[0].Status != download.GrabStatusImported {
 		t.Errorf("grab status = %s, want imported", grabs[0].Status)
+	}
+}
+
+// TestImportSweepsOrphanedGrabs: a pending grab whose download no longer
+// appears in any client is resolved as failed (not blocklisted) once past the
+// grace period and re-searched; fresh grabs are left alone, and the sweep is
+// skipped while any client is unreachable.
+func TestImportSweepsOrphanedGrabs(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	researched := make(chan int64, 1)
+	f.svc.OnJunkBlocklist(func(bookID int64, mediaType string) { researched <- bookID })
+
+	// Two pending grabs with no matching download in the client: one aged past
+	// the grace period (orphaned), one fresh (still settling).
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_gone",
+		Title: "Terry Pratchett - Mort Retail EPUB", GUID: "guid-gone",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_new",
+		Title: "Terry Pratchett - Mort Fresh EPUB", GUID: "guid-new",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	for _, g := range grabs {
+		if g.ClientItemID == "nzo_gone" {
+			if _, err := f.db.Exec("UPDATE grabs SET grabbed_at = ? WHERE id = ?",
+				"2020-01-01 00:00:00", g.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	byItem := map[string]download.GrabRecord{}
+	grabs, _ = f.grabs.ListGrabs("")
+	for _, g := range grabs {
+		byItem[g.ClientItemID] = g
+	}
+	if g := byItem["nzo_gone"]; g.Status != download.GrabStatusFailed ||
+		!strings.Contains(g.Message, "disappeared") {
+		t.Errorf("orphan grab = %s %q, want failed/disappeared", g.Status, g.Message)
+	}
+	if g := byItem["nzo_new"]; g.Status != download.GrabStatusGrabbed {
+		t.Errorf("fresh grab = %s, want still grabbed", g.Status)
+	}
+	// Not blocklisted — the release may be fine.
+	blocked, _ := f.grabs.BlockedKeys()
+	if blocked["guid-gone"] {
+		t.Error("orphaned release must not be blocklisted")
+	}
+	// Replacement search fired for the orphan's book.
+	select {
+	case id := <-researched:
+		if id != f.book.ID {
+			t.Errorf("research bookID = %d, want %d", id, f.book.ID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("replacement search was not triggered")
+	}
+
+	// With a client down, nothing is swept (everything would look orphaned).
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_gone2",
+		Title: "Terry Pratchett - Mort Again EPUB", GUID: "guid-gone2",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grabs, _ = f.grabs.ListGrabs("")
+	for _, g := range grabs {
+		if g.ClientItemID == "nzo_gone2" {
+			if _, err := f.db.Exec("UPDATE grabs SET grabbed_at = ? WHERE id = ?",
+				"2020-01-01 00:00:00", g.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := f.grabs.Add(&download.ClientConfig{
+		Name: "dead", Type: download.TypeSABnzbd, Host: "http://127.0.0.1:1",
+		Category: "librinode", Enabled: true, Priority: 9,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.downloads.InvalidateQueue() // the API layer does this on client changes
+	if _, err := f.svc.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	grabs, _ = f.grabs.ListGrabs("")
+	for _, g := range grabs {
+		if g.ClientItemID == "nzo_gone2" && g.Status != download.GrabStatusGrabbed {
+			t.Errorf("swept while a client was down: %s", g.Status)
+		}
 	}
 }
 

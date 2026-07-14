@@ -187,6 +187,47 @@ type Service struct {
 	cachedAt  time.Time
 	cached    []Item
 	cachedErr []string
+	clients   map[int64]clientEntry
+	// sweepMu serializes cold queue sweeps: concurrent callers wait for the
+	// one in flight and then read its snapshot instead of re-hitting clients.
+	sweepMu sync.Mutex
+}
+
+// clientEntry is a connected Client kept for reuse — a fresh qBittorrent
+// client re-authenticates on every call (new cookie jar), doubling requests
+// to the download client. The key detects config edits and forces a rebuild.
+type clientEntry struct {
+	key    string
+	client Client
+}
+
+// clientKey fingerprints the connection-relevant config fields.
+func clientKey(c *ClientConfig) string {
+	return strings.Join([]string{c.Type, c.Host, c.Username, c.Password, c.APIKey, c.Category}, "\x00")
+}
+
+// client returns a cached Client for the config, building one on first use or
+// after the config changed.
+func (s *Service) client(cfg *ClientConfig) (Client, error) {
+	key := clientKey(cfg)
+	s.mu.Lock()
+	if e, ok := s.clients[cfg.ID]; ok && e.key == key {
+		s.mu.Unlock()
+		return e.client, nil
+	}
+	s.mu.Unlock()
+
+	c, err := New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	if s.clients == nil {
+		s.clients = map[int64]clientEntry{}
+	}
+	s.clients[cfg.ID] = clientEntry{key: key, client: c}
+	s.mu.Unlock()
+	return c, nil
 }
 
 func NewService(store *Store) *Service {
@@ -195,9 +236,10 @@ func NewService(store *Store) *Service {
 
 func (s *Service) Store() *Store { return s.store }
 
-// invalidateQueue drops the cached snapshot after anything that changes what
-// the clients hold (a grab, a removal), so the next Queue reflects it.
-func (s *Service) invalidateQueue() {
+// InvalidateQueue drops the cached snapshot after anything that changes what
+// the clients hold or which clients exist (a grab, a removal, a client config
+// change), so the next Queue reflects it.
+func (s *Service) InvalidateQueue() {
 	s.mu.Lock()
 	s.cachedAt = time.Time{}
 	s.mu.Unlock()
@@ -222,7 +264,7 @@ func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabR
 		if !cfg.Enabled || cfg.Protocol() != protocol {
 			continue
 		}
-		client, err := New(cfg)
+		client, err := s.client(cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -230,7 +272,7 @@ func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabR
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", cfg.Name, err)
 		}
-		s.invalidateQueue()
+		s.InvalidateQueue()
 		return &GrabResult{Client: cfg.Name, ClientID: cfg.ID, ID: id}, nil
 	}
 	return nil, ErrNoClient
@@ -266,12 +308,12 @@ func (s *Service) Remove(ctx context.Context, configID int64, itemID string, del
 	if err != nil {
 		return err
 	}
-	client, err := New(cfg)
+	client, err := s.client(cfg)
 	if err != nil {
 		return err
 	}
 	err = client.Remove(ctx, itemID, deleteData)
-	s.invalidateQueue()
+	s.InvalidateQueue()
 	return err
 }
 
@@ -280,6 +322,18 @@ func (s *Service) Remove(ctx context.Context, configID int64, itemID string, del
 // stampede the clients. Client failures come back as messages, not errors, so
 // one dead client doesn't blank the whole view.
 func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
+	s.mu.Lock()
+	if time.Since(s.cachedAt) < queueCacheTTL {
+		items, errs := s.cached, s.cachedErr
+		s.mu.Unlock()
+		return items, errs, nil
+	}
+	s.mu.Unlock()
+
+	// Single flight: one caller sweeps; the rest wait here and then find the
+	// fresh snapshot instead of sweeping the clients again themselves.
+	s.sweepMu.Lock()
+	defer s.sweepMu.Unlock()
 	s.mu.Lock()
 	if time.Since(s.cachedAt) < queueCacheTTL {
 		items, errs := s.cached, s.cachedErr
@@ -307,7 +361,7 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client, err := New(&cfg)
+			client, err := s.client(&cfg)
 			if err != nil {
 				return
 			}

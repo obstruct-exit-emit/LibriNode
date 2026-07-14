@@ -33,7 +33,7 @@ export default function ActivityView({
     }
     setRemoving(it.id);
     api
-      .removeQueueItem(it.clientConfigId, it.id)
+      .removeQueueItem(it.clientConfigId, it.id, it.grabId)
       .then(reload)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setRemoving(""));

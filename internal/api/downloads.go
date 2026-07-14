@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,6 +88,7 @@ func (s *server) handleAddDownloadClient(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusConflict, "could not save client (duplicate name?): "+err.Error())
 		return
 	}
+	s.downloads.InvalidateQueue()
 	s.refreshHealth()
 	writeJSON(w, http.StatusCreated, c)
 }
@@ -112,6 +114,7 @@ func (s *server) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Reque
 		writeDownloadError(w, err)
 		return
 	}
+	s.downloads.InvalidateQueue()
 	s.refreshHealth()
 	writeJSON(w, http.StatusOK, updated)
 }
@@ -126,6 +129,7 @@ func (s *server) handleDeleteDownloadClient(w http.ResponseWriter, r *http.Reque
 		writeDownloadError(w, err)
 		return
 	}
+	s.downloads.InvalidateQueue()
 	s.refreshHealth()
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -376,11 +380,17 @@ func (s *server) handleRemoveQueueItem(w http.ResponseWriter, r *http.Request) {
 		writeDownloadError(w, err)
 		return
 	}
-	// Resolve the pending grab this item belonged to (best-effort).
+	// Resolve the pending grab this item belonged to (best-effort). The UI
+	// passes the grab id it got from queue enrichment — the only reliable link
+	// for torrents, whose grabs carry no client item id (qBittorrent's add
+	// returns none). The item-id match remains as a fallback.
 	if pending, err := s.downloads.Store().ListGrabs(download.GrabStatusGrabbed); err == nil {
+		grabID, _ := strconv.ParseInt(r.URL.Query().Get("grabId"), 10, 64)
 		for i := range pending {
-			if pending[i].ClientItemID == itemID && pending[i].ClientConfigID == configID {
-				_ = s.downloads.Store().ResolveGrab(pending[i].ID, download.GrabStatusFailed, "removed from queue")
+			g := &pending[i]
+			if g.ID == grabID ||
+				(g.ClientItemID != "" && g.ClientItemID == itemID && g.ClientConfigID == configID) {
+				_ = s.downloads.Store().ResolveGrab(g.ID, download.GrabStatusFailed, "removed from queue")
 				break
 			}
 		}

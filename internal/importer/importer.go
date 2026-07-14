@@ -96,9 +96,13 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 
+	matched := map[int64]bool{}
 	for i := range items {
 		item := &items[i]
 		grab := matchGrab(pending, item)
+		if grab != nil {
+			matched[grab.ID] = true
+		}
 		switch item.Status {
 		case "completed":
 			s.importItem(ctx, item, grab, result)
@@ -134,6 +138,28 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 				result.note("removing failed %s: %v", item.Title, err)
 			}
 			deleteDownloadData(item.Path, result)
+			result.Failed++
+		}
+	}
+
+	// Orphan sweep: a pending grab whose download no longer appears in any
+	// client (removed via the client's own UI, purged by a bridge) would stay
+	// "grabbed" forever. Past the grace period it's resolved as failed — no
+	// blocklist, the release itself may be fine — and re-searched. Skipped
+	// entirely when any client failed to answer: an unreachable client makes
+	// every grab look orphaned.
+	if len(clientErrs) == 0 {
+		for i := range pending {
+			g := &pending[i]
+			if matched[g.ID] || grabAge(g) < stalePendingGrace {
+				continue
+			}
+			_ = s.downloads.Store().ResolveGrab(g.ID, download.GrabStatusFailed,
+				"download disappeared from the download client")
+			result.note("%s: disappeared from the download client", g.Title)
+			if s.research != nil && g.BookID > 0 {
+				go s.research(g.BookID, g.MediaType)
+			}
 			result.Failed++
 		}
 	}
