@@ -62,12 +62,14 @@ func fixture(t *testing.T) fx {
 	}
 	rootID, _ := res.LastInsertId()
 
-	// tcom's file is misplaced; mort's is already where the template puts it.
+	// tcom's file is misplaced; mort's is already where the template puts it
+	// (dateless book: the "(Year)" drops and the book folder is just "Mort").
+	mortPath := filepath.Join(rootDir, "Terry Pratchett", "Mort", "Terry Pratchett - Mort.epub")
 	writeFile(t, filepath.Join(rootDir, "downloads", "tcom_v2.FINAL.epub"))
-	writeFile(t, filepath.Join(rootDir, "Terry Pratchett", "Mort.epub"))
+	writeFile(t, mortPath)
 	for _, f := range []*library.BookFile{
 		{RootFolderID: rootID, BookID: tcom.ID, Path: filepath.Join(rootDir, "downloads", "tcom_v2.FINAL.epub"), Format: "epub"},
-		{RootFolderID: rootID, BookID: mort.ID, Path: filepath.Join(rootDir, "Terry Pratchett", "Mort.epub"), Format: "epub"},
+		{RootFolderID: rootID, BookID: mort.ID, Path: mortPath, Format: "epub"},
 	} {
 		if err := store.UpsertBookFile(f); err != nil {
 			t.Fatal(err)
@@ -148,7 +150,7 @@ func TestPlanNonEbookTypes(t *testing.T) {
 	for _, m := range moves {
 		targets[m.From] = m.To
 	}
-	wantComic := filepath.Join(comicRoot, "The Walking Dead", "The Walking Dead #1.cbz")
+	wantComic := filepath.Join(comicRoot, "The Walking Dead", "The Walking Dead #01.cbz")
 	if got := targets[filepath.Join(comicRoot, "dump", "twd001.cbz")]; got != wantComic {
 		t.Errorf("comic target = %q, want %q", got, wantComic)
 	}
@@ -186,7 +188,8 @@ func TestPlanAndApply(t *testing.T) {
 	if len(moves) != 1 {
 		t.Fatalf("moves = %+v", moves)
 	}
-	want := filepath.Join(f.rootDir, "Terry Pratchett", "Discworld 1 - The Colour of Magic.epub")
+	want := filepath.Join(f.rootDir, "Terry Pratchett", "The Colour of Magic (1983)",
+		"Terry Pratchett - Discworld 1 - The Colour of Magic (1983).epub")
 	if moves[0].To != want {
 		t.Fatalf("target = %q, want %q", moves[0].To, want)
 	}
@@ -228,7 +231,8 @@ func TestApplyNeverOverwrites(t *testing.T) {
 	f := fixture(t)
 
 	// Occupy the target path with an existing file.
-	target := filepath.Join(f.rootDir, "Terry Pratchett", "Discworld 1 - The Colour of Magic.epub")
+	target := filepath.Join(f.rootDir, "Terry Pratchett", "The Colour of Magic (1983)",
+		"Terry Pratchett - Discworld 1 - The Colour of Magic (1983).epub")
 	writeFile(t, target)
 
 	moves, _, err := f.svc.Plan(f.tcom.ID)

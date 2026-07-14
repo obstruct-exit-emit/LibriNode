@@ -835,10 +835,10 @@ func TestNamingSettingsAndRename(t *testing.T) {
 		Example     string   `json:"example"`
 	}
 	a.want(a.call("GET", "/api/v1/settings/naming", nil, &ns), http.StatusOK)
-	if ns.EbookFolder != "{Author Name}" || len(ns.Tokens) == 0 {
+	if ns.EbookFolder != "{Author Name}/{Book Title} ({Release Year})" || len(ns.Tokens) == 0 {
 		t.Fatalf("naming defaults = %+v", ns)
 	}
-	if ns.Example != "Terry Pratchett/Discworld 1 - The Colour of Magic.epub" {
+	if ns.Example != "Terry Pratchett/The Colour of Magic (1983)/Terry Pratchett - Discworld 1 - The Colour of Magic (1983).epub" {
 		t.Fatalf("example = %q", ns.Example)
 	}
 
@@ -848,7 +848,7 @@ func TestNamingSettingsAndRename(t *testing.T) {
 	}
 	a.want(a.call("PUT", "/api/v1/settings/naming",
 		map[string]string{"ebookFolder": "", "ebookFile": "x"}, &filled), http.StatusOK)
-	if filled.EbookFolder != "{Author Name}" {
+	if filled.EbookFolder != "{Author Name}/{Book Title} ({Release Year})" {
 		t.Fatalf("empty folder template not defaulted: %+v", filled)
 	}
 	a.want(a.call("PUT", "/api/v1/settings/naming", map[string]string{

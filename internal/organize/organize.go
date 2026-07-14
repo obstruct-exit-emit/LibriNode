@@ -171,23 +171,23 @@ func (s *Service) targetPath(f *library.BookFile, rootByID map[int64]string) (st
 	switch f.MediaType {
 	case "audiobook":
 		bookDir := naming.Format(ns.AudiobookFile, data)
-		dir := filepath.Join(root, naming.Format(ns.AudiobookFolder, data), bookDir)
+		dir := filepath.Join(root, naming.FormatPath(ns.AudiobookFolder, data), bookDir)
 		if info, err := os.Stat(f.Path); err == nil && info.IsDir() {
 			target = dir // the folder is the unit; tracks keep their names
 		} else {
 			target = filepath.Join(dir, bookDir+"."+f.Format)
 		}
 	case "manga":
-		target = filepath.Join(root, naming.Format(ns.MangaFolder, data),
+		target = filepath.Join(root, naming.FormatPath(ns.MangaFolder, data),
 			naming.Format(ns.MangaFile, data)+"."+f.Format)
 	case "comic":
-		target = filepath.Join(root, naming.Format(ns.ComicFolder, data),
+		target = filepath.Join(root, naming.FormatPath(ns.ComicFolder, data),
 			naming.Format(ns.ComicFile, data)+"."+f.Format)
 	case "magazine":
-		target = filepath.Join(root, naming.Format(ns.MagazineFolder, data),
+		target = filepath.Join(root, naming.FormatPath(ns.MagazineFolder, data),
 			naming.Format(ns.MagazineFile, data)+"."+f.Format)
 	default:
-		target = filepath.Join(root, naming.Format(ns.EbookFolder, data),
+		target = filepath.Join(root, naming.FormatPath(ns.EbookFolder, data),
 			naming.Format(ns.EbookFile, data)+"."+f.Format)
 	}
 	return target, book.Title, nil
@@ -253,19 +253,19 @@ func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Plac
 		switch mediaType {
 		case "audiobook":
 			bookDir := naming.Format(ns.AudiobookFile, data)
-			p.Dir = filepath.Join(root.Path, naming.Format(ns.AudiobookFolder, data), bookDir)
+			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.AudiobookFolder, data), bookDir)
 			p.FileName = bookDir + "." + format
 		case "manga":
-			p.Dir = filepath.Join(root.Path, naming.Format(ns.MangaFolder, data))
+			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.MangaFolder, data))
 			p.FileName = naming.Format(ns.MangaFile, data) + "." + format
 		case "comic":
-			p.Dir = filepath.Join(root.Path, naming.Format(ns.ComicFolder, data))
+			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.ComicFolder, data))
 			p.FileName = naming.Format(ns.ComicFile, data) + "." + format
 		case "magazine":
-			p.Dir = filepath.Join(root.Path, naming.Format(ns.MagazineFolder, data))
+			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.MagazineFolder, data))
 			p.FileName = naming.Format(ns.MagazineFile, data) + "." + format
 		default:
-			p.Dir = filepath.Join(root.Path, naming.Format(ns.EbookFolder, data))
+			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.EbookFolder, data))
 			p.FileName = naming.Format(ns.EbookFile, data) + "." + format
 		}
 		return p, nil

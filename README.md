@@ -237,11 +237,15 @@ keeps its native shapes.
 
 File naming templates live under **Settings → Media Management**. Tokens:
 `{Author Name}`, `{Author SortName}`, `{Book Title}`, `{Series Title}`,
-`{Series Position}`, `{Release Year}` — tokens without a value drop out
-cleanly, so the default
-`{Author Name}/{Series Title} {Series Position} - {Book Title}` renders
-`Terry Pratchett/Discworld 1 - The Colour of Magic.epub` for series books
-and `Neil Gaiman/Coraline.epub` for standalones.
+`{Series Position}`, `{Series Position 00}` (zero-padded so `Vol. 01` sorts
+before `Vol. 10`), `{Release Year}` — tokens without a value drop out
+cleanly, and folder templates may span levels with `/` (an empty level drops
+away). The defaults keep filenames informative on their own: each ebook gets
+its own folder, `Frank Herbert/Dune (1965)/Frank Herbert - Dune 1 - Dune
+(1965).epub` (standalones: `Andy Weir/The Martian (2011)/Andy Weir - The
+Martian (2011).epub`); audiobook book-folders carry series and year; manga
+and comics render `Series Vol. 01 (2003).cbz` / `Series #01 (2002).cbz`; and
+magazines file under per-year subfolders, `The Economist/2025/…`.
 
 ## Development
 

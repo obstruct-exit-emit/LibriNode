@@ -25,8 +25,9 @@ metadata:
     hardcover: { token: "..." }
     comicvine: { token: "..." }
 naming:
-  ebook_folder: "{Author Name}"
-  ebook_file: "{Series Title} {Series Position} - {Book Title}"
+  # Each ebook gets its own folder, so sidecars travel with the book.
+  ebook_folder: "{Author Name}/{Book Title} ({Release Year})"
+  ebook_file: "{Author Name} - {Series Title} {Series Position} - {Book Title} ({Release Year})"
   # audiobook_*, manga_*, comic_*, magazine_* — all editable in the UI
 import:                          # Completed Download Handling (Settings →
                                  # Download Clients → Import handling).
@@ -46,9 +47,13 @@ The data directory itself is chosen with `--data <dir>`.
 ## Naming templates
 
 Tokens: `{Author Name}`, `{Author SortName}`, `{Book Title}`,
-`{Series Title}`, `{Series Position}`, `{Release Year}`. Tokens without a
+`{Series Title}`, `{Series Position}`, `{Series Position 00}` (zero-padded,
+so `Vol. 01` sorts before `Vol. 10`), `{Release Year}`. Tokens without a
 value drop out cleanly; emptied fields revert to defaults (a partial save
-can never wipe another type's templates).
+can never wipe another type's templates). Folder templates may span several
+levels with `/` — a level that renders empty drops away, so a year-less book
+nests one level shallower (and the magazine default
+`{Series Title}/{Release Year}` files issues under per-year subfolders).
 
 ## Authentication
 

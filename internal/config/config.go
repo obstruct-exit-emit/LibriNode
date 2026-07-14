@@ -183,16 +183,20 @@ type NamingSettings struct {
 
 func defaultNaming() NamingSettings {
 	return NamingSettings{
-		EbookFolder:     "{Author Name}",
-		EbookFile:       "{Series Title} {Series Position} - {Book Title}",
+		// Each ebook lives in its own folder (Calibre/Readarr convention) so
+		// its sidecars travel with it; the filename stays informative on its
+		// own — author, series, title, year.
+		EbookFolder:     "{Author Name}/{Book Title} ({Release Year})",
+		EbookFile:       "{Author Name} - {Series Title} {Series Position} - {Book Title} ({Release Year})",
 		AudiobookFolder: "{Author Name}",
-		AudiobookFile:   "{Book Title}",
+		AudiobookFile:   "{Series Title} {Series Position} - {Book Title} ({Release Year})",
 		MangaFolder:     "{Series Title}",
-		MangaFile:       "{Series Title} Vol. {Series Position}",
+		MangaFile:       "{Series Title} Vol. {Series Position 00} ({Release Year})",
 		ComicFolder:     "{Series Title}",
-		ComicFile:       "{Series Title} #{Series Position}",
-		MagazineFolder:  "{Series Title}",
-		MagazineFile:    "{Book Title}",
+		ComicFile:       "{Series Title} #{Series Position 00} ({Release Year})",
+		// Magazines accumulate; year subfolders keep the pile browsable.
+		MagazineFolder: "{Series Title}/{Release Year}",
+		MagazineFile:   "{Book Title}",
 	}
 }
 

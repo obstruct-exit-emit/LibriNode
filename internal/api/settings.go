@@ -176,11 +176,11 @@ func namingResponse(ns config.NamingSettings) namingSettingsResponse {
 		NamingSettings: ns,
 		Tokens:         naming.Tokens,
 		Example: filepath.ToSlash(filepath.Join(
-			naming.Format(ns.EbookFolder, exampleTokenData),
+			naming.FormatPath(ns.EbookFolder, exampleTokenData),
 			naming.Format(ns.EbookFile, exampleTokenData)+".epub",
 		)),
 		AudiobookExample: filepath.ToSlash(filepath.Join(
-			naming.Format(ns.AudiobookFolder, exampleTokenData),
+			naming.FormatPath(ns.AudiobookFolder, exampleTokenData),
 			audiobookDir,
 			audiobookDir+".m4b",
 		)),

@@ -224,7 +224,7 @@ func TestImportAudiobookGrab(t *testing.T) {
 	}
 
 	// Tracks landed inside the Audiobookshelf-style book folder.
-	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
 	for _, name := range []string{"Mort - 01.mp3", "Mort - 02.mp3"} {
 		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
 			t.Fatalf("track missing: %v", err)
@@ -280,7 +280,7 @@ func TestImportAudiobookDiscSubfolders(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 
-	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
 	for _, rel := range []string{
 		filepath.Join("CD1", "01 - Opening.mp3"),
 		filepath.Join("CD1", "02 - Death.mp3"),
@@ -330,7 +330,7 @@ func TestImportAudiobookFlattensNonDiscNesting(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 
-	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
 	for _, name := range []string{
 		"01 - Opening.mp3", // extras' copy flattened first (lexical walk order)
 		"02 - Death.mp3",
@@ -370,8 +370,9 @@ func TestImportTrackedGrab(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 
-	// File landed at the template path.
-	want := filepath.Join(f.rootDir, "Terry Pratchett", "Mort.epub")
+	// File landed at the template path — its own per-book folder.
+	want := filepath.Join(f.rootDir, "Terry Pratchett", "Mort (1987)",
+		"Terry Pratchett - Mort (1987).epub")
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("imported file missing: %v", err)
 	}
