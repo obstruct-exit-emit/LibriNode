@@ -1,13 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  api,
-  proxiedImage,
-  type Author,
-  type Book,
-  type QueueItem,
-  type ReleaseCandidate,
-} from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, proxiedImage, type Author, type Book } from "../api";
 import RemovePanel from "../components/RemovePanel";
+import ReleaseBrowser from "../components/ReleaseBrowser";
+import { downloadPct, useQueue } from "../useQueue";
 
 // formatSize renders a byte count in the most readable unit.
 function formatSize(bytes: number): string {
@@ -36,7 +31,7 @@ export default function BookDetailView({
 }) {
   const [book, setBook] = useState<Book | null>(null);
   const [author, setAuthor] = useState<Author | null>(null);
-  const [candidates, setCandidates] = useState<ReleaseCandidate[] | null>(null);
+  const [showReleases, setShowReleases] = useState(false);
   const [searching, setSearching] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
@@ -53,35 +48,16 @@ export default function BookDetailView({
 
   useEffect(reload, [reload]);
 
-  // Live download status for this book+format: poll the queue while the page
-  // is open (the server caches the snapshot, so polling is one cheap request),
-  // and when an active download disappears — imported, failed, or removed —
+  // Live download status for this book+format (shared, server-cached queue
+  // poll). When an active download disappears — imported, failed, removed —
   // refresh the book so the badge flips to owned or back to wanted.
-  const [dl, setDl] = useState<QueueItem | null>(null);
+  const { refresh, activeFor } = useQueue();
+  const dl = activeFor(id, library);
+  const hadDl = useRef(false);
   useEffect(() => {
-    let stopped = false;
-    let hadDownload = false;
-    const check = () =>
-      api
-        .queue()
-        .then((q) => {
-          if (stopped) return;
-          const item =
-            q.items.find(
-              (it) => it.bookId === id && it.mediaType === library && it.status !== "failed",
-            ) ?? null;
-          setDl(item);
-          if (hadDownload && !item) reload();
-          hadDownload = item !== null;
-        })
-        .catch(() => {}); // transient queue errors: keep the last state
-    check();
-    const timer = setInterval(check, 12_000);
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-    };
-  }, [id, library, reload]);
+    if (hadDl.current && !dl) reload();
+    hadDl.current = dl !== null;
+  }, [dl, reload]);
 
   if (!book) return <p className="muted">Loading book…</p>;
 
@@ -113,31 +89,16 @@ export default function BookDetailView({
     api
       .autoSearchBook(book.id, library)
       .then((o) => {
-        setGrabNotice(o.grabbed ? `✓ Grabbed "${o.release}" via ${o.client}` : `✗ ${o.message ?? "nothing grabbed"}`);
+        if (o.grabbed) {
+          setGrabNotice(`✓ Grabbed "${o.release}" → ${o.client}`);
+          refresh(); // show the downloading badge right away
+        } else {
+          setGrabNotice(`✗ ${o.message ?? "nothing grabbed"} — Search releases shows why`);
+        }
         reload();
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setSearching(false));
-  };
-
-  const interactiveSearch = () => {
-    setSearching(true);
-    setGrabNotice("");
-    api
-      .searchReleasesForBook(book.id, library)
-      .then((r) => {
-        setCandidates(r.releases);
-        if (r.errors.length) setGrabNotice(`Some indexers failed: ${r.errors.join("; ")}`);
-      })
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setSearching(false));
-  };
-
-  const grab = (c: ReleaseCandidate) => {
-    api
-      .grabRelease(c.title, c.downloadUrl, c.protocol, book.id, library, c.guid)
-      .then((r) => setGrabNotice(`✓ Sent "${c.title}" to ${r.client}`))
-      .catch((err: unknown) => setGrabNotice(`✗ ${err instanceof Error ? err.message : String(err)}`));
   };
 
   const year = book.releaseDate ? ` (${book.releaseDate.slice(0, 4)})` : "";
@@ -173,7 +134,7 @@ export default function BookDetailView({
             {subtitle && " · "}
             {!owned && dl ? (
               <span className="owned dl" title={`${dl.status} on ${dl.client}`}>
-                downloading {(dl.progress * 100).toFixed(0)}%
+                ⬇ downloading {downloadPct(dl)}
               </span>
             ) : (
               <span className={owned ? "owned yes" : "owned no"}>
@@ -199,10 +160,14 @@ export default function BookDetailView({
               {monitored ? "monitored" : "unmonitored"}
             </button>
             <button disabled={searching} onClick={autoGrab} title="Search indexers and grab the best release">
-              {searching ? "Working…" : "Auto grab"}
+              {searching ? "Searching…" : "Auto grab"}
             </button>
-            <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
-              Search releases
+            <button
+              className={showReleases ? "toggle on" : ""}
+              onClick={() => setShowReleases(!showReleases)}
+              title="Browse every release candidate — sort, filter, pick one yourself"
+            >
+              {showReleases ? "Hide releases" : "Search releases"}
             </button>
             <button
               className="danger"
@@ -250,36 +215,15 @@ export default function BookDetailView({
         </div>
       </section>
 
-      {candidates && (
+      {showReleases && (
         <section className="card">
-          <h2>Releases ({candidates.length})</h2>
-          {candidates.length === 0 ? (
-            <p className="muted">No releases found.</p>
-          ) : (
-            <ul className="rows">
-              {candidates.map((c) => (
-                <li key={c.guid + c.indexer}>
-                  <div className="row">
-                    <span className="file-path">
-                      {c.title}
-                      {!c.approved && c.rejections && (
-                        <span className="notice bad"> — {c.rejections.join(", ")}</span>
-                      )}
-                    </span>
-                    <span className="row-actions">
-                      <span className="muted">
-                        {c.indexer} · {c.protocol}
-                        {c.seeders >= 0 && ` · ${c.seeders} seeders`}
-                        {c.size > 0 && ` · ${(c.size / (1 << 20)).toFixed(1)} MiB`}
-                        {` · score ${c.score}`}
-                      </span>
-                      {c.approved && <button onClick={() => grab(c)}>Grab</button>}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <h2>Releases</h2>
+          <ReleaseBrowser
+            bookId={book.id}
+            mediaType={library}
+            onGrabbed={refresh}
+            onClose={() => setShowReleases(false)}
+          />
         </section>
       )}
 

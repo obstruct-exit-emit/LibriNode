@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type HomeItem } from "../api";
+import { downloadPct, useQueue } from "../useQueue";
 
 // WantedCard is the per-library Wanted page: everything monitored but
 // missing this format's file, each with its own search button (magazines
@@ -14,6 +15,9 @@ export default function WantedCard({
   const [items, setItems] = useState<HomeItem[]>([]);
   const [busyID, setBusyID] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
+  // Shared queue poll: wanted rows with an active download show its progress
+  // instead of another grab button.
+  const queue = useQueue();
 
   const reload = useCallback(() => {
     api
@@ -32,11 +36,12 @@ export default function WantedCard({
     api
       .autoSearchBook(item.bookId, library)
       .then((o) => {
-        setNotice(
-          o.grabbed
-            ? `✓ Grabbed "${o.release}" via ${o.client}`
-            : `✗ ${item.title}: ${o.message ?? "nothing grabbed"}`,
-        );
+        if (o.grabbed) {
+          setNotice(`✓ Grabbed "${o.release}" → ${o.client}`);
+          queue.refresh(); // show the downloading state right away
+        } else {
+          setNotice(`✗ ${item.title}: ${o.message ?? "nothing grabbed"}`);
+        }
         reload();
       })
       .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
@@ -60,11 +65,19 @@ export default function WantedCard({
                 {item.subtitle && <span className="muted"> · {item.subtitle}</span>}
               </span>
               <span className="row-actions">
-                {library !== "magazine" && (
-                  <button disabled={busyID !== null} onClick={() => grab(item)}>
-                    {busyID === item.bookId ? "Searching…" : "Auto grab"}
-                  </button>
-                )}
+                {library !== "magazine" &&
+                  (() => {
+                    const dl = queue.activeFor(item.bookId, library);
+                    return dl ? (
+                      <span className="owned dl" title={`${dl.status} on ${dl.client}`}>
+                        ⬇ downloading {downloadPct(dl)}
+                      </span>
+                    ) : (
+                      <button disabled={busyID !== null} onClick={() => grab(item)}>
+                        {busyID === item.bookId ? "Searching…" : "Auto grab"}
+                      </button>
+                    );
+                  })()}
               </span>
             </div>
           </li>

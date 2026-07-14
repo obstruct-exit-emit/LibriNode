@@ -4,12 +4,13 @@ import {
   getApiKey,
   proxiedImage,
   type Book,
-  type ReleaseCandidate,
   type RenameMove,
   type Series,
 } from "../api";
 import { libraryLabels } from "../App";
 import RemovePanel from "../components/RemovePanel";
+import ReleaseBrowser from "../components/ReleaseBrowser";
+import { downloadPct, useQueue } from "../useQueue";
 
 // Full-page series detail, *arr-style: header with cover, description and
 // series-level actions, then volumes/issues as rows. Manga volumes and comic
@@ -36,6 +37,9 @@ export default function SeriesDetailView({
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [notice, setNotice] = useState("");
   const [providerOptions, setProviderOptions] = useState<string[]>([]);
+  // One shared queue poll for the whole page: every volume row shows its live
+  // download state from this single (server-cached) request.
+  const queue = useQueue();
 
   const reload = useCallback(() => {
     api
@@ -273,6 +277,7 @@ export default function SeriesDetailView({
                   key={v.id}
                   volume={v}
                   mediaType={mediaType}
+                  queue={queue}
                   onChanged={reload}
                   onError={onError}
                 />
@@ -362,11 +367,13 @@ function coverAbout(volume: Book) {
 function VolumeRow({
   volume,
   mediaType,
+  queue,
   onChanged,
   onError,
 }: {
   volume: Book;
   mediaType: string;
+  queue: ReturnType<typeof useQueue>;
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
@@ -374,7 +381,7 @@ function VolumeRow({
   const [detail, setDetail] = useState<Book | null>(null);
   const [rowBusy, setRowBusy] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [candidates, setCandidates] = useState<ReleaseCandidate[] | null>(null);
+  const [showReleases, setShowReleases] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
   const [confirmRemove, setConfirmRemove] = useState(false);
 
@@ -402,34 +409,20 @@ function VolumeRow({
     api
       .autoSearchBook(volume.id, mediaType)
       .then((o) => {
-        setGrabNotice(o.grabbed ? `✓ Grabbed "${o.release}" via ${o.client}` : `✗ ${o.message ?? "nothing grabbed"}`);
+        if (o.grabbed) {
+          setGrabNotice(`✓ Grabbed "${o.release}" → ${o.client}`);
+          queue.refresh(); // show the downloading badge right away
+        } else {
+          setGrabNotice(`✗ ${o.message ?? "nothing grabbed"} — Search releases shows why`);
+        }
         onChanged();
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setSearching(false));
   };
 
-  const interactiveSearch = () => {
-    setSearching(true);
-    setGrabNotice("");
-    api
-      .searchReleasesForBook(volume.id, mediaType)
-      .then((r) => {
-        setCandidates(r.releases);
-        if (r.errors.length) setGrabNotice(`Some indexers failed: ${r.errors.join("; ")}`);
-      })
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setSearching(false));
-  };
-
-  const grab = (c: ReleaseCandidate) => {
-    api
-      .grabRelease(c.title, c.downloadUrl, c.protocol, volume.id, mediaType, c.guid)
-      .then((r) => setGrabNotice(`✓ Sent "${c.title}" to ${r.client}`))
-      .catch((err: unknown) => setGrabNotice(`✗ ${err instanceof Error ? err.message : String(err)}`));
-  };
-
   const files = (detail?.files ?? []).filter((f) => f.mediaType === mediaType);
+  const dl = volume.hasFile ? null : queue.activeFor(volume.id, mediaType);
 
   return (
     <li>
@@ -438,9 +431,15 @@ function VolumeRow({
           {open ? "▾" : "▸"} {volume.title}
         </button>
         <span className="row-actions">
-          <span className={volume.hasFile ? "owned yes" : "owned no"}>
-            {volume.hasFile ? "owned" : "wanted"}
-          </span>
+          {dl ? (
+            <span className="owned dl" title={`${dl.status} on ${dl.client}`}>
+              ⬇ {downloadPct(dl)}
+            </span>
+          ) : (
+            <span className={volume.hasFile ? "owned yes" : "owned no"}>
+              {volume.hasFile ? "owned" : "wanted"}
+            </span>
+          )}
         </span>
       </div>
       {open && (
@@ -492,10 +491,14 @@ function VolumeRow({
               {volume.monitored ? "monitored" : "unmonitored"}
             </button>
             <button disabled={searching} onClick={autoGrab} title="Search indexers and grab the best release">
-              {searching ? "Working…" : "Auto grab"}
+              {searching ? "Searching…" : "Auto grab"}
             </button>
-            <button disabled={searching} onClick={interactiveSearch} title="List all release candidates">
-              Search releases
+            <button
+              className={showReleases ? "toggle on" : ""}
+              onClick={() => setShowReleases(!showReleases)}
+              title="Browse every release candidate — sort, filter, pick one yourself"
+            >
+              {showReleases ? "Hide releases" : "Search releases"}
             </button>
             <button
               className="danger"
@@ -509,31 +512,13 @@ function VolumeRow({
               <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
             )}
           </div>
-          {candidates && (
-            <ul className="rows nested">
-              {candidates.length === 0 && <li className="muted">No releases found.</li>}
-              {candidates.map((c) => (
-                <li key={c.guid + c.indexer}>
-                  <div className="row">
-                    <span className="file-path">
-                      {c.title}
-                      {!c.approved && c.rejections && (
-                        <span className="notice bad"> — {c.rejections.join(", ")}</span>
-                      )}
-                    </span>
-                    <span className="row-actions">
-                      <span className="muted">
-                        {c.indexer} · {c.protocol}
-                        {c.seeders >= 0 && ` · ${c.seeders} seeders`}
-                        {c.size > 0 && ` · ${(c.size / (1 << 20)).toFixed(1)} MiB`}
-                        {` · score ${c.score}`}
-                      </span>
-                      {c.approved && <button onClick={() => grab(c)}>Grab</button>}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+          {showReleases && (
+            <ReleaseBrowser
+              bookId={volume.id}
+              mediaType={mediaType}
+              onGrabbed={queue.refresh}
+              onClose={() => setShowReleases(false)}
+            />
           )}
           {confirmRemove && (
             <RemovePanel
