@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import FolderBrowser from "../components/FolderBrowser";
 import {
   api,
   getApiKey,
@@ -1592,6 +1593,7 @@ function RootFoldersCard({
   const [mediaType, setMediaType] = useState<string>("ebook");
   const [variant, setVariant] = useState<string>("mono");
   const [path, setPath] = useState("");
+  const [browsing, setBrowsing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -1693,10 +1695,28 @@ function RootFoldersCard({
           value={path}
           onChange={(e) => setPath(e.target.value)}
         />
+        <button
+          type="button"
+          className="toggle"
+          onClick={() => setBrowsing(!browsing)}
+          title="Pick the folder visually on the server's filesystem"
+        >
+          {browsing ? "Hide browser" : "Browse…"}
+        </button>
         <button type="submit" disabled={busy}>
           Add
         </button>
       </form>
+      {browsing && (
+        <FolderBrowser
+          initial={path}
+          onPick={(p) => {
+            setPath(p);
+            setBrowsing(false);
+          }}
+          onClose={() => setBrowsing(false)}
+        />
+      )}
       {notice && <p className="notice bad">{notice}</p>}
     </section>
   );

@@ -106,6 +106,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/health", s.auth(s.handleHealth))
 	mux.HandleFunc("POST /api/v1/health/check", s.auth(s.handleHealthCheck))
 	mux.HandleFunc("GET /api/v1/log", s.auth(s.handleLogTail))
+	mux.HandleFunc("GET /api/v1/filesystem", s.auth(s.handleBrowseFilesystem))
 	mux.HandleFunc("GET /api/v1/rootfolder", s.auth(s.handleListRootFolders))
 	mux.HandleFunc("POST /api/v1/rootfolder", s.auth(s.handleAddRootFolder))
 	mux.HandleFunc("DELETE /api/v1/rootfolder/{id}", s.auth(s.handleDeleteRootFolder))

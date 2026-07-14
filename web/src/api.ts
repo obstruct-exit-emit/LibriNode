@@ -381,6 +381,13 @@ export interface ImportSettings {
   deleteCompletedFiles: boolean;
 }
 
+// FolderListing is one level of the server's filesystem for the folder picker.
+export interface FolderListing {
+  path: string;
+  parent: string;
+  directories: { name: string; path: string }[];
+}
+
 const KEY_STORAGE = "librinode-api-key";
 
 export function getApiKey(): string {
@@ -691,6 +698,10 @@ export const api = {
     ),
 
   listRootFolders: () => request<RootFolder[]>("/api/v1/rootfolder"),
+  browseFolders: (path?: string) =>
+    request<FolderListing>(
+      `/api/v1/filesystem${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+    ),
   addRootFolder: (mediaType: string, path: string, variant?: string) =>
     request<RootFolder>("/api/v1/rootfolder", json({ mediaType, path, variant })),
   deleteRootFolder: (id: number) =>

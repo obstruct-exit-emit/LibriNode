@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type DownloadClient, type Indexer, type RootFolder } from "../api";
+import FolderBrowser from "./FolderBrowser";
 
 // SetupWizard is the first-run experience: a fresh instance is claimed by
 // creating a login account (no API key involved), then walked through the
@@ -25,6 +26,7 @@ export default function SetupWizard({ onDone }: { onDone: () => void }) {
   const [mediaType, setMediaType] = useState<string>("ebook");
   const [variant, setVariant] = useState("mono");
   const [path, setPath] = useState("");
+  const [browsing, setBrowsing] = useState(false);
   const [folders, setFolders] = useState<RootFolder[]>([]);
 
   // Step 2 — metadata token.
@@ -220,10 +222,27 @@ export default function SetupWizard({ onDone }: { onDone: () => void }) {
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
               />
+              <button
+                className="toggle"
+                onClick={() => setBrowsing(!browsing)}
+                title="Pick the folder visually"
+              >
+                {browsing ? "Hide" : "Browse…"}
+              </button>
               <button disabled={busy || !path.trim()} onClick={addFolder}>
                 Add
               </button>
             </div>
+            {browsing && (
+              <FolderBrowser
+                initial={path}
+                onPick={(p) => {
+                  setPath(p);
+                  setBrowsing(false);
+                }}
+                onClose={() => setBrowsing(false)}
+              />
+            )}
             {folders.length > 0 && (
               <ul className="rows">
                 {folders.map((f) => (

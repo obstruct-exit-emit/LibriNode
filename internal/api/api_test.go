@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -187,6 +188,45 @@ func TestSearchRequiresAuth(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status without API key = %d, want 401", resp.StatusCode)
 	}
+}
+
+// TestFilesystemBrowse: the folder picker lists directories (not files, not
+// hidden dirs), reports the parent, and rejects unreadable paths.
+func TestFilesystemBrowse(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	base := t.TempDir()
+	for _, d := range []string{"Books", "audio", ".hidden"} {
+		if err := os.Mkdir(filepath.Join(base, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(base, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var got struct {
+		Path        string `json:"path"`
+		Parent      string `json:"parent"`
+		Directories []struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		} `json:"directories"`
+	}
+	a.want(a.call("GET", "/api/v1/filesystem?path="+url.QueryEscape(base), nil, &got), http.StatusOK)
+	if got.Path != base || got.Parent != filepath.Dir(base) {
+		t.Errorf("path/parent = %q/%q", got.Path, got.Parent)
+	}
+	names := []string{}
+	for _, d := range got.Directories {
+		names = append(names, d.Name)
+	}
+	if len(names) != 2 || names[0] != "audio" || names[1] != "Books" {
+		t.Errorf("directories = %v, want [audio Books] (sorted, no files, no hidden)", names)
+	}
+
+	a.want(a.call("GET", "/api/v1/filesystem?path="+url.QueryEscape(filepath.Join(base, "nope")), nil, nil),
+		http.StatusBadRequest)
 }
 
 // TestFirstRunSetup: a fresh instance is claimable by its first visitor with
