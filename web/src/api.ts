@@ -440,6 +440,10 @@ const json = (body: unknown): RequestInit => ({
 export const api = {
   systemStatus: () => request<SystemStatus>("/api/v1/system/status"),
   authStatus: () => request<AuthStatus>("/api/v1/auth/status"),
+  // First-run wizard: only answers/claims on a fresh instance — no API key.
+  setupStatus: () => request<{ needed: boolean }>("/api/v1/setup/status"),
+  setupInstance: (username: string, password: string) =>
+    request<{ ok: boolean }>("/api/v1/auth/setup", json({ username, password })),
   login: (username: string, password: string) =>
     request<{ ok: boolean }>("/api/v1/auth/login", json({ username, password })),
   logout: () => request<void>("/api/v1/auth/logout", { method: "POST" }),

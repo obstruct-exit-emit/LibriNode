@@ -220,6 +220,74 @@ func (s *server) handleSetCredentials(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"authEnabled": true})
 }
 
+// setupNeeded reports whether this instance is claimable by its first visitor:
+// no login account and nothing configured yet — a genuinely fresh install.
+// A used instance (any root folder, indexer, or download client) is never
+// claimable, so the open setup endpoint can't hijack an instance whose owner
+// simply skipped creating an account and relies on the API key.
+func (s *server) setupNeeded() bool {
+	if s.cfg.AuthSettings().Enabled() {
+		return false
+	}
+	if folders, err := s.store.ListRootFolders(); err != nil || len(folders) > 0 {
+		return false
+	}
+	if indexers, err := s.indexers.Store().List(); err != nil || len(indexers) > 0 {
+		return false
+	}
+	if clients, err := s.downloads.Store().List(); err != nil || len(clients) > 0 {
+		return false
+	}
+	return true
+}
+
+// handleSetupStatus tells the web UI whether to open the first-run wizard
+// instead of asking for the API key. Unauthenticated — it must answer before
+// any credentials exist.
+func (s *server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"needed": s.setupNeeded()})
+}
+
+// handleSetup claims a fresh instance: creates the login account and signs
+// this browser in, in one step — the first-run wizard's entry point, no API
+// key required. Refused (403) the moment the instance has an account or any
+// configuration.
+func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	if !s.setupNeeded() {
+		writeError(w, http.StatusForbidden, "this instance is already set up")
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" {
+		writeError(w, http.StatusBadRequest, "username is required")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
+		return
+	}
+	if err := s.cfg.SetAuth(config.AuthSettings{Username: req.Username, PasswordHash: hash}); err != nil {
+		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
+		return
+	}
+	slog.Info("instance claimed via first-run setup", "username", req.Username)
+	s.setSessionCookie(w, s.sessions.create(), int(sessionTTL.Seconds()))
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // handleRegenerateAPIKey mints a fresh API key; every integration using the
 // old one (Prowlarr, scripts) must be updated.
 func (s *server) handleRegenerateAPIKey(w http.ResponseWriter, r *http.Request) {

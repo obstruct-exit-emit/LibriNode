@@ -89,6 +89,10 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	// rest require an existing session or the API key.
 	mux.HandleFunc("GET /api/v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	// First-run wizard: unauthenticated by design, but only answers/claims on
+	// a fresh instance (no account, nothing configured) — see setupNeeded.
+	mux.HandleFunc("GET /api/v1/setup/status", s.handleSetupStatus)
+	mux.HandleFunc("POST /api/v1/auth/setup", s.handleSetup)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
 	mux.HandleFunc("PUT /api/v1/auth/credentials", s.auth(s.handleSetCredentials))
 	mux.HandleFunc("POST /api/v1/auth/apikey/regenerate", s.auth(s.handleRegenerateAPIKey))

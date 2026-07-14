@@ -8,6 +8,7 @@ import {
   type HealthIssue,
   type LibraryStatus,
 } from "./api";
+import SetupWizard from "./components/SetupWizard";
 import ActivityView from "./views/ActivityView";
 import AuthorDetailView from "./views/AuthorDetailView";
 import BookDetailView from "./views/BookDetailView";
@@ -52,6 +53,7 @@ const libraryIcons: Record<string, string> = {
 export default function App() {
   const [key, setKey] = useState(getApiKey());
   const [auth, setAuth] = useState<AuthStatus | null>(null);
+  const [setupNeeded, setSetupNeeded] = useState<boolean | null>(null);
   const [connected, setConnected] = useState(false);
   const [libraries, setLibraries] = useState<LibraryStatus[]>([]);
   const [health, setHealth] = useState<HealthIssue[]>([]);
@@ -60,11 +62,17 @@ export default function App() {
 
   // Login sessions replace the API-key prompt once an account is set up
   // (Settings → General → Security); without one, the key prompt remains.
+  // A fresh instance skips both: the first-run wizard claims it with a new
+  // account, no API key required.
   useEffect(() => {
     api
       .authStatus()
       .then(setAuth)
       .catch(() => setAuth({ authEnabled: false, authenticated: false }));
+    api
+      .setupStatus()
+      .then((s) => setSetupNeeded(s.needed))
+      .catch(() => setSetupNeeded(false));
   }, []);
 
   const reloadLibraries = useCallback(() => {
@@ -171,7 +179,16 @@ export default function App() {
       <main className="content">
         {!connected && <h1 className="brand">🖋️ LibriNode</h1>}
 
-        {auth?.authEnabled && !auth.authenticated && (
+        {setupNeeded && !connected && (
+          <SetupWizard
+            onDone={() => {
+              setSetupNeeded(false);
+              setAuth({ authEnabled: true, authenticated: true });
+            }}
+          />
+        )}
+
+        {setupNeeded === false && auth?.authEnabled && !auth.authenticated && (
           <section className="card">
             <h2>Sign in</h2>
             <LoginForm
@@ -180,7 +197,7 @@ export default function App() {
           </section>
         )}
 
-        {auth && !auth.authEnabled && !key && (
+        {setupNeeded === false && auth && !auth.authEnabled && !key && (
           <section className="card">
             <h2>Connect</h2>
             <p>

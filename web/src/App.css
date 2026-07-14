@@ -403,6 +403,46 @@ button.toggle.on {
   color: var(--accent);
 }
 
+/* --- First-run setup wizard --- */
+.wizard {
+  max-width: 620px;
+  margin: 2rem auto 0;
+}
+
+.wizard-dots {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.wizard-dots .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.wizard-dots .dot.done {
+  background: var(--ok);
+}
+
+.wizard-dots .dot.active {
+  background: var(--accent);
+}
+
+.wizard-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.wizard-nav .wizard-skip {
+  margin-left: auto;
+}
+
 /* --- Release browser (interactive search) --- */
 .release-browser {
   margin-top: 0.5rem;

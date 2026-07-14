@@ -189,6 +189,109 @@ func TestSearchRequiresAuth(t *testing.T) {
 	}
 }
 
+// TestFirstRunSetup: a fresh instance is claimable by its first visitor with
+// no API key — the setup endpoint creates the login account and signs the
+// browser in; once claimed it refuses further claims.
+func TestFirstRunSetup(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	var status struct {
+		Needed bool `json:"needed"`
+	}
+	a.want(a.call("GET", "/api/v1/setup/status", nil, &status), http.StatusOK)
+	if !status.Needed {
+		t.Fatal("fresh instance should need setup")
+	}
+
+	// Validation runs before the claim.
+	for _, bad := range []string{
+		`{"username":"","password":"password123"}`,
+		`{"username":"dan","password":"short"}`,
+	} {
+		resp, err := http.Post(a.srv.URL+"/api/v1/auth/setup", "application/json", strings.NewReader(bad))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("bad payload %s = %d, want 400", bad, resp.StatusCode)
+		}
+	}
+
+	// Claim — plain unauthenticated request, no API key anywhere.
+	resp, err := http.Post(a.srv.URL+"/api/v1/auth/setup", "application/json",
+		strings.NewReader(`{"username":"dan","password":"password123"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("setup = %d, want 200", resp.StatusCode)
+	}
+	var session string
+	for _, c := range resp.Cookies() {
+		if c.Name == sessionCookie {
+			session = c.Value
+		}
+	}
+	if session == "" {
+		t.Fatal("setup did not sign the browser in")
+	}
+
+	// The fresh session authenticates API calls without the key.
+	req, _ := http.NewRequest("GET", a.srv.URL+"/api/v1/book", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: session})
+	authed, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authed.Body.Close()
+	if authed.StatusCode != http.StatusOK {
+		t.Fatalf("session call = %d, want 200", authed.StatusCode)
+	}
+
+	// Claimed: the wizard is over and further claims are refused.
+	a.want(a.call("GET", "/api/v1/setup/status", nil, &status), http.StatusOK)
+	if status.Needed {
+		t.Error("claimed instance still reports setup needed")
+	}
+	again, err := http.Post(a.srv.URL+"/api/v1/auth/setup", "application/json",
+		strings.NewReader(`{"username":"eve","password":"password123"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again.Body.Close()
+	if again.StatusCode != http.StatusForbidden {
+		t.Errorf("second claim = %d, want 403", again.StatusCode)
+	}
+}
+
+// TestSetupRefusedOnConfiguredInstance: an instance with any configuration
+// (here a root folder) but no login account is NOT claimable — the open setup
+// endpoint must not let a visitor hijack a key-authenticated install.
+func TestSetupRefusedOnConfiguredInstance(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": t.TempDir()}, nil), http.StatusCreated)
+
+	var status struct {
+		Needed bool `json:"needed"`
+	}
+	a.want(a.call("GET", "/api/v1/setup/status", nil, &status), http.StatusOK)
+	if status.Needed {
+		t.Error("configured instance should not need setup")
+	}
+	resp, err := http.Post(a.srv.URL+"/api/v1/auth/setup", "application/json",
+		strings.NewReader(`{"username":"eve","password":"password123"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("claim on configured instance = %d, want 403", resp.StatusCode)
+	}
+}
+
 func TestSearch(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 
