@@ -381,6 +381,12 @@ export interface ImportSettings {
   deleteCompletedFiles: boolean;
 }
 
+// UserAccount is one login; the default user is protected from removal.
+export interface UserAccount {
+  username: string;
+  default: boolean;
+}
+
 // FolderListing is one level of the server's filesystem for the folder picker.
 export interface FolderListing {
   path: string;
@@ -457,6 +463,22 @@ export const api = {
   setCredentials: (username: string, password: string) =>
     request<{ authEnabled: boolean }>("/api/v1/auth/credentials", {
       ...json({ username, password }),
+      method: "PUT",
+    }),
+  listUsers: () => request<{ users: UserAccount[] }>("/api/v1/auth/users"),
+  addUser: (username: string, password: string) =>
+    request<{ users: UserAccount[] }>("/api/v1/auth/users", json({ username, password })),
+  removeUser: (username: string) =>
+    request<{ users: UserAccount[] }>(`/api/v1/auth/users/${encodeURIComponent(username)}`, {
+      method: "DELETE",
+    }),
+  setUserPassword: (username: string, password: string) =>
+    request<{ ok: boolean }>(`/api/v1/auth/users/${encodeURIComponent(username)}/password`, {
+      ...json({ password }),
+      method: "PUT",
+    }),
+  makeDefaultUser: (username: string) =>
+    request<{ users: UserAccount[] }>(`/api/v1/auth/users/${encodeURIComponent(username)}/default`, {
       method: "PUT",
     }),
   regenerateApiKey: () =>

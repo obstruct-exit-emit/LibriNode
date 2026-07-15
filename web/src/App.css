@@ -443,6 +443,17 @@ button.toggle.on {
   margin-left: auto;
 }
 
+/* --- Security card: user list --- */
+.pill.user-default {
+  background: rgba(95, 158, 110, 0.15);
+  color: var(--ok);
+}
+
+/* Inline add-user / change-password form under a user row. */
+.user-form {
+  margin: 0.5rem 0 0.75rem 1.4rem;
+}
+
 /* --- Folder picker (root-folder Browse…) --- */
 .folder-browser {
   border: 1px solid var(--border);

@@ -200,16 +200,37 @@ func defaultNaming() NamingSettings {
 	}
 }
 
-// AuthSettings holds the optional login account. The password is stored
-// only as a PBKDF2 hash; an empty username means authentication is disabled
-// (the UI falls back to the API-key prompt).
-type AuthSettings struct {
-	Username     string `yaml:"username"`
-	PasswordHash string `yaml:"password_hash"`
+// UserAccount is one login. Passwords are stored only as PBKDF2 hashes.
+// Exactly one user is the default: the protected primary account — it can't
+// be removed, only superseded by promoting another user to default.
+type UserAccount struct {
+	Username     string `yaml:"username" json:"username"`
+	PasswordHash string `yaml:"password_hash" json:"-"`
+	Default      bool   `yaml:"default,omitempty" json:"default"`
 }
 
-// Enabled reports whether a login account is configured.
-func (a AuthSettings) Enabled() bool { return a.Username != "" }
+// AuthSettings holds the optional login accounts. No users means
+// authentication is disabled (the UI falls back to the API-key prompt).
+type AuthSettings struct {
+	// Legacy single account from pre-multi-user config files; migrated into
+	// Users on load and dropped from the file on the next save.
+	Username     string        `yaml:"username,omitempty"`
+	PasswordHash string        `yaml:"password_hash,omitempty"`
+	Users        []UserAccount `yaml:"users,omitempty"`
+}
+
+// Enabled reports whether any login account is configured.
+func (a AuthSettings) Enabled() bool { return len(a.Users) > 0 }
+
+// Find returns the account with the given username (exact match), or nil.
+func (a AuthSettings) Find(username string) *UserAccount {
+	for i := range a.Users {
+		if a.Users[i].Username == username {
+			return &a.Users[i]
+		}
+	}
+	return nil
+}
 
 // ImportSettings tunes Completed Download Handling. All three default to on
 // (see defaults()); the fields carry no omitempty so an explicit "off" is
@@ -327,6 +348,19 @@ func Load(dataDir string) (*Config, error) {
 		}
 		cfg.LegacyHardcoverToken = ""
 	}
+	// Migrate the legacy single login account into the user list (as the
+	// default); omitempty drops the old fields from the file on save.
+	if cfg.Auth.Username != "" {
+		if cfg.Auth.Find(cfg.Auth.Username) == nil {
+			cfg.Auth.Users = append(cfg.Auth.Users, UserAccount{
+				Username:     cfg.Auth.Username,
+				PasswordHash: cfg.Auth.PasswordHash,
+				Default:      true,
+			})
+		}
+		cfg.Auth.Username, cfg.Auth.PasswordHash = "", ""
+	}
+	normalizeUsers(&cfg.Auth)
 	if v := os.Getenv("LIBRINODE_HARDCOVER_TOKEN"); v != "" {
 		cfg.setProviderToken("hardcover", v)
 	}
@@ -460,18 +494,104 @@ func (c *Config) MetadataSettings() MetadataSettings {
 	return out
 }
 
-// AuthSettings returns the current login account (possibly disabled).
+// AuthSettings returns the current login accounts (possibly none). The Users
+// slice is a copy — callers can't mutate shared state.
 func (c *Config) AuthSettings() AuthSettings {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.Auth
+	out := c.Auth
+	out.Users = append([]UserAccount(nil), c.Auth.Users...)
+	return out
 }
 
-// SetAuth replaces the login account and persists the config. An empty
-// username disables authentication.
+// SetAuth replaces the login accounts and persists the config. An empty
+// settings value disables authentication entirely.
 func (c *Config) SetAuth(a AuthSettings) error {
 	c.mu.Lock()
 	c.Auth = a
+	normalizeUsers(&c.Auth)
+	c.mu.Unlock()
+	return c.save()
+}
+
+// normalizeUsers keeps the account list coherent: exactly one default (the
+// first user when none or several are flagged).
+func normalizeUsers(a *AuthSettings) {
+	seen := false
+	for i := range a.Users {
+		if a.Users[i].Default {
+			if seen {
+				a.Users[i].Default = false
+			}
+			seen = true
+		}
+	}
+	if !seen && len(a.Users) > 0 {
+		a.Users[0].Default = true
+	}
+}
+
+// AddUser appends a login account; the first account becomes the default.
+func (c *Config) AddUser(username, passwordHash string) error {
+	c.mu.Lock()
+	for i := range c.Auth.Users {
+		if strings.EqualFold(c.Auth.Users[i].Username, username) {
+			c.mu.Unlock()
+			return fmt.Errorf("user %q already exists", username)
+		}
+	}
+	c.Auth.Users = append(c.Auth.Users, UserAccount{
+		Username:     username,
+		PasswordHash: passwordHash,
+		Default:      len(c.Auth.Users) == 0,
+	})
+	c.mu.Unlock()
+	return c.save()
+}
+
+// RemoveUser deletes a login account. The default user is protected — promote
+// another user first.
+func (c *Config) RemoveUser(username string) error {
+	c.mu.Lock()
+	for i := range c.Auth.Users {
+		if c.Auth.Users[i].Username != username {
+			continue
+		}
+		if c.Auth.Users[i].Default {
+			c.mu.Unlock()
+			return fmt.Errorf("the default user cannot be removed")
+		}
+		c.Auth.Users = append(c.Auth.Users[:i], c.Auth.Users[i+1:]...)
+		c.mu.Unlock()
+		return c.save()
+	}
+	c.mu.Unlock()
+	return fmt.Errorf("user %q not found", username)
+}
+
+// SetUserPassword replaces one account's password hash.
+func (c *Config) SetUserPassword(username, passwordHash string) error {
+	c.mu.Lock()
+	u := c.Auth.Find(username)
+	if u == nil {
+		c.mu.Unlock()
+		return fmt.Errorf("user %q not found", username)
+	}
+	u.PasswordHash = passwordHash
+	c.mu.Unlock()
+	return c.save()
+}
+
+// SetDefaultUser makes the named account the protected default.
+func (c *Config) SetDefaultUser(username string) error {
+	c.mu.Lock()
+	if c.Auth.Find(username) == nil {
+		c.mu.Unlock()
+		return fmt.Errorf("user %q not found", username)
+	}
+	for i := range c.Auth.Users {
+		c.Auth.Users[i].Default = c.Auth.Users[i].Username == username
+	}
 	c.mu.Unlock()
 	return c.save()
 }

@@ -161,8 +161,16 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "authentication is not enabled")
 		return
 	}
-	userOK := subtle.ConstantTimeCompare([]byte(req.Username), []byte(auth.Username)) == 1
-	if !userOK || !verifyPassword(auth.PasswordHash, req.Password) {
+	ok := false
+	for i := range auth.Users {
+		u := &auth.Users[i]
+		if subtle.ConstantTimeCompare([]byte(req.Username), []byte(u.Username)) == 1 &&
+			verifyPassword(u.PasswordHash, req.Password) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
 		slog.Warn("failed login attempt", "username", req.Username, "remote", r.RemoteAddr)
 		time.Sleep(500 * time.Millisecond)
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
@@ -180,9 +188,11 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleSetCredentials creates, changes, or disables the login account
-// (empty username disables). The response sets a fresh session so the
-// browser that just enabled auth stays signed in.
+// handleSetCredentials creates or updates a login account, or disables
+// authentication entirely (empty username removes every user). Kept for the
+// setup wizard and scripts; the Settings UI manages users individually. The
+// response sets a fresh session so the browser that just enabled auth stays
+// signed in.
 func (s *server) handleSetCredentials(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
@@ -212,12 +222,107 @@ func (s *server) handleSetCredentials(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
 		return
 	}
-	if err := s.cfg.SetAuth(config.AuthSettings{Username: req.Username, PasswordHash: hash}); err != nil {
+	// Upsert: change the existing user's password, or add a new account.
+	if s.cfg.AuthSettings().Find(req.Username) != nil {
+		err = s.cfg.SetUserPassword(req.Username, hash)
+	} else {
+		err = s.cfg.AddUser(req.Username, hash)
+	}
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}
 	s.setSessionCookie(w, s.sessions.create(), int(sessionTTL.Seconds()))
 	writeJSON(w, http.StatusOK, map[string]any{"authEnabled": true})
+}
+
+// --- User management (Settings → Security) ---
+
+// handleListUsers returns the login accounts (never their hashes).
+func (s *server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"users": s.cfg.AuthSettings().Users})
+}
+
+// handleAddUser creates an additional login account (the first one becomes
+// the default).
+func (s *server) handleAddUser(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" {
+		writeError(w, http.StatusBadRequest, "username is required")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
+		return
+	}
+	if err := s.cfg.AddUser(req.Username, hash); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	slog.Info("user added", "username", req.Username)
+	writeJSON(w, http.StatusCreated, map[string]any{"users": s.cfg.AuthSettings().Users})
+}
+
+// handleRemoveUser deletes a login account; the default user is refused.
+func (s *server) handleRemoveUser(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	if err := s.cfg.RemoveUser(username); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	slog.Info("user removed", "username", username)
+	writeJSON(w, http.StatusOK, map[string]any{"users": s.cfg.AuthSettings().Users})
+}
+
+// handleSetUserPassword changes one account's password.
+func (s *server) handleSetUserPassword(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
+		return
+	}
+	if err := s.cfg.SetUserPassword(username, hash); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	slog.Info("user password changed", "username", username)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleMakeDefaultUser promotes an account to the protected default.
+func (s *server) handleMakeDefaultUser(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	if err := s.cfg.SetDefaultUser(username); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	slog.Info("default user changed", "username", username)
+	writeJSON(w, http.StatusOK, map[string]any{"users": s.cfg.AuthSettings().Users})
 }
 
 // setupNeeded reports whether this instance is claimable by its first visitor:
@@ -279,7 +384,7 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
 		return
 	}
-	if err := s.cfg.SetAuth(config.AuthSettings{Username: req.Username, PasswordHash: hash}); err != nil {
+	if err := s.cfg.AddUser(req.Username, hash); err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}

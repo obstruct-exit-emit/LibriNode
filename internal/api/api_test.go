@@ -229,6 +229,51 @@ func TestFilesystemBrowse(t *testing.T) {
 		http.StatusBadRequest)
 }
 
+// TestUserManagement: multiple login accounts — add, list, change password,
+// promote to default, remove — with the default user protected.
+func TestUserManagement(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// First account via the legacy credentials endpoint (the wizard's path).
+	a.want(a.call("PUT", "/api/v1/auth/credentials",
+		map[string]any{"username": "alice", "password": "password123"}, nil), http.StatusOK)
+
+	var got struct {
+		Users []struct {
+			Username string `json:"username"`
+			Default  bool   `json:"default"`
+		} `json:"users"`
+	}
+	a.want(a.call("GET", "/api/v1/auth/users", nil, &got), http.StatusOK)
+	if len(got.Users) != 1 || got.Users[0].Username != "alice" || !got.Users[0].Default {
+		t.Fatalf("users = %+v", got.Users)
+	}
+
+	// Add a second user; validations hold.
+	a.want(a.call("POST", "/api/v1/auth/users",
+		map[string]any{"username": "bob", "password": "password123"}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/auth/users",
+		map[string]any{"username": "carl", "password": "short"}, nil), http.StatusBadRequest)
+	a.want(a.call("POST", "/api/v1/auth/users",
+		map[string]any{"username": "BOB", "password": "password123"}, nil), http.StatusConflict)
+
+	// The default user is protected; promoting another frees it.
+	a.want(a.call("DELETE", "/api/v1/auth/users/alice", nil, nil), http.StatusBadRequest)
+	a.want(a.call("PUT", "/api/v1/auth/users/bob/default", nil, nil), http.StatusOK)
+	a.want(a.call("DELETE", "/api/v1/auth/users/alice", nil, nil), http.StatusOK)
+
+	// Change bob's password and log in with it.
+	a.want(a.call("PUT", "/api/v1/auth/users/bob/password",
+		map[string]any{"password": "newpassword1"}, nil), http.StatusOK)
+	a.want(a.call("POST", "/api/v1/auth/login",
+		map[string]any{"username": "bob", "password": "newpassword1"}, nil), http.StatusOK)
+
+	a.want(a.call("GET", "/api/v1/auth/users", nil, &got), http.StatusOK)
+	if len(got.Users) != 1 || got.Users[0].Username != "bob" || !got.Users[0].Default {
+		t.Fatalf("final users = %+v", got.Users)
+	}
+}
+
 // TestFirstRunSetup: a fresh instance is claimable by its first visitor with
 // no API key — the setup endpoint creates the login account and signs the
 // browser in; once claimed it refuses further claims.

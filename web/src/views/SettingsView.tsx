@@ -14,6 +14,7 @@ import {
   type QualityProfile,
   type RootFolder,
   type SystemStatus,
+  type UserAccount,
 } from "../api";
 
 // Settings groups, *arr-style: pages organized by concern instead of one
@@ -231,11 +232,15 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
   );
 }
 
-// SecurityCard manages the optional login account. When one is set, the UI
-// requires signing in (sessions) instead of pasting the API key; the key
-// keeps working for scripts and Prowlarr.
+// SecurityCard manages the login accounts: a compact user list with per-user
+// actions (change password, make default, remove) plus add-user and
+// disable-login. The default user is protected — promote another user first.
+// The API key keeps working for scripts and Prowlarr either way.
 function SecurityCard({ onError }: { onError: (message: string) => void }) {
   const [status, setStatus] = useState<AuthStatus | null>(null);
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  // One inline form open at a time: adding a user, or changing one password.
+  const [form, setForm] = useState<"" | "add" | `pw:${string}`>("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -245,25 +250,30 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
   const reload = useCallback(() => {
     api
       .authStatus()
-      .then(setStatus)
+      .then((s) => {
+        setStatus(s);
+        return s.authEnabled ? api.listUsers().then((r) => setUsers(r.users)) : setUsers([]);
+      })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
 
   useEffect(reload, [reload]);
 
-  const save = () => {
-    if (password !== confirmPw) {
-      setNotice("✗ Passwords don't match");
-      return;
-    }
+  const openForm = (f: "" | "add" | `pw:${string}`) => {
+    setForm(f);
+    setUsername("");
+    setPassword("");
+    setConfirmPw("");
+    setNotice("");
+  };
+
+  const run = (action: () => Promise<unknown>, done?: string) => {
     setBusy(true);
     setNotice("");
-    api
-      .setCredentials(username.trim(), password)
+    action()
       .then(() => {
-        setNotice("✓ Login required from now on — this browser is already signed in");
-        setPassword("");
-        setConfirmPw("");
+        openForm("");
+        if (done) setNotice(done); // after openForm — it clears the notice
         reload();
       })
       .catch((err: unknown) =>
@@ -272,69 +282,149 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
       .finally(() => setBusy(false));
   };
 
-  const disable = () => {
-    if (!confirm("Disable the login requirement? The UI goes back to the API-key prompt.")) return;
-    setBusy(true);
-    setNotice("");
-    api
-      .setCredentials("", "")
-      .then(() => {
-        setNotice("✓ Login disabled");
-        reload();
-      })
-      .catch((err: unknown) =>
-        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
-      )
-      .finally(() => setBusy(false));
+  const passwordsOK = password.length >= 8 && password === confirmPw;
+  const pwHint =
+    password && password.length < 8
+      ? "min. 8 characters"
+      : confirmPw && password !== confirmPw
+        ? "passwords don't match"
+        : "";
+
+  const submitForm = () => {
+    if (form === "add") {
+      // The very first account goes through the credentials endpoint, which
+      // also signs this browser in before the login requirement kicks in.
+      run(
+        () =>
+          users.length === 0
+            ? api.setCredentials(username.trim(), password)
+            : api.addUser(username.trim(), password),
+        users.length === 0
+          ? "✓ Login required from now on — this browser is already signed in"
+          : `✓ Added ${username.trim()}`,
+      );
+    } else if (form.startsWith("pw:")) {
+      const user = form.slice(3);
+      run(() => api.setUserPassword(user, password), `✓ Password changed for ${user}`);
+    }
   };
+
+  const remove = (u: UserAccount) => {
+    if (!confirm(`Remove user "${u.username}"? Their sessions keep working until the next restart.`)) return;
+    run(() => api.removeUser(u.username), `✓ Removed ${u.username}`);
+  };
+
+  const disable = () => {
+    if (!confirm("Disable the login requirement? All users are removed and the UI goes back to the API-key prompt.")) return;
+    run(() => api.setCredentials("", ""), "✓ Login disabled");
+  };
+
+  // The inline username/password form (add user or change password).
+  const credentialForm = (title: string, withUsername: boolean) => (
+    <div className="settings-form user-form">
+      {withUsername && (
+        <label>
+          Username
+          <input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
+        </label>
+      )}
+      <label>
+        Password
+        <input
+          type="password"
+          autoFocus={!withUsername}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </label>
+      <label>
+        Confirm password
+        <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+      </label>
+      <div className="settings-actions">
+        <button
+          disabled={busy || (withUsername && !username.trim()) || !passwordsOK}
+          onClick={submitForm}
+        >
+          {title}
+        </button>
+        <button className="toggle" onClick={() => openForm("")}>
+          Cancel
+        </button>
+        {pwHint && <span className="muted">{pwHint}</span>}
+      </div>
+    </div>
+  );
 
   return (
     <section className="card">
       <h2>Security</h2>
       <p className="muted">
         {status?.authEnabled
-          ? "A login account is set — the UI requires signing in. Set new credentials below to change them."
-          : "No login account yet — the UI asks for the raw API key. Set a username and password to switch to a login page (sessions last 30 days; a server restart signs everyone out)."}
+          ? "Signing in is required. The default user is protected — make another user the default before removing it. The API key keeps working for Prowlarr and scripts."
+          : "No login account yet — the UI asks for the raw API key. Add a user to switch to a login page (sessions last 30 days; a restart signs everyone out)."}
       </p>
-      <div className="settings-form">
-        <label>
-          Username
-          <input value={username} onChange={(e) => setUsername(e.target.value)} />
-        </label>
-        <label>
-          Password (min. 8 characters)
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        <label>
-          Confirm password
-          <input
-            type="password"
-            value={confirmPw}
-            onChange={(e) => setConfirmPw(e.target.value)}
-          />
-        </label>
-        <div className="settings-actions">
-          <button
-            disabled={busy || !username.trim() || password.length < 8}
-            onClick={save}
-          >
-            {status?.authEnabled ? "Update credentials" : "Enable login"}
+
+      {users.length > 0 && (
+        <ul className="rows">
+          {users.map((u) => (
+            <li key={u.username}>
+              <div className="row">
+                <span>
+                  👤 {u.username}
+                  {u.default && (
+                    <span className="pill user-default" title="Protected — cannot be removed">
+                      default
+                    </span>
+                  )}
+                </span>
+                <span className="row-actions">
+                  <button
+                    className="toggle"
+                    disabled={busy}
+                    onClick={() => openForm(`pw:${u.username}`)}
+                  >
+                    change password
+                  </button>
+                  {!u.default && (
+                    <>
+                      <button
+                        className="toggle"
+                        disabled={busy}
+                        title="Make this the protected primary account"
+                        onClick={() => run(() => api.makeDefaultUser(u.username), `✓ ${u.username} is now the default`)}
+                      >
+                        make default
+                      </button>
+                      <button className="danger" disabled={busy} onClick={() => remove(u)}>
+                        remove
+                      </button>
+                    </>
+                  )}
+                </span>
+              </div>
+              {form === `pw:${u.username}` && credentialForm("Change password", false)}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {form === "add" && credentialForm(users.length === 0 ? "Enable login" : "Add user", true)}
+
+      <div className="settings-actions" style={{ marginTop: "0.6rem" }}>
+        {form !== "add" && (
+          <button disabled={busy} onClick={() => openForm("add")}>
+            + Add user
           </button>
-          {status?.authEnabled && (
-            <button className="danger" disabled={busy} onClick={disable}>
-              Disable login
-            </button>
-          )}
-          {notice && (
-            <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
-              {notice}
-            </span>
-          )}
-        </div>
+        )}
+        {status?.authEnabled && (
+          <button className="danger" disabled={busy} onClick={disable}>
+            Disable login
+          </button>
+        )}
+        {notice && (
+          <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</span>
+        )}
       </div>
     </section>
   );
