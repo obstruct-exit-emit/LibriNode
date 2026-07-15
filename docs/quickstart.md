@@ -1,9 +1,11 @@
 # Quickstart
 
-1. **Connect.** Open `http://localhost:7845` and paste the API key from
-   `config.yaml` in the data directory — or set a login account later under
-   **Settings → General → Security** and sign in with a username/password
-   instead.
+1. **Connect.** Open `http://localhost:7845`. A brand-new instance greets you
+   with a **first-run setup wizard** — create an account (no API key needed)
+   and it walks you through libraries, metadata, an indexer, and a download
+   client. Otherwise, paste the API key from `config.yaml` in the data
+   directory, or add a login account later under **Settings → General →
+   Security** and sign in with a username/password instead.
 
 2. **Metadata.** Under **Settings → Metadata**, paste your
    [Hardcover API token](https://hardcover.app/account/api), hit **Test**,

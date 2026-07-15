@@ -11,9 +11,10 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 | Area | Endpoints |
 |---|---|
 | System | `GET /system/status`, `GET /ping` (no auth), `GET /health`, `POST /health/check`, `GET /log?lines=N`, `GET /image?url=` (cached provider-image proxy) |
-| Auth | `GET /auth/status` + `POST /auth/login` (unauthenticated), `POST /auth/logout`, `PUT /auth/credentials`, `POST /auth/apikey/regenerate` |
+| Auth | `GET /auth/status` + `POST /auth/login` (unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (create/change one account; empty username disables all), `GET/POST /auth/users`, `DELETE /auth/users/{username}` (not the default), `PUT /auth/users/{username}/password`, `PUT /auth/users/{username}/default`, `POST /auth/apikey/regenerate` |
+| Setup | `GET /setup/status` (unauthenticated — is this a fresh instance?), `POST /auth/setup` (first-run wizard: claim a fresh instance, create the default account, no API key needed) |
 | Backups | `GET/POST /backup`, `DELETE /backup/{name}`, `POST /backup/{name}/restore`, `GET /backup/{name}/download` |
-| Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}` |
+| Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}`, `GET /filesystem?path=` (folder picker: lists a directory's subfolders and its parent; empty path starts at the filesystem root) |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` |
 | Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true`, every library), `PUT /author/{id}/library` (add/remove from ONE format library; `deleteFiles`; auto-deletes the author once in no library), `PUT /author/{id}/monitor`, `PUT /author/{id}/provider` (per-author provider override; `""` follows settings), `POST /author/{id}/refresh` (metadata only — never touches membership/monitoring), `GET /author/{id}/missing?library=` (bibliography gaps), `POST /author/{id}/search?library=` (this author's wanted books only) |
 | Books | `GET/POST /book`, `GET/DELETE /book/{id}` (`?deleteFiles=true`), `GET /book/{id}/cover` (cover from the owned CBZ/CBR's first page; cached under `<data>/covers`), `PUT /book/{id}/library` (membership + monitored + `deleteFiles`; `library:"manga"`/`"comic"` adds/removes a volume/issue, `member:false` forgets its file records so it drops to Missing), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
@@ -22,7 +23,7 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}`, `DELETE /library/covers/cache` (clear extracted comic covers) |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /indexer/schema`, `GET /release?term=` or `?bookId=N&mediaType=` |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
-| Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab`, `GET /queue`, `GET /history`, `POST /library/import`, `GET /blocklist`, `DELETE /blocklist/{id}` |
+| Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab`, `GET /queue` (each item enriched with its book/grab and live progress; short-cached snapshot), `DELETE /queue/{clientId}/{itemId}` (remove one download + its data, no blocklist), `GET /history`, `POST /library/import`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=`, `POST /library/search` |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear provider images), `DELETE /settings/metadata/descriptions` (blank stored descriptions), `DELETE /cache` (clear all caches), `GET/PUT /settings/naming`, `GET/PUT /settings/import` |
 

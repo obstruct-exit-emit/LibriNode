@@ -71,7 +71,7 @@ Settings
 ├── Metadata             (provider choice + API tokens: Hardcover, ComicVine)
 ├── Indexers             (manual Newznab/Torznab or Prowlarr sync; per-type categories under Advanced)
 ├── Download Clients     (qBittorrent, SABnzbd; category mapping under Advanced)
-└── General              (login account, API-key regeneration, instance info; health, logs, and backups live on the System page)
+└── General              (login accounts/users, API-key regeneration, instance info; health, logs, and backups live on the System page)
 ```
 
 Every settings page follows the same pattern: sensible defaults, a **Test**
@@ -94,9 +94,11 @@ language, date formats) is planned post-1.0.
 ## Getting started (what works today)
 
 1. Build and run the server (see [Development](#development) below), then
-   open `http://localhost:7845` and paste the API key from `config.yaml` in
-   your data directory (or set a login account under **Settings → General →
-   Security**, which replaces the key prompt with a sign-in page). The UI
+   open `http://localhost:7845`. A fresh instance opens a **first-run setup
+   wizard** — create an account (no API key needed) and it guides you through
+   the rest; otherwise paste the API key from `config.yaml` in your data
+   directory (or add a login account under **Settings → General → Security**,
+   which replaces the key prompt with a sign-in page). The UI
    is Plex-style: a sidebar with **Home** plus
    one entry per library — and a library only appears once you've set it up
    (added its root folder, or already own content of that type). Home shows
@@ -297,9 +299,10 @@ scriptable:
 | Area | Endpoints |
 |---|---|
 | System | `GET /system/status`, `GET /ping` (no auth), `GET /health` (cached check results), `POST /health/check` (re-run now), `GET /log?lines=N` (tail the log file), `GET /image?url=` (cached provider-image proxy; redirects to origin on miss+failure) |
-| Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (empty username disables), `POST /auth/apikey/regenerate` |
+| Auth | `GET /auth/status` + `POST /auth/login` (both unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (create/change one account; empty username removes all), `GET/POST /auth/users`, `DELETE /auth/users/{username}` (default user protected), `PUT /auth/users/{username}/password`, `PUT /auth/users/{username}/default`, `POST /auth/apikey/regenerate` |
+| Setup | `GET /setup/status` (unauthenticated — fresh instance?), `POST /auth/setup` (first-run wizard claims a fresh instance and creates the default account, no API key) |
 | Backups | `GET/POST /backup`, `DELETE /backup/{name}`, `POST /backup/{name}/restore` (staged, applied on restart), `GET /backup/{name}/download` |
-| Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}` |
+| Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}`, `GET /filesystem?path=` (visual folder picker: a directory's subfolders + parent; empty path = filesystem root, or drive list on Windows) |
 | Search | `GET /search?term=&type=author\|book\|manga\|comic` (metadata provider proxy) |
 | Series | `GET/POST /series` (manga/comic by foreign id; magazines by `{"mediaType":"magazine","title":"..."}`; adds pull metadata only — volumes start unmonitored unless `"monitored":true`), `GET/DELETE /series/{id}` (`?deleteFiles=true` also removes files), `PUT /series/{id}/monitor`, `PUT /series/{id}/provider` (per-series provider override; `""` follows settings), `POST /series/{id}/refresh`, `POST /series/{id}/search` (search this series' wanted volumes only) |
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
@@ -308,7 +311,7 @@ scriptable:
 | Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}`, `DELETE /library/covers/cache` (clear extracted comic covers) |
 | Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
-| Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue`, `POST /library/import`, `GET /history`, `GET /blocklist`, `DELETE /blocklist/{id}` |
+| Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue` (items enriched with their book/grab + live progress; short-cached snapshot shared across pollers), `DELETE /queue/{clientId}/{itemId}` (remove one download + its data, not blocklisted), `POST /library/import`, `GET /history`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
 | Settings | `GET/PUT /settings/metadata`, `POST /settings/metadata/test`, `DELETE /settings/metadata/cache` (clear provider images), `DELETE /settings/metadata/descriptions` (blank stored descriptions; re-fetched on refresh), `DELETE /cache` (clear all: provider art + extracted covers + descriptions), `GET/PUT /settings/naming` (templates for all five media types), `GET/PUT /settings/import` (import handling: pack import, remove-from-client, delete-files) |
 
@@ -330,10 +333,14 @@ metadata endpoints return 503.
 
 ## Security & remote access
 
-- **Login page:** set a username and password under **Settings → General →
-  Security** and the UI switches from the API-key prompt to a login page.
-  Sessions are 30-day cookies held in memory, so a server restart signs
-  everyone out. Disable login in the same place.
+- **Login page:** add a user under **Settings → General → Security** and the
+  UI switches from the API-key prompt to a login page. Manage multiple
+  accounts there — change password, add/remove users, and pick the protected
+  default (which can't be removed until another user is promoted). A fresh
+  install offers a first-run setup wizard that creates the first account
+  without needing the API key. Sessions are 30-day cookies held in memory, so
+  a server restart signs everyone out. Disable login (removes all accounts) in
+  the same place.
 - **API key:** always works for automation (Prowlarr sync, scripts) via the
   `X-Api-Key` header or `?apikey=`. Regenerate it under **Settings →
   General** — the old key stops working immediately, so update Prowlarr and
@@ -426,7 +433,7 @@ metadata endpoints return 503.
 - [x] Full settings UI as specced above: grouped pages (Media Management / Quality Profiles / Metadata / Indexers / Download Clients / General — the profiles group was named "Libraries" until it proved to hold only profiles) with Test buttons on every connection — including saved indexers and download clients — advanced options behind toggles, and a General page with instance info and per-browser API key. UI-preferences page (theme/language/dates) deferred post-1.0
 - [x] Failed-release blocklist: a release that failed to download is never grabbed again (matched by guid or title); search falls to the next candidate, and entries can be removed from the Activity tab
 - [x] Health checks: background monitoring every 15 minutes — root folder unreachable, indexer failing its connection check, download client down or misconfigured, metadata provider token invalid, plus warnings when no indexer/download client/provider is set up at all. Issues show as a warning banner on every page and in a System-page Health card with a run-now button (`GET /health`, `POST /health/check`)
-- [x] Authentication: optional login account (Settings → General → Security) switches the UI from the API-key prompt to a username/password login page with 30-day cookie sessions (in-memory — a restart signs everyone out); passwords stored as PBKDF2-SHA256 hashes only; failed logins logged and throttled; the API key keeps working for Prowlarr/scripts and can be regenerated from the UI; SSL/reverse-proxy guidance in the README
+- [x] Authentication: optional login accounts (Settings → General → Security) switch the UI from the API-key prompt to a username/password login page with 30-day cookie sessions (in-memory — a restart signs everyone out); passwords stored as PBKDF2-SHA256 hashes only; failed logins logged and throttled; the API key keeps working for Prowlarr/scripts and can be regenerated from the UI; SSL/reverse-proxy guidance in the README. *(Later extended to **multiple users** with a compact management UI — change password, add/remove, and a protected default account — and a **first-run setup wizard** that claims a fresh instance without the API key, plus a **visual folder browser** for picking root folders.)*
 - [x] Wanted page per library: every library page carries a Wanted card — monitored but missing that format's file — with per-item Auto grab (`GET /wanted?library=X`)
 - [x] Delete options: removing an author/series — or taking a book out of a format library — can optionally delete the files from disk via an opt-in checkbox in the removal panel (`?deleteFiles=true` on DELETE endpoints, `deleteFiles` on `PUT /book/{id}/library`; book-level removal deletes only that format's files). Only paths inside a configured root folder are ever touched, emptied folders are pruned up to (never including) the root, and without the option the next scan re-finds the files as strays
 - [x] Log file on disk with size rotation (`<data>/logs/librinode.log`, 5 MB, 3 old files kept) + log viewer on the System page: tail up to 2000 lines with a text filter and refresh (`GET /log?lines=N`)

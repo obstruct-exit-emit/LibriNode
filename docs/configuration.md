@@ -9,9 +9,11 @@ host: 0.0.0.0
 port: 7845
 api_key: <generated>
 log_level: info        # debug, info, warn, error
-auth:                  # present once a login account is set
-  username: you
-  password_hash: pbkdf2-sha256$...
+auth:                  # present once a login account is added
+  users:               # one or more accounts; exactly one is the default
+    - username: you
+      password_hash: pbkdf2-sha256$...
+      default: true    # the protected primary account (cannot be removed)
 metadata:
   active: hardcover
   manga_provider: anilist        # anilist | hardcover | none (Settings → Metadata)
@@ -57,12 +59,22 @@ nests one level shallower (and the magazine default
 
 ## Authentication
 
-Set a username/password under **Settings → General → Security** to replace
-the API-key prompt with a login page (30-day in-memory sessions — restarts
-sign everyone out). Passwords are stored only as PBKDF2-SHA256 hashes. The
-API key keeps working for Prowlarr and scripts, and can be regenerated from
-the same page. For HTTPS, run behind a TLS-terminating reverse proxy (Caddy
-or nginx examples in the README) and never expose the raw port.
+Add a user under **Settings → General → Security** to replace the API-key
+prompt with a login page (30-day in-memory sessions — restarts sign everyone
+out). You can keep several accounts: each row has **change password**, and
+non-default users get **make default** and **remove**. One user is always the
+protected **default** — it can't be removed until you promote another user in
+its place. **Disable login** removes every account and returns to the API-key
+prompt. Passwords are stored only as PBKDF2-SHA256 hashes.
+
+A brand-new instance offers a **first-run setup wizard** instead (no API key
+needed): it creates the first account — which becomes the default — and walks
+through libraries, metadata, an indexer, and a download client.
+
+The API key keeps working for Prowlarr and scripts regardless, and can be
+regenerated from the same page. For HTTPS, run behind a TLS-terminating
+reverse proxy (Caddy or nginx examples in the README) and never expose the
+raw port.
 
 ## Health checks
 
