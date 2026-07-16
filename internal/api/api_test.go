@@ -1046,6 +1046,7 @@ func TestExistingFileImport(t *testing.T) {
 		AuthorID   int64            `json:"authorId"`
 		Suggested  int64            `json:"suggested"`
 		Confident  bool             `json:"confident"`
+		Confidence int              `json:"confidence"`
 		Candidates []struct {
 			ID    int64  `json:"id"`
 			Title string `json:"title"`
@@ -1073,10 +1074,16 @@ func TestExistingFileImport(t *testing.T) {
 	if len(mort.Candidates) != 2 {
 		t.Errorf("Mort candidates = %+v, want the author's 2 unowned books", mort.Candidates)
 	}
-	if unknown := opts["Unknown Novel.epub"]; unknown.Confident || unknown.Suggested != 0 || len(unknown.Candidates) != 2 {
-		t.Errorf("Unknown Novel option = %+v, want unconfident with candidates", unknown)
+	// A unique match rates well above the ambiguity band; no-match rates 0.
+	if mort.Confidence < 55 || mort.Confidence > 100 {
+		t.Errorf("Mort confidence = %d, want 55–100", mort.Confidence)
 	}
-	if nobody := opts["Some Thing.epub"]; nobody.Confident || nobody.AuthorID != 0 || len(nobody.Candidates) != 0 {
+	if unknown := opts["Unknown Novel.epub"]; unknown.Confident || unknown.Suggested != 0 ||
+		unknown.Confidence != 0 || len(unknown.Candidates) != 2 {
+		t.Errorf("Unknown Novel option = %+v, want unconfident/0%% with candidates", unknown)
+	}
+	if nobody := opts["Some Thing.epub"]; nobody.Confident || nobody.AuthorID != 0 ||
+		nobody.Confidence != 0 || len(nobody.Candidates) != 0 {
 		t.Errorf("unknown-author option = %+v", nobody)
 	}
 

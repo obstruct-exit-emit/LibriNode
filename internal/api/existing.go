@@ -32,6 +32,7 @@ type unmatchedOption struct {
 	AuthorID   int64                `json:"authorId,omitempty"`
 	Suggested  int64                `json:"suggested,omitempty"` // candidate id; confident when Confident
 	Confident  bool                 `json:"confident"`
+	Confidence int                  `json:"confidence"` // 0–100, how sure the suggestion is
 	Candidates []unmatchedCandidate `json:"candidates"`
 }
 
@@ -95,11 +96,23 @@ func (s *server) unmatchedOptions(mediaType string) ([]unmatchedOption, error) {
 		// Messiah retail" contains both "dune messiah" and "dune", and the
 		// longer match is the real one. Confident only when exactly one
 		// candidate attains the longest match.
-		norm := scanner.Normalize(parsed.Title)
-		if parsed.AltTitle != "" {
-			norm += " " + scanner.Normalize(parsed.AltTitle)
+		normTitle := scanner.Normalize(parsed.Title)
+		normAlt := scanner.Normalize(parsed.AltTitle) // "" when no alt
+		// hitIn reports whether a key appears in the parsed title (or its
+		// after-the-dash alt) and how much of that text the key explains —
+		// the coverage half of the confidence rating.
+		hitIn := func(key string) (bool, float64) {
+			if normAlt != "" && strings.Contains(normAlt, key) {
+				return true, float64(len(key)) / float64(len(normAlt))
+			}
+			if normTitle != "" && strings.Contains(normTitle, key) {
+				return true, float64(len(key)) / float64(len(normTitle))
+			}
+			return false, 0
 		}
-		bestLen, bestCount := 0, 0
+		bestLen, secondLen, bestCount := 0, 0, 0
+		bestCov := 0.0
+		exact := false
 		for j := range books {
 			b := &books[j]
 			if b.MediaType != "book" {
@@ -117,29 +130,59 @@ func (s *server) unmatchedOptions(mediaType string) ([]unmatchedOption, error) {
 				cand.Year = b.ReleaseDate[:4]
 			}
 			opt.Candidates = append(opt.Candidates, cand)
-			// This book's longest matching key.
+			// This book's longest matching key and its coverage.
 			hit := 0
+			cov := 0.0
+			isExact := false
 			for _, key := range scanner.TitleKeys(b.Title) {
-				if key != "" && len(key) > hit && strings.Contains(norm, key) {
-					hit = len(key)
+				if key == "" || len(key) <= hit {
+					continue
+				}
+				if ok, c := hitIn(key); ok {
+					hit, cov = len(key), c
+					isExact = key == normTitle || key == normAlt
 				}
 			}
 			switch {
 			case hit == 0:
 			case hit > bestLen:
-				bestLen, bestCount = hit, 1
+				secondLen = bestLen
+				bestLen, bestCov, bestCount, exact = hit, cov, 1, isExact
 				opt.Suggested = b.ID
 			case hit == bestLen:
 				bestCount++
+			default:
+				if hit > secondLen {
+					secondLen = hit
+				}
 			}
 		}
 		opt.Confident = bestLen > 0 && bestCount == 1
+		opt.Confidence = matchConfidence(bestLen, secondLen, bestCount, bestCov, exact)
 		if !opt.Confident {
 			opt.Suggested = 0 // ambiguous (or nothing) — the user picks
 		}
 		out = append(out, opt)
 	}
 	return out, nil
+}
+
+// matchConfidence turns the match signals into a 0–100 rating: an exact title
+// is certain; a unique longest match scores by how much of the filename the
+// title explains (coverage) plus how far ahead of the runner-up it is (gap);
+// a tie can't be trusted regardless of length.
+func matchConfidence(bestLen, secondLen, bestCount int, coverage float64, exact bool) int {
+	switch {
+	case bestLen == 0:
+		return 0
+	case bestCount > 1:
+		return 40 // something matched, but it's a coin toss
+	case exact:
+		return 100
+	default:
+		gap := float64(bestLen-secondLen) / float64(bestLen)
+		return 55 + int(25*coverage+0.5) + int(20*gap+0.5)
+	}
 }
 
 // handleUnmatchedOptions serves the existing-file import view for a library:

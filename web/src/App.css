@@ -644,6 +644,12 @@ button.toggle.on {
   color: var(--ok);
 }
 
+.pill.match-confidence {
+  background: rgba(95, 158, 110, 0.15);
+  color: var(--ok);
+  font-weight: 600;
+}
+
 /* The cross-format badge as a link: keeps the pill look (the .owned classes
    above win over the global button accent) but reads as clickable. */
 button.owned-link {

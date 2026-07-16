@@ -389,6 +389,12 @@ function UnmatchedRow({
             <span className="notice ok">
               {" "}→ {suggested.title}
               {suggested.year && ` (${suggested.year})`}
+              <span
+                className="pill match-confidence"
+                title="How sure the match is — an exact title is 100%; longer, more distinctive matches score higher"
+              >
+                {option.confidence}%
+              </span>
             </span>
           )}
         </span>

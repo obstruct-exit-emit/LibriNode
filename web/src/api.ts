@@ -396,6 +396,7 @@ export interface UnmatchedOption {
   authorId?: number;
   suggested?: number;
   confident: boolean;
+  confidence: number; // 0–100
   candidates: { id: number; title: string; year?: string }[];
 }
 
