@@ -4,10 +4,10 @@ import {
   proxiedImage,
   type Author,
   type Book,
-  type BookFile,
   type RenameMove,
   type SearchAuthor,
   type SearchBook,
+  type UnmatchedOption,
 } from "../api";
 import WantedCard from "../components/WantedCard";
 
@@ -26,7 +26,9 @@ export default function BooksLibraryView({
   const label = library === "ebook" ? "Ebooks" : "Audiobooks";
   const [authors, setAuthors] = useState<Author[]>([]);
   const [libraryBooks, setLibraryBooks] = useState<Book[]>([]);
-  const [unmatched, setUnmatched] = useState<BookFile[]>([]);
+  const [unmatched, setUnmatched] = useState<UnmatchedOption[]>([]);
+  const [importingAll, setImportingAll] = useState(false);
+  const [importNotice, setImportNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyHeader, setBusyHeader] = useState(false);
   const [notice, setNotice] = useState("");
@@ -37,15 +39,31 @@ export default function BooksLibraryView({
   const [visible, setVisible] = useState(60);
 
   const reload = useCallback(() => {
-    Promise.all([api.listAuthors(library), api.listBooks(), api.listUnmatchedFiles()])
+    Promise.all([api.listAuthors(library), api.listBooks(), api.unmatchedOptions(library)])
       .then(([au, bk, un]) => {
         setAuthors(au);
         setLibraryBooks(bk.filter((b) => (library === "ebook" ? b.inEbookLibrary : b.inAudiobookLibrary)));
-        setUnmatched(un.filter((f) => f.mediaType === library));
+        setUnmatched(un);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
   }, [onError, library]);
+
+  // Existing-file import, the bulk path: adopt every confident match at once.
+  const importAllMatched = () => {
+    setImportingAll(true);
+    setImportNotice("");
+    api
+      .importMatched(library)
+      .then((r) => {
+        setImportNotice(
+          `✓ Imported ${r.imported} — ${r.needsReview} still need${r.needsReview === 1 ? "s" : ""} review`,
+        );
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setImportingAll(false));
+  };
 
   useEffect(reload, [reload]);
 
@@ -208,15 +226,32 @@ export default function BooksLibraryView({
 
       {unmatched.length > 0 && (
         <section className="card">
-          <h2>Unmatched files ({unmatched.length})</h2>
+          <div className="card-head">
+            <h2>Unmatched files ({unmatched.length})</h2>
+            {unmatched.some((o) => o.confident) && (
+              <button
+                disabled={importingAll}
+                onClick={importAllMatched}
+                title="Adopt every file with a confident match — the book is imported, added to this library, and monitored"
+              >
+                {importingAll
+                  ? "Importing…"
+                  : `Import all matched (${unmatched.filter((o) => o.confident).length})`}
+              </button>
+            )}
+          </div>
           <p className="muted">
-            Found on disk but not matched to any book in this library. Files
-            attach automatically when you add their book; or match by hand
-            below. Dismiss forgets the record — disk is never touched.
+            Found on disk but not matched to any book in this library. Rows
+            with a confident match import in one click — the book joins the
+            library, monitored. For the rest, pick from the author's books.
+            Dismiss forgets the record — disk is never touched.
           </p>
+          {importNotice && (
+            <p className={importNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{importNotice}</p>
+          )}
           <ul className="rows">
-            {unmatched.map((f) => (
-              <UnmatchedRow key={f.id} file={f} books={libraryBooks} onDone={reload} onError={onError} />
+            {unmatched.map((o) => (
+              <UnmatchedRow key={o.file.id} option={o} books={libraryBooks} onDone={reload} onError={onError} />
             ))}
           </ul>
         </section>
@@ -322,17 +357,19 @@ function AddPanel({
 }
 
 function UnmatchedRow({
-  file,
+  option,
   books,
   onDone,
   onError,
 }: {
-  file: BookFile;
+  option: UnmatchedOption;
   books: Book[];
   onDone: () => void;
   onError: (message: string) => void;
 }) {
-  const [bookID, setBookID] = useState(0);
+  const { file, candidates } = option;
+  const suggested = candidates.find((c) => c.id === option.suggested);
+  const [bookID, setBookID] = useState(option.suggested ?? 0);
   const [busy, setBusy] = useState(false);
 
   const run = (action: () => Promise<unknown>) => {
@@ -346,10 +383,48 @@ function UnmatchedRow({
   return (
     <li>
       <div className="row">
-        <span className="file-path">{file.path}</span>
+        <span className="file-path">
+          {file.path}
+          {option.confident && suggested && (
+            <span className="notice ok">
+              {" "}→ {suggested.title}
+              {suggested.year && ` (${suggested.year})`}
+            </span>
+          )}
+        </span>
         <span className="row-actions">
-          {books.length > 0 && (
+          {option.confident && suggested ? (
+            <button
+              disabled={busy}
+              title={`Import as "${suggested.title}" — the book joins this library, monitored`}
+              onClick={() => run(() => api.matchFile(file.id, suggested.id))}
+            >
+              {busy ? "Importing…" : "Import"}
+            </button>
+          ) : candidates.length > 0 ? (
             <>
+              <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
+                <option value={0}>
+                  {option.authorName ? `${option.authorName}'s books…` : "Choose book…"}
+                </option>
+                {candidates.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                    {c.year ? ` (${c.year})` : ""}
+                  </option>
+                ))}
+              </select>
+              <button disabled={busy || bookID === 0} onClick={() => run(() => api.matchFile(file.id, bookID))}>
+                Import
+              </button>
+            </>
+          ) : books.length > 0 ? (
+            <>
+              {option.authorName && (
+                <span className="muted" title="No author with this name in the library — add the author, or match to any library book">
+                  {option.authorName} not in library
+                </span>
+              )}
               <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
                 <option value={0}>Match to book…</option>
                 {books.map((b) => (
@@ -360,7 +435,7 @@ function UnmatchedRow({
                 Import
               </button>
             </>
-          )}
+          ) : null}
           <button className="toggle" disabled={busy} onClick={() => run(() => api.dismissFile(file.id))}>
             dismiss
           </button>

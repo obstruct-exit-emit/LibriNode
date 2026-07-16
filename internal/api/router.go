@@ -154,6 +154,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/library/rename", s.auth(s.handleRenamePreview))
 	mux.HandleFunc("POST /api/v1/library/rename", s.auth(s.handleRenameApply))
 	mux.HandleFunc("GET /api/v1/bookfile", s.auth(s.handleListBookFiles))
+	mux.HandleFunc("GET /api/v1/bookfile/unmatched/options", s.auth(s.handleUnmatchedOptions))
+	mux.HandleFunc("POST /api/v1/bookfile/import-matched", s.auth(s.handleImportMatched))
 	mux.HandleFunc("POST /api/v1/bookfile/{id}/match", s.auth(s.handleMatchBookFile))
 	mux.HandleFunc("DELETE /api/v1/bookfile/{id}", s.auth(s.handleDeleteBookFile))
 

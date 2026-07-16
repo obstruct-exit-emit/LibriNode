@@ -1012,6 +1012,103 @@ func TestScanFlow(t *testing.T) {
 	a.want(a.call("GET", "/api/v1/bookfile", nil, nil), http.StatusBadRequest)
 }
 
+// TestExistingFileImport: the white-glove path for scanned-but-unmatched
+// files. A filename that singles out one of the author's books is a confident
+// match — imported by the bulk endpoint, which enrolls and monitors the book;
+// ambiguous or authorless files are left for review with candidates offered
+// (books already owned in the format excluded).
+func TestExistingFileImport(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	rootDir := t.TempDir()
+	for _, rel := range []string{
+		filepath.Join("Terry Pratchett", "Mort - retail.epub"), // confident → Mort
+		filepath.Join("Terry Pratchett", "Unknown Novel.epub"), // no match → review
+		filepath.Join("Nobody Special", "Some Thing.epub"),     // unknown author
+	} {
+		path := filepath.Join(rootDir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	type option struct {
+		File       library.BookFile `json:"file"`
+		AuthorName string           `json:"authorName"`
+		AuthorID   int64            `json:"authorId"`
+		Suggested  int64            `json:"suggested"`
+		Confident  bool             `json:"confident"`
+		Candidates []struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"candidates"`
+	}
+	byBase := func(opts []option) map[string]option {
+		m := map[string]option{}
+		for _, o := range opts {
+			m[filepath.Base(o.File.Path)] = o
+		}
+		return m
+	}
+
+	var options []option
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=ebook", nil, &options), http.StatusOK)
+	if len(options) != 3 {
+		t.Fatalf("options = %d, want 3", len(options))
+	}
+	opts := byBase(options)
+
+	mort := opts["Mort - retail.epub"]
+	if !mort.Confident || mort.Suggested == 0 || mort.AuthorID != author.ID {
+		t.Fatalf("Mort option = %+v", mort)
+	}
+	if len(mort.Candidates) != 2 {
+		t.Errorf("Mort candidates = %+v, want the author's 2 unowned books", mort.Candidates)
+	}
+	if unknown := opts["Unknown Novel.epub"]; unknown.Confident || unknown.Suggested != 0 || len(unknown.Candidates) != 2 {
+		t.Errorf("Unknown Novel option = %+v, want unconfident with candidates", unknown)
+	}
+	if nobody := opts["Some Thing.epub"]; nobody.Confident || nobody.AuthorID != 0 || len(nobody.Candidates) != 0 {
+		t.Errorf("unknown-author option = %+v", nobody)
+	}
+
+	// Bulk import takes the confident one only.
+	var bulk struct {
+		Imported    int `json:"imported"`
+		NeedsReview int `json:"needsReview"`
+	}
+	a.want(a.call("POST", "/api/v1/bookfile/import-matched",
+		map[string]string{"mediaType": "ebook"}, &bulk), http.StatusOK)
+	if bulk.Imported != 1 || bulk.NeedsReview != 2 {
+		t.Fatalf("bulk = %+v", bulk)
+	}
+
+	// Mort is now owned, enrolled in the ebook library, and monitored.
+	var detail library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", mort.Suggested), nil, &detail), http.StatusOK)
+	if !detail.HasEbookFile || !detail.InEbookLibrary || !detail.EbookMonitored {
+		t.Fatalf("adopted book = hasFile %v inLibrary %v monitored %v",
+			detail.HasEbookFile, detail.InEbookLibrary, detail.EbookMonitored)
+	}
+	if len(detail.Files) != 1 {
+		t.Fatalf("adopted book files = %+v", detail.Files)
+	}
+
+	// The two unresolved files remain for review.
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=ebook", nil, &options), http.StatusOK)
+	if len(options) != 2 {
+		t.Errorf("options after bulk = %d, want 2", len(options))
+	}
+}
+
 func TestNamingSettingsAndRename(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

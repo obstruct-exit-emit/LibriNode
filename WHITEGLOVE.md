@@ -15,15 +15,13 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
 - [x] Live download badges — book page, series volume rows, Wanted cards (shared cached queue poll)
 - [x] Multi-file audiobooks — disc subfolders, collision-safe flatten, per-book folder unit
 - [x] Cross-format book links · clickable Home tiles · first-run setup wizard
+- [x] Existing-file import — unmatched files get confident suggestions
+      (longest-title-wins matching against the path's author), one-click
+      per-file Import and bulk "Import all matched"; adopted books are
+      enrolled + monitored; manual fallback lists the author's books
+      (owned-in-format excluded), then the whole library
 
 ## P1 — most visible, worst polish gap
-- [ ] **Existing-file import at the top of the flow.** Add an "Existing file
-      import" path at the top of the white-glove list: when LibriNode is
-      confident an existing file matches a book for the author, auto-monitor
-      that book and import immediately; when confidence is not high enough,
-      fall back to manual book selection. Manual selection should list all of
-      the author's books (not just monitored), excluding books already owned in
-      the current library.
 - [ ] **Search-and-add flow.** The primary "add content" surface is plain text
       rows (`name · N books` + Add button) with no cover art, descriptions, or
       grid — the least polished screen in the app. Give it the poster-grid look

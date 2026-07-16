@@ -387,6 +387,18 @@ export interface UserAccount {
   default: boolean;
 }
 
+// UnmatchedOption is an unmatched file plus its existing-file import choices:
+// the parsed author, a confident suggestion when the filename singles out one
+// book, and the author's importable books (owned-in-format excluded).
+export interface UnmatchedOption {
+  file: BookFile;
+  authorName?: string;
+  authorId?: number;
+  suggested?: number;
+  confident: boolean;
+  candidates: { id: number; title: string; year?: string }[];
+}
+
 // FolderListing is one level of the server's filesystem for the folder picker.
 export interface FolderListing {
   path: string;
@@ -583,6 +595,15 @@ export const api = {
       ...json(seriesId ? { seriesId } : authorId ? { authorId } : {}),
       method: "POST",
     }),
+  unmatchedOptions: (mediaType: string) =>
+    request<UnmatchedOption[]>(
+      `/api/v1/bookfile/unmatched/options?mediaType=${mediaType}`,
+    ),
+  importMatched: (mediaType: string) =>
+    request<{ imported: number; needsReview: number; messages: string[] }>(
+      "/api/v1/bookfile/import-matched",
+      json({ mediaType }),
+    ),
   matchFile: (fileId: number, bookId: number) =>
     request<{ file: BookFile; skips: string[] }>(
       `/api/v1/bookfile/${fileId}/match`,

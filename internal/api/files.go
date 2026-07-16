@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/organize"
 )
 
@@ -117,8 +118,47 @@ func (s *server) handleRenameApply(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, renameResponse{Moves: applied, Skips: append(skips, applySkips...)})
 }
 
-// handleMatchBookFile is manual import: assign an unmatched file to a book,
-// then move it into its template-defined place.
+// adoptFile is the existing-file import core: assign an unmatched file to a
+// book, enroll a prose book in the file's format library and monitor it (an
+// adopted book behaves like one added by hand — upgrades can find it), then
+// move the file into its template-defined place. A failed move keeps the
+// match and reports why.
+func (s *server) adoptFile(fileID, bookID int64) ([]string, error) {
+	book, err := s.store.GetBook(bookID)
+	if err != nil {
+		return nil, err
+	}
+	file, err := s.store.GetBookFile(fileID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.SetBookFileBook(fileID, bookID); err != nil {
+		return nil, err
+	}
+	if book.MediaType == "book" &&
+		(file.MediaType == "ebook" || file.MediaType == "audiobook") {
+		if err := s.store.SetBookLibrary(bookID, file.MediaType, true, true); err != nil {
+			return nil, err
+		}
+	}
+
+	skips := []string{}
+	moves, planSkips, err := s.organize.Plan(bookID)
+	if err == nil {
+		scoped := []organize.Move{}
+		for _, m := range moves {
+			if m.FileID == fileID {
+				scoped = append(scoped, m)
+			}
+		}
+		_, applySkips, applyErr := s.organize.Apply(scoped)
+		skips = append(planSkips, applySkips...)
+		err = applyErr
+	}
+	return skips, err
+}
+
+// handleMatchBookFile is manual import: adopt an unmatched file for a book.
 func (s *server) handleMatchBookFile(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -132,30 +172,12 @@ func (s *server) handleMatchBookFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bookId is required")
 		return
 	}
-	if _, err := s.store.GetBook(req.BookID); err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if err := s.store.SetBookFileBook(id, req.BookID); err != nil {
-		writeStoreError(w, err)
-		return
-	}
-
-	// Move the file into place; a failed move keeps the match but reports why.
-	skips := []string{}
-	moves, planSkips, err := s.organize.Plan(req.BookID)
-	if err == nil {
-		scoped := []organize.Move{}
-		for _, m := range moves {
-			if m.FileID == id {
-				scoped = append(scoped, m)
-			}
-		}
-		_, applySkips, applyErr := s.organize.Apply(scoped)
-		skips = append(planSkips, applySkips...)
-		err = applyErr
-	}
+	skips, err := s.adoptFile(id, req.BookID)
 	if err != nil {
+		if err == library.ErrNotFound {
+			writeStoreError(w, err)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
