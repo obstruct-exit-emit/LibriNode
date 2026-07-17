@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type RenameMove, type Series, type SeriesResult } from "../api";
 import { libraryLabels } from "../App";
+import AddResultsGrid, { type AddResult } from "../components/AddResultsGrid";
 import UnmatchedCard from "../components/UnmatchedCard";
 import WantedCard from "../components/WantedCard";
 
@@ -231,18 +232,21 @@ function AddSeriesPanel({
       .finally(() => setBusy(false));
   };
 
-  const add = (r: SeriesResult) => {
-    setBusy(true);
-    setNotice("");
-    api
-      .addSeries(mediaType, r.foreignSeriesId)
-      .then(() => {
-        setNotice(`✓ Added "${r.title}"`);
-        onAdded();
-      })
-      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
-      .finally(() => setBusy(false));
-  };
+  const gridResults: AddResult[] = results.map((r) => ({
+    key: r.foreignSeriesId,
+    title: r.title,
+    subtitle: [
+      r.year ? String(r.year) : "",
+      r.authorName ?? "",
+      r.issueCount > 0 ? `${r.issueCount} volumes` : "volume count TBD",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    blurb: r.description || undefined,
+    imageUrl: r.coverUrl || undefined,
+    addLabel: "Add series",
+    add: () => api.addSeries(mediaType, r.foreignSeriesId),
+  }));
 
   return (
     <div className="add-panel">
@@ -253,26 +257,18 @@ function AddSeriesPanel({
           onChange={(e) => setTerm(e.target.value)}
           autoFocus
         />
-        <button type="submit" disabled={busy || !term.trim()}>Search</button>
+        <button type="submit" disabled={busy || !term.trim()}>
+          {busy ? "Searching…" : "Search"}
+        </button>
       </form>
       {notice && <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>}
-      <ul className="rows">
-        {results.map((r) => (
-          <li key={r.foreignSeriesId}>
-            <div className="row">
-              <span>
-                {r.title}
-                <span className="muted">
-                  {r.year ? ` · ${r.year}` : ""}
-                  {r.authorName ? ` · ${r.authorName}` : ""}
-                  {r.issueCount > 0 ? ` · ${r.issueCount} volumes` : " · volume count TBD"}
-                </span>
-              </span>
-              <button disabled={busy} onClick={() => add(r)}>Add series</button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {!busy && results.length === 0 && notice === "" && (
+        <p className="muted">
+          Search {mediaType} series on the metadata provider — results appear
+          here with cover art.
+        </p>
+      )}
+      <AddResultsGrid results={gridResults} onAdded={onAdded} />
     </div>
   );
 }
@@ -292,7 +288,7 @@ function AddMagazinePanel({ onAdded }: { onAdded: () => void }) {
       .addMagazine(t)
       .then(() => {
         setTitle("");
-        setNotice(`✓ Added "${t}" — new issues are grabbed as they appear on your indexers`);
+        setNotice(`✓ Added "${t}" — scan a magazine root and its issues match by date or number`);
         onAdded();
       })
       .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))

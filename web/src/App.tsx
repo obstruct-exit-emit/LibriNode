@@ -9,6 +9,7 @@ import {
   type LibraryStatus,
 } from "./api";
 import SetupWizard from "./components/SetupWizard";
+import { UiProvider, useUi } from "./ui";
 import ActivityView from "./views/ActivityView";
 import AuthorDetailView from "./views/AuthorDetailView";
 import BookDetailView from "./views/BookDetailView";
@@ -51,6 +52,15 @@ const libraryIcons: Record<string, string> = {
 };
 
 export default function App() {
+  return (
+    <UiProvider>
+      <AppInner />
+    </UiProvider>
+  );
+}
+
+function AppInner() {
+  const { toast } = useUi();
   const [key, setKey] = useState(getApiKey());
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [setupNeeded, setSetupNeeded] = useState<boolean | null>(null);
@@ -58,7 +68,10 @@ export default function App() {
   const [libraries, setLibraries] = useState<LibraryStatus[]>([]);
   const [health, setHealth] = useState<HealthIssue[]>([]);
   const [page, setPage] = useState<Page>({ name: "home" });
+  // The connection error keeps its dedicated card (it carries recovery UI);
+  // every in-app error surfaces as a toast instead.
   const [error, setError] = useState("");
+  const onError = useCallback((message: string) => toast(message, "bad"), [toast]);
 
   // Login sessions replace the API-key prompt once an account is set up
   // (Settings → General → Security); without one, the key prompt remains.
@@ -238,7 +251,7 @@ export default function App() {
 
         {connected && page.name === "home" && (
           <HomeView
-            onError={setError}
+            onError={onError}
             onOpenLibrary={(mediaType) => go({ name: "library", mediaType })}
             onOpenItem={(mediaType, it) => {
               // Prose books open their detail page; volumes/issues live as
@@ -258,7 +271,7 @@ export default function App() {
             <BooksLibraryView
               key={page.mediaType}
               library={page.mediaType as "ebook" | "audiobook"}
-              onError={setError}
+              onError={onError}
               onOpenAuthor={(id) =>
                 go({ name: "author", id, library: page.mediaType as "ebook" | "audiobook" })
               }
@@ -267,7 +280,7 @@ export default function App() {
             <SeriesLibraryView
               key={page.mediaType}
               mediaType={page.mediaType}
-              onError={setError}
+              onError={onError}
               onOpenSeries={(id) => go({ name: "series-detail", id, mediaType: page.mediaType })}
             />
           ))}
@@ -275,7 +288,7 @@ export default function App() {
           <AuthorDetailView
             id={page.id}
             library={page.library}
-            onError={setError}
+            onError={onError}
             onBack={() => go({ name: "library", mediaType: page.library })}
             onOpenBook={(bookId) =>
               go({ name: "book", id: bookId, library: page.library, authorId: page.id })
@@ -287,7 +300,7 @@ export default function App() {
             key={`${page.id}-${page.library}`}
             id={page.id}
             library={page.library}
-            onError={setError}
+            onError={onError}
             onBack={() => go({ name: "author", id: page.authorId, library: page.library })}
             onSwitchLibrary={(library) =>
               go({ name: "book", id: page.id, library, authorId: page.authorId })
@@ -298,16 +311,16 @@ export default function App() {
           <SeriesDetailView
             id={page.id}
             mediaType={page.mediaType}
-            onError={setError}
+            onError={onError}
             onBack={() => go({ name: "library", mediaType: page.mediaType })}
           />
         )}
-        {connected && page.name === "calendar" && <CalendarView onError={setError} />}
-        {connected && page.name === "activity" && <ActivityView onError={setError} />}
+        {connected && page.name === "calendar" && <CalendarView onError={onError} />}
+        {connected && page.name === "activity" && <ActivityView onError={onError} />}
         {connected && page.name === "settings" && (
-          <SettingsView onError={setError} onLibrariesChanged={reloadLibraries} />
+          <SettingsView onError={onError} onLibrariesChanged={reloadLibraries} />
         )}
-        {connected && page.name === "system" && <SystemView onError={setError} />}
+        {connected && page.name === "system" && <SystemView onError={onError} />}
       </main>
     </div>
   );

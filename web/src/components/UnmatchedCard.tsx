@@ -7,6 +7,7 @@ import {
   type UnmatchedOption,
 } from "../api";
 import { formatBytes } from "../format";
+import { useUi } from "../ui";
 
 // UnmatchedCard is the existing-file import flow, shared by every library:
 // files a scan found but couldn't confidently place, each with the library's
@@ -121,6 +122,7 @@ function UnmatchedRow({
   onDone: () => void;
   onError: (message: string) => void;
 }) {
+  const { confirmDlg } = useUi();
   const { file, candidates, duplicate } = option;
   const isVolume = mediaType === "manga" || mediaType === "comic";
   const isMagazine = mediaType === "magazine";
@@ -210,8 +212,15 @@ function UnmatchedRow({
                 <button
                   disabled={busy}
                   title="Use this file instead — the library's current copy is deleted from disk"
-                  onClick={() => {
-                    if (confirm(`Replace the library's copy of "${duplicate.title}" with this file?\n\nThe current file is deleted from disk.`)) {
+                  onClick={async () => {
+                    if (
+                      await confirmDlg({
+                        title: "Replace the library's copy",
+                        message: `Replace the library's copy of "${duplicate.title}" with this file?\n\nThe current file is deleted from disk.`,
+                        confirmLabel: "Replace",
+                        danger: true,
+                      })
+                    ) {
                       run(() => api.replaceFile(file.id, duplicate.bookId));
                     }
                   }}
@@ -222,8 +231,15 @@ function UnmatchedRow({
                   className="danger"
                   disabled={busy}
                   title="Keep the library's copy — delete this file from disk"
-                  onClick={() => {
-                    if (confirm("Delete this file from disk? The library's copy is kept.")) {
+                  onClick={async () => {
+                    if (
+                      await confirmDlg({
+                        title: "Delete this file",
+                        message: "Delete this file from disk? The library's copy is kept.",
+                        confirmLabel: "Delete from disk",
+                        danger: true,
+                      })
+                    ) {
                       run(() => api.dismissFile(file.id, true));
                     }
                   }}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type BackupInfo, type HealthResult, type SystemStatus } from "../api";
 import { formatBytes } from "../format";
+import { useUi } from "../ui";
 
 export default function SystemView({
   onError,
@@ -61,6 +62,7 @@ export default function SystemView({
 // BackupsCard manages zip backups of the database + config: create, download,
 // delete, and stage a restore (applied on the next server start).
 function BackupsCard({ onError }: { onError: (message: string) => void }) {
+  const { confirmDlg } = useUi();
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -140,8 +142,15 @@ function BackupsCard({ onError }: { onError: (message: string) => void }) {
                   </button>
                   <button
                     disabled={busy}
-                    onClick={() => {
-                      if (confirm(`Restore ${b.name}?\n\nThe current database and config are replaced on the next restart (kept as *.pre-restore).`)) {
+                    onClick={async () => {
+                      if (
+                        await confirmDlg({
+                          title: "Restore backup",
+                          message: `Restore ${b.name}?\n\nThe current database and config are replaced on the next restart (kept as *.pre-restore).`,
+                          confirmLabel: "Stage restore",
+                          danger: true,
+                        })
+                      ) {
                         run(() => api.restoreBackup(b.name), "✓ Restore staged — restart LibriNode to apply");
                       }
                     }}
@@ -151,8 +160,14 @@ function BackupsCard({ onError }: { onError: (message: string) => void }) {
                   <button
                     className="danger"
                     disabled={busy}
-                    onClick={() => {
-                      if (confirm(`Delete backup ${b.name}?`)) {
+                    onClick={async () => {
+                      if (
+                        await confirmDlg({
+                          message: `Delete backup ${b.name}?`,
+                          confirmLabel: "Delete",
+                          danger: true,
+                        })
+                      ) {
                         run(() => api.deleteBackup(b.name));
                       }
                     }}

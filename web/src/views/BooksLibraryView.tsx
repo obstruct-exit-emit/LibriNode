@@ -8,6 +8,7 @@ import {
   type SearchAuthor,
   type SearchBook,
 } from "../api";
+import AddResultsGrid, { type AddResult } from "../components/AddResultsGrid";
 import UnmatchedCard from "../components/UnmatchedCard";
 import WantedCard from "../components/WantedCard";
 
@@ -247,19 +248,26 @@ function AddPanel({
     }
   };
 
-  const add = (action: () => Promise<unknown>, title: string) => {
-    setBusy(true);
-    setNotice("");
-    action()
-      .then(() => {
-        setNotice(`✓ Added "${title}" to this library`);
-        onAdded();
-      })
-      .catch((err: unknown) =>
-        setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
-      )
-      .finally(() => setBusy(false));
-  };
+  const searched = authors.length > 0 || books.length > 0;
+  const results: AddResult[] = [
+    ...authors.map((a) => ({
+      key: a.foreignAuthorId,
+      title: a.name,
+      subtitle: a.bookCount ? `${a.bookCount} books` : undefined,
+      imageUrl: a.imageUrl || undefined,
+      addLabel: "Add author",
+      add: () => api.addAuthor(a.foreignAuthorId, library),
+    })),
+    ...books.map((b) => ({
+      key: b.foreignBookId,
+      title: b.title,
+      subtitle:
+        b.authorName + (b.releaseDate ? ` · ${b.releaseDate.slice(0, 4)}` : ""),
+      imageUrl: b.coverUrl || undefined,
+      addLabel: "Add book",
+      add: () => api.addBook(b.foreignBookId, library),
+    })),
+  ];
 
   return (
     <div className="add-panel">
@@ -274,39 +282,20 @@ function AddPanel({
           onChange={(e) => setTerm(e.target.value)}
           autoFocus
         />
-        <button type="submit" disabled={busy || !term.trim()}>Search</button>
+        <button type="submit" disabled={busy || !term.trim()}>
+          {busy ? "Searching…" : "Search"}
+        </button>
       </form>
       {notice && (
         <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>
       )}
-      <ul className="rows">
-        {authors.map((a) => (
-          <li key={a.foreignAuthorId}>
-            <div className="row">
-              <span>
-                {a.name}
-                {a.bookCount ? <span className="muted"> · {a.bookCount} books</span> : null}
-              </span>
-              <button disabled={busy} onClick={() => add(() => api.addAuthor(a.foreignAuthorId, library), a.name)}>
-                Add author
-              </button>
-            </div>
-          </li>
-        ))}
-        {books.map((b) => (
-          <li key={b.foreignBookId}>
-            <div className="row">
-              <span>
-                {b.title}
-                <span className="muted"> · {b.authorName}{b.releaseDate ? ` · ${b.releaseDate.slice(0, 4)}` : ""}</span>
-              </span>
-              <button disabled={busy} onClick={() => add(() => api.addBook(b.foreignBookId, library), b.title)}>
-                Add book
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {!busy && !searched && notice === "" && (
+        <p className="muted">
+          Search {kind === "author" ? "authors" : "books"} on the metadata
+          provider — results appear here with cover art.
+        </p>
+      )}
+      <AddResultsGrid results={results} onAdded={onAdded} />
     </div>
   );
 }

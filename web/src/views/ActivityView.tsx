@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type BlockEntry, type GrabRecord, type QueueItem } from "../api";
+import { useUi } from "../ui";
 
 export default function ActivityView({
   onError,
 }: {
   onError: (message: string) => void;
 }) {
+  const { confirmDlg } = useUi();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [history, setHistory] = useState<GrabRecord[]>([]);
   const [blocked, setBlocked] = useState<BlockEntry[]>([]);
@@ -27,10 +29,14 @@ export default function ActivityView({
       .finally(() => setLoading(false));
   }, [onError]);
 
-  const removeItem = (it: QueueItem) => {
-    if (!confirm(`Remove "${it.title}" from ${it.client}?\n\nIts downloaded data is deleted. The release is NOT blocklisted, so it can be grabbed again.`)) {
-      return;
-    }
+  const removeItem = async (it: QueueItem) => {
+    const ok = await confirmDlg({
+      title: "Remove download",
+      message: `Remove "${it.title}" from ${it.client}?\n\nIts downloaded data is deleted. The release is NOT blocklisted, so it can be grabbed again.`,
+      confirmLabel: "Remove download",
+      danger: true,
+    });
+    if (!ok) return;
     setRemoving(it.id);
     api
       .removeQueueItem(it.clientConfigId, it.id, it.grabId)

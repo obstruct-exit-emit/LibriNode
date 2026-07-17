@@ -17,6 +17,7 @@ import {
   type UserAccount,
 } from "../api";
 import { formatBytes } from "../format";
+import { useUi } from "../ui";
 
 // Settings groups, *arr-style: pages organized by concern instead of one
 // long scroll. Order matches the README spec.
@@ -132,6 +133,7 @@ export default function SettingsView({
 // options (host/port, SSL, proxy) live in config.yaml — see the README's
 // reverse-proxy section for HTTPS guidance.
 function GeneralCard({ onError }: { onError: (message: string) => void }) {
+  const { confirmDlg } = useUi();
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [key, setKey] = useState(getApiKey());
   const [showKey, setShowKey] = useState(false);
@@ -144,14 +146,15 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
 
-  const regenerate = () => {
-    if (
-      !confirm(
+  const regenerate = async () => {
+    const ok = await confirmDlg({
+      title: "Regenerate API key",
+      message:
         "Regenerate the API key?\n\nProwlarr and any scripts using the current key stop working until you update them.",
-      )
-    ) {
-      return;
-    }
+      confirmLabel: "Regenerate",
+      danger: true,
+    });
+    if (!ok) return;
     api
       .regenerateApiKey()
       .then((r) => {
@@ -238,6 +241,7 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
 // disable-login. The default user is protected — promote another user first.
 // The API key keeps working for scripts and Prowlarr either way.
 function SecurityCard({ onError }: { onError: (message: string) => void }) {
+  const { confirmDlg } = useUi();
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [users, setUsers] = useState<UserAccount[]>([]);
   // One inline form open at a time: adding a user, or changing one password.
@@ -310,14 +314,25 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
     }
   };
 
-  const remove = (u: UserAccount) => {
-    if (!confirm(`Remove user "${u.username}"? Their sessions keep working until the next restart.`)) return;
-    run(() => api.removeUser(u.username), `✓ Removed ${u.username}`);
+  const remove = async (u: UserAccount) => {
+    const ok = await confirmDlg({
+      title: "Remove user",
+      message: `Remove user "${u.username}"? Their sessions keep working until the next restart.`,
+      confirmLabel: "Remove user",
+      danger: true,
+    });
+    if (ok) run(() => api.removeUser(u.username), `✓ Removed ${u.username}`);
   };
 
-  const disable = () => {
-    if (!confirm("Disable the login requirement? All users are removed and the UI goes back to the API-key prompt.")) return;
-    run(() => api.setCredentials("", ""), "✓ Login disabled");
+  const disable = async () => {
+    const ok = await confirmDlg({
+      title: "Disable login",
+      message:
+        "Disable the login requirement? All users are removed and the UI goes back to the API-key prompt.",
+      confirmLabel: "Disable login",
+      danger: true,
+    });
+    if (ok) run(() => api.setCredentials("", ""), "✓ Login disabled");
   };
 
   // The inline username/password form (add user or change password).
@@ -448,6 +463,7 @@ function DownloadClientsCard({
 }: {
   onError: (message: string) => void;
 }) {
+  const { confirmDlg } = useUi();
   const [clients, setClients] = useState<DownloadClient[]>([]);
   const [draft, setDraft] = useState(emptyDownloadClient);
   const [busy, setBusy] = useState(false);
@@ -524,8 +540,14 @@ function DownloadClientsCard({
                   <button
                     className="danger"
                     disabled={busy}
-                    onClick={() => {
-                      if (confirm(`Remove download client ${c.name}?`)) {
+                    onClick={async () => {
+                      if (
+                        await confirmDlg({
+                          message: `Remove download client ${c.name}?`,
+                          confirmLabel: "Remove",
+                          danger: true,
+                        })
+                      ) {
                         act(() => api.deleteDownloadClient(c.id));
                       }
                     }}
@@ -954,6 +976,7 @@ function IndexersCard({
 }: {
   onError: (message: string) => void;
 }) {
+  const { confirmDlg } = useUi();
   const [indexers, setIndexers] = useState<Indexer[]>([]);
   const [draft, setDraft] = useState(emptyIndexer);
   const [busy, setBusy] = useState(false);
@@ -1016,9 +1039,13 @@ function IndexersCard({
   const toggle = (ind: Indexer) =>
     run(() => api.updateIndexer({ ...ind, enabled: !ind.enabled }));
 
-  const remove = (ind: Indexer) => {
-    if (!confirm(`Remove indexer ${ind.name}?`)) return;
-    run(() => api.deleteIndexer(ind.id));
+  const remove = async (ind: Indexer) => {
+    const ok = await confirmDlg({
+      message: `Remove indexer ${ind.name}?`,
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (ok) run(() => api.deleteIndexer(ind.id));
   };
 
   const draftValid =
@@ -1294,6 +1321,7 @@ function MetadataCard({
 }: {
   onError: (message: string) => void;
 }) {
+  const { confirmDlg } = useUi();
   const [settings, setSettings] = useState<MetadataSettings | null>(null);
   const [active, setActive] = useState("");
   const [providers, setProviders] = useState<Record<string, ProviderSettings>>({});
@@ -1641,8 +1669,16 @@ function MetadataCard({
           </button>
           <button
             className="danger"
-            onClick={() => {
-              if (confirm("Clear all stored descriptions?\n\nThey stay blank until a metadata refresh re-fetches them.")) {
+            onClick={async () => {
+              if (
+                await confirmDlg({
+                  title: "Clear descriptions",
+                  message:
+                    "Clear all stored descriptions?\n\nThey stay blank until a metadata refresh re-fetches them.",
+                  confirmLabel: "Clear",
+                  danger: true,
+                })
+              ) {
                 runClear(api.clearDescriptions);
               }
             }}
@@ -1651,8 +1687,16 @@ function MetadataCard({
           </button>
           <button
             className="danger"
-            onClick={() => {
-              if (confirm("Clear ALL caches — provider art, extracted covers, and descriptions?\n\nImages re-fetch as you browse; descriptions return on the next metadata refresh.")) {
+            onClick={async () => {
+              if (
+                await confirmDlg({
+                  title: "Clear all caches",
+                  message:
+                    "Clear ALL caches — provider art, extracted covers, and descriptions?\n\nImages re-fetch as you browse; descriptions return on the next metadata refresh.",
+                  confirmLabel: "Clear everything",
+                  danger: true,
+                })
+              ) {
                 runClear(api.clearAllCache);
               }
             }}
@@ -1680,6 +1724,7 @@ function RootFoldersCard({
   onError: (message: string) => void;
   onChanged?: () => void;
 }) {
+  const { confirmDlg } = useUi();
   const [folders, setFolders] = useState<RootFolder[]>([]);
   const [mediaType, setMediaType] = useState<string>("ebook");
   const [variant, setVariant] = useState<string>("mono");
@@ -1719,8 +1764,14 @@ function RootFoldersCard({
   const variantLabel = (v?: string) =>
     v === "color" ? "colorized" : v === "mono" ? "monochrome" : "";
 
-  const remove = (f: RootFolder) => {
-    if (!confirm(`Remove root folder ${f.path}? Files on disk are not touched.`)) return;
+  const remove = async (f: RootFolder) => {
+    const ok = await confirmDlg({
+      title: "Remove root folder",
+      message: `Remove root folder ${f.path}? Files on disk are not touched.`,
+      confirmLabel: "Remove folder",
+      danger: true,
+    });
+    if (!ok) return;
     api
       .deleteRootFolder(f.id)
       .then(() => {
