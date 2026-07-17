@@ -1204,6 +1204,141 @@ func TestDuplicateUnmatchedFile(t *testing.T) {
 	}
 }
 
+// TestExistingFileImportSeries: the existing-file import flow for the
+// series-first libraries. Manga: a "Series vNN" file confidently matches its
+// series' volume and bulk-imports; unknown series are left for review with the
+// parsed name offered. Magazine: once the magazine exists, a dated file is a
+// confident match and the manual import materializes the issue (organize-only
+// magazines still import files already on disk).
+func TestExistingFileImportSeries(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 3
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	// --- Manga ---
+	// The scan auto-matches exact "Series vNN" layouts on its own; the options
+	// flow covers what it can't — here a scene-style folder ("Berserk (Dark
+	// Horse)") that only fuzzy-matches the series.
+	mangaRoot := t.TempDir()
+	for _, rel := range []string{
+		filepath.Join("Berserk (Dark Horse)", "Berserk v02.cbz"),
+		filepath.Join("Mystery Series", "Mystery v01.cbz"),
+	} {
+		path := filepath.Join(mangaRoot, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "manga", "path": mangaRoot}, nil), http.StatusCreated)
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	type option struct {
+		File       library.BookFile `json:"file"`
+		SeriesName string           `json:"seriesName"`
+		SeriesID   int64            `json:"seriesId"`
+		Volume     float64          `json:"volume"`
+		Issue      string           `json:"issue"`
+		Suggested  int64            `json:"suggested"`
+		Confident  bool             `json:"confident"`
+		Confidence int              `json:"confidence"`
+	}
+	var options []option
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=manga", nil, &options), http.StatusOK)
+	if len(options) != 2 {
+		t.Fatalf("manga options = %d, want 2", len(options))
+	}
+	for _, o := range options {
+		base := filepath.Base(o.File.Path)
+		switch base {
+		case "Berserk v02.cbz":
+			if !o.Confident || o.SeriesID != series.ID || o.Volume != 2 || o.Suggested == 0 || o.Confidence < 80 {
+				t.Errorf("Berserk option = %+v", o)
+			}
+		case "Mystery v01.cbz":
+			if o.Confident || o.SeriesID != 0 || o.SeriesName != "Mystery Series" {
+				t.Errorf("Mystery option = %+v", o)
+			}
+		}
+	}
+
+	var bulk struct {
+		Imported    int `json:"imported"`
+		NeedsReview int `json:"needsReview"`
+	}
+	a.want(a.call("POST", "/api/v1/bookfile/import-matched",
+		map[string]string{"mediaType": "manga"}, &bulk), http.StatusOK)
+	if bulk.Imported != 1 || bulk.NeedsReview != 1 {
+		t.Fatalf("manga bulk = %+v", bulk)
+	}
+	var detail library.Series
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/series/%d", series.ID), nil, &detail), http.StatusOK)
+	owned := 0
+	for _, v := range detail.Volumes {
+		if v.HasFile {
+			owned++
+		}
+	}
+	if owned != 1 {
+		t.Fatalf("owned volumes after import = %d, want 1", owned)
+	}
+
+	// --- Magazine ---
+	// A fuzzy folder name ("Wired Magazine" vs the magazine "Wired"): the
+	// scan's exact matcher can't place it — the options flow can. (Exact names
+	// auto-match the moment the magazine is added, via rematch.)
+	magRoot := t.TempDir()
+	magFile := filepath.Join(magRoot, "Wired Magazine", "Wired Magazine - 2026-05-01.pdf")
+	if err := os.MkdirAll(filepath.Dir(magFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(magFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "magazine", "path": magRoot}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	// Unknown magazine: the parsed name is offered, nothing confident.
+	options = nil
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=magazine", nil, &options), http.StatusOK)
+	if len(options) != 1 || options[0].Confident || options[0].SeriesName != "Wired Magazine" {
+		t.Fatalf("magazine options = %+v", options)
+	}
+	fileID := options[0].File.ID
+
+	// Add the magazine by name (the UI's "+ Add magazine" button) → confident
+	// (80: the folder name is a fuzzy, not exact, title match).
+	var mag library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "magazine", "title": "Wired"}, &mag), http.StatusCreated)
+	options = nil
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=magazine", nil, &options), http.StatusOK)
+	if len(options) != 1 || !options[0].Confident || options[0].SeriesID != mag.ID ||
+		options[0].Issue != "2026-05-01" || options[0].Confidence < 75 {
+		t.Fatalf("magazine options after add = %+v", options)
+	}
+
+	// Manual import materializes the issue and adopts the file.
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/bookfile/%d/match", fileID),
+		map[string]any{"seriesId": mag.ID, "issue": "2026-05-01"}, nil), http.StatusOK)
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/series/%d", mag.ID), nil, &detail), http.StatusOK)
+	if len(detail.Volumes) != 1 || !detail.Volumes[0].HasFile {
+		t.Fatalf("magazine issues after import = %+v", detail.Volumes)
+	}
+	options = nil
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=magazine", nil, &options), http.StatusOK)
+	if len(options) != 0 {
+		t.Errorf("magazine options after import = %+v, want none", options)
+	}
+}
+
 func TestNamingSettingsAndRename(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

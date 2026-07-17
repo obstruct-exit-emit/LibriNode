@@ -339,7 +339,7 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 		if err != nil {
 			return err
 		}
-		seriesGuess, number := comicGuess(rel)
+		seriesGuess, number := ComicGuess(rel)
 		bookID := index.matchVolume(root.MediaType, seriesGuess, number)
 
 		file := &library.BookFile{
@@ -382,10 +382,10 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 	return nil
 }
 
-// magazineGuess extracts the magazine title and issue identifier from a
+// MagazineGuess extracts the magazine title and issue identifier from a
 // relative file path: the parent directory names the magazine when present,
 // otherwise the filename prefix before the last " - ".
-func magazineGuess(rel string) (string, string) {
+func MagazineGuess(rel string) (string, string) {
 	name := filepath.Base(rel)
 	identifier := IssueIdentifier(name)
 	if dir := filepath.Dir(rel); dir != "." {
@@ -403,7 +403,7 @@ func magazineGuess(rel string) (string, string) {
 // scanning an existing archive populates the library. Unmonitored: we
 // already own them.
 func (s *Service) matchMagazineFile(index *matchIndex, rel string) (int64, error) {
-	guess, identifier := magazineGuess(rel)
+	guess, identifier := MagazineGuess(rel)
 	if identifier == "" {
 		return 0, nil
 	}
@@ -529,7 +529,7 @@ func (s *Service) RematchUnmatched() (int, error) {
 		var bookID int64
 		switch root.MediaType {
 		case "manga", "comic":
-			seriesGuess, number := comicGuess(rel)
+			seriesGuess, number := ComicGuess(rel)
 			bookID = index.matchVolume(root.MediaType, seriesGuess, number)
 		case "magazine":
 			bookID, err = s.matchMagazineFile(index, rel)
@@ -553,10 +553,10 @@ func (s *Service) RematchUnmatched() (int, error) {
 	return matched, nil
 }
 
-// comicGuess extracts the series name and volume number from a relative
+// ComicGuess extracts the series name and volume number from a relative
 // archive path: the parent directory names the series when present,
 // otherwise the filename prefix before the volume marker.
-func comicGuess(rel string) (string, float64) {
+func ComicGuess(rel string) (string, float64) {
 	name := filepath.Base(rel)
 	number := VolumeFromName(name)
 	if dir := filepath.Dir(rel); dir != "." {

@@ -394,6 +394,11 @@ export interface UnmatchedOption {
   file: BookFile;
   authorName?: string;
   authorId?: number;
+  // Series-first libraries: the parsed series/magazine and volume/issue.
+  seriesName?: string;
+  seriesId?: number;
+  volume?: number;
+  issue?: string;
   suggested?: number;
   confident: boolean;
   confidence: number; // 0–100
@@ -612,6 +617,13 @@ export const api = {
     request<{ imported: number; needsReview: number; messages: string[] }>(
       "/api/v1/bookfile/import-matched",
       json({ mediaType }),
+    ),
+  // materializeIssue imports an unmatched magazine file: the issue book is
+  // created on the spot and the file adopted into it.
+  materializeIssue: (fileId: number, seriesId: number, issue: string) =>
+    request<{ file: BookFile; skips: string[] }>(
+      `/api/v1/bookfile/${fileId}/match`,
+      json({ seriesId, issue }),
     ),
   matchFile: (fileId: number, bookId: number) =>
     request<{ file: BookFile; skips: string[] }>(

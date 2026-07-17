@@ -7,8 +7,8 @@ import {
   type RenameMove,
   type SearchAuthor,
   type SearchBook,
-  type UnmatchedOption,
 } from "../api";
+import UnmatchedCard from "../components/UnmatchedCard";
 import WantedCard from "../components/WantedCard";
 
 // One format library's area (Ebooks or Audiobooks) — a *arr-style poster
@@ -26,9 +26,6 @@ export default function BooksLibraryView({
   const label = library === "ebook" ? "Ebooks" : "Audiobooks";
   const [authors, setAuthors] = useState<Author[]>([]);
   const [libraryBooks, setLibraryBooks] = useState<Book[]>([]);
-  const [unmatched, setUnmatched] = useState<UnmatchedOption[]>([]);
-  const [importingAll, setImportingAll] = useState(false);
-  const [importNotice, setImportNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyHeader, setBusyHeader] = useState(false);
   const [notice, setNotice] = useState("");
@@ -39,31 +36,14 @@ export default function BooksLibraryView({
   const [visible, setVisible] = useState(60);
 
   const reload = useCallback(() => {
-    Promise.all([api.listAuthors(library), api.listBooks(), api.unmatchedOptions(library)])
-      .then(([au, bk, un]) => {
+    Promise.all([api.listAuthors(library), api.listBooks()])
+      .then(([au, bk]) => {
         setAuthors(au);
         setLibraryBooks(bk.filter((b) => (library === "ebook" ? b.inEbookLibrary : b.inAudiobookLibrary)));
-        setUnmatched(un);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
   }, [onError, library]);
-
-  // Existing-file import, the bulk path: adopt every confident match at once.
-  const importAllMatched = () => {
-    setImportingAll(true);
-    setImportNotice("");
-    api
-      .importMatched(library)
-      .then((r) => {
-        setImportNotice(
-          `✓ Imported ${r.imported} — ${r.needsReview} still need${r.needsReview === 1 ? "s" : ""} review`,
-        );
-        reload();
-      })
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setImportingAll(false));
-  };
 
   useEffect(reload, [reload]);
 
@@ -224,38 +204,13 @@ export default function BooksLibraryView({
 
       <WantedCard key={`wanted-${library}`} library={library} onError={onError} />
 
-      {unmatched.length > 0 && (
-        <section className="card">
-          <div className="card-head">
-            <h2>Unmatched files ({unmatched.length})</h2>
-            {unmatched.some((o) => o.confident) && (
-              <button
-                disabled={importingAll}
-                onClick={importAllMatched}
-                title="Adopt every file with a confident match — the book is imported, added to this library, and monitored"
-              >
-                {importingAll
-                  ? "Importing…"
-                  : `Import all matched (${unmatched.filter((o) => o.confident).length})`}
-              </button>
-            )}
-          </div>
-          <p className="muted">
-            Found on disk but not matched to any book in this library. Rows
-            with a confident match import in one click — the book joins the
-            library, monitored. For the rest, pick from the author's books.
-            Dismiss forgets the record — disk is never touched.
-          </p>
-          {importNotice && (
-            <p className={importNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{importNotice}</p>
-          )}
-          <ul className="rows">
-            {unmatched.map((o) => (
-              <UnmatchedRow key={o.file.id} option={o} books={libraryBooks} onDone={reload} onError={onError} />
-            ))}
-          </ul>
-        </section>
-      )}
+      <UnmatchedCard
+        key={`unmatched-${library}`}
+        mediaType={library}
+        books={libraryBooks}
+        onChanged={reload}
+        onError={onError}
+      />
     </>
   );
 }
@@ -353,223 +308,5 @@ function AddPanel({
         ))}
       </ul>
     </div>
-  );
-}
-
-function UnmatchedRow({
-  option,
-  books,
-  onDone,
-  onError,
-}: {
-  option: UnmatchedOption;
-  books: Book[];
-  onDone: () => void;
-  onError: (message: string) => void;
-}) {
-  const { file, candidates, duplicate } = option;
-  const suggested = candidates.find((c) => c.id === option.suggested);
-  const [bookID, setBookID] = useState(option.suggested ?? 0);
-  const [busy, setBusy] = useState(false);
-  const [findingAuthor, setFindingAuthor] = useState(false);
-  const [authorResults, setAuthorResults] = useState<SearchAuthor[] | null>(null);
-
-  const run = (action: () => Promise<unknown>) => {
-    setBusy(true);
-    action()
-      .then(onDone)
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setBusy(false));
-  };
-
-  // The file's author isn't in the library: search the metadata provider so
-  // one click adds them — after which this file (and any siblings) gets real
-  // candidates and, usually, a confident suggestion.
-  const findAuthor = () => {
-    if (authorResults) {
-      setAuthorResults(null); // toggle closed
-      return;
-    }
-    setFindingAuthor(true);
-    api
-      .searchAuthors(option.authorName ?? "")
-      .then((results) => setAuthorResults(results.slice(0, 5)))
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setFindingAuthor(false));
-  };
-
-  const fmtSize = (bytes: number) =>
-    bytes >= 1 << 20 ? `${(bytes / (1 << 20)).toFixed(1)} MiB` : `${(bytes / 1024).toFixed(0)} KiB`;
-
-  // Duplicate of an owned book: show both files and resolve — replace the
-  // library's copy with this one, or delete this one from disk.
-  if (duplicate) {
-    return (
-      <li>
-        <div className="row">
-          <span className="file-path">
-            ⚠️ Duplicate of <strong>{duplicate.title}</strong>
-            {duplicate.year && ` (${duplicate.year})`}
-            <span className="pill match-confidence" title="Match confidence">
-              {duplicate.confidence}%
-            </span>
-          </span>
-        </div>
-        <ul className="rows nested">
-          <li>
-            <div className="row">
-              <span className="file-path muted">in library: 📄 {duplicate.file.path}</span>
-              <span className="muted">
-                {duplicate.file.format} · {fmtSize(duplicate.file.size)}
-              </span>
-            </div>
-          </li>
-          <li>
-            <div className="row">
-              <span className="file-path">this file: 📄 {file.path}</span>
-              <span className="row-actions">
-                <span className="muted">
-                  {file.format} · {fmtSize(file.size)}
-                </span>
-                <button
-                  disabled={busy}
-                  title="Use this file instead — the library's current copy is deleted from disk"
-                  onClick={() => {
-                    if (confirm(`Replace the library's copy of "${duplicate.title}" with this file?\n\nThe current file is deleted from disk.`)) {
-                      run(() => api.replaceFile(file.id, duplicate.bookId));
-                    }
-                  }}
-                >
-                  {busy ? "Working…" : "Replace"}
-                </button>
-                <button
-                  className="danger"
-                  disabled={busy}
-                  title="Keep the library's copy — delete this file from disk"
-                  onClick={() => {
-                    if (confirm("Delete this file from disk? The library's copy is kept.")) {
-                      run(() => api.dismissFile(file.id, true));
-                    }
-                  }}
-                >
-                  Delete
-                </button>
-                <button
-                  className="toggle"
-                  disabled={busy}
-                  title="Forget this file without touching disk (the next scan re-finds it)"
-                  onClick={() => run(() => api.dismissFile(file.id))}
-                >
-                  dismiss
-                </button>
-              </span>
-            </div>
-          </li>
-        </ul>
-      </li>
-    );
-  }
-
-  return (
-    <li>
-      <div className="row">
-        <span className="file-path">
-          {file.path}
-          {option.confident && suggested && (
-            <span className="notice ok">
-              {" "}→ {suggested.title}
-              {suggested.year && ` (${suggested.year})`}
-              <span
-                className="pill match-confidence"
-                title="How sure the match is — an exact title is 100%; longer, more distinctive matches score higher"
-              >
-                {option.confidence}%
-              </span>
-            </span>
-          )}
-        </span>
-        <span className="row-actions">
-          {option.confident && suggested ? (
-            <button
-              disabled={busy}
-              title={`Import as "${suggested.title}" — the book joins this library, monitored`}
-              onClick={() => run(() => api.matchFile(file.id, suggested.id))}
-            >
-              {busy ? "Importing…" : "Import"}
-            </button>
-          ) : candidates.length > 0 ? (
-            <>
-              <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
-                <option value={0}>
-                  {option.authorName ? `${option.authorName}'s books…` : "Choose book…"}
-                </option>
-                {candidates.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                    {c.year ? ` (${c.year})` : ""}
-                  </option>
-                ))}
-              </select>
-              <button disabled={busy || bookID === 0} onClick={() => run(() => api.matchFile(file.id, bookID))}>
-                Import
-              </button>
-            </>
-          ) : (
-            <>
-              {option.authorName && !option.authorId && (
-                <button
-                  className="toggle"
-                  disabled={busy || findingAuthor}
-                  title={`"${option.authorName}" isn't in the library — search the metadata provider and add them`}
-                  onClick={findAuthor}
-                >
-                  {findingAuthor ? "Searching…" : `+ Add ${option.authorName}`}
-                </button>
-              )}
-              {books.length > 0 && (
-                <>
-                  <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
-                    <option value={0}>Match to book…</option>
-                    {books.map((b) => (
-                      <option key={b.id} value={b.id}>{b.title}</option>
-                    ))}
-                  </select>
-                  <button disabled={busy || bookID === 0} onClick={() => run(() => api.matchFile(file.id, bookID))}>
-                    Import
-                  </button>
-                </>
-              )}
-            </>
-          )}
-          <button className="toggle" disabled={busy} onClick={() => run(() => api.dismissFile(file.id))}>
-            dismiss
-          </button>
-        </span>
-      </div>
-      {authorResults && (
-        <ul className="rows nested">
-          {authorResults.length === 0 && (
-            <li className="muted fb-empty">No author named “{option.authorName}” found on the provider.</li>
-          )}
-          {authorResults.map((a) => (
-            <li key={a.foreignAuthorId}>
-              <div className="row">
-                <span>
-                  {a.name}
-                  {(a.bookCount ?? 0) > 0 && <span className="muted"> · {a.bookCount} books</span>}
-                </span>
-                <button
-                  disabled={busy}
-                  title={`Add ${a.name} to this library — their bibliography becomes matchable`}
-                  onClick={() => run(() => api.addAuthor(a.foreignAuthorId, file.mediaType))}
-                >
-                  {busy ? "Adding…" : "Add author"}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
   );
 }

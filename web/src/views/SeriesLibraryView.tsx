@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type RenameMove, type Series, type SeriesResult } from "../api";
 import { libraryLabels } from "../App";
+import UnmatchedCard from "../components/UnmatchedCard";
 import WantedCard from "../components/WantedCard";
 
 // A series-first library area (Manga, Comics, or Magazines) — a *arr-style
@@ -195,6 +196,13 @@ export default function SeriesLibraryView({
     {mediaType !== "magazine" && (
       <WantedCard key={`wanted-${mediaType}`} library={mediaType} onError={onError} />
     )}
+
+    <UnmatchedCard
+      key={`unmatched-${mediaType}`}
+      mediaType={mediaType}
+      onChanged={reload}
+      onError={onError}
+    />
     </>
   );
 }
