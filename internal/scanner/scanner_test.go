@@ -281,6 +281,139 @@ func TestScanAudiobookDiscSubfolders(t *testing.T) {
 	}
 }
 
+// TestScanMatchesOrganizedTemplate: the scanner recognizes its own naming
+// templates' output — "Author/Title (Year)/Author - Series N - Title
+// (Year).epub" — so organizing never orphans a file on the next scan.
+func TestScanMatchesOrganizedTemplate(t *testing.T) {
+	f := fixture(t)
+
+	root := t.TempDir()
+	path := filepath.Join(root, "Terry Pratchett", "Mort (1987)",
+		"Terry Pratchett - Discworld 4 - Mort (1987).epub")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('ebook', ?)`, root); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	books, _ := f.store.ListBooks(0)
+	for _, b := range books {
+		if b.Title == "Mort" {
+			if !b.HasEbookFile {
+				t.Fatal("organized template filename did not match its book")
+			}
+			return
+		}
+	}
+	t.Fatal("Mort not found")
+}
+
+// TestScanPrefersFullTitleOverSubtitleVariant: "Mort" and "Mort: The
+// Illustrated Screenplay" both emit the key "mort" (the latter via its
+// subtitle cut). A file named plain "Mort" must match the real book, not
+// whichever derivative work was indexed last.
+func TestScanPrefersFullTitleOverSubtitleVariant(t *testing.T) {
+	f := fixture(t)
+
+	books, _ := f.store.ListBooks(0)
+	var mort library.Book
+	for _, b := range books {
+		if b.Title == "Mort" {
+			mort = b
+		}
+	}
+	// Indexed after the real book — under last-wins it would steal the key.
+	deriv := &library.Book{AuthorID: mort.AuthorID, Source: "hardcover", ForeignID: "901",
+		Title: "Mort: The Illustrated Screenplay", Monitored: true}
+	if err := f.store.UpsertBook(deriv); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	path := filepath.Join(root, "Terry Pratchett", "Mort (1987)",
+		"Terry Pratchett - Mort (1987).epub")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('ebook', ?)`, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if files, _ := f.store.ListBookFiles(mort.ID); len(files) == 0 {
+		derivFiles, _ := f.store.ListBookFiles(deriv.ID)
+		t.Fatalf("file went to the wrong book: real Mort has none, derivative has %d", len(derivFiles))
+	}
+}
+
+// TestScanKeepsManualMatch: a manually imported file whose name the scanner
+// can't match on its own survives a rescan — scans only add matches, never
+// silently clear them.
+func TestScanKeepsManualMatch(t *testing.T) {
+	f := fixture(t)
+
+	root := t.TempDir()
+	path := filepath.Join(root, "totally-cryptic-name.epub")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('ebook', ?)`, root); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	unmatched, _ := f.store.ListUnmatchedBookFiles()
+	var fileID int64
+	for _, u := range unmatched {
+		if u.Path == path {
+			fileID = u.ID
+		}
+	}
+	if fileID == 0 {
+		t.Fatal("cryptic file should start unmatched")
+	}
+
+	// Manual import (what the existing-file flow does), then rescan.
+	var mort int64
+	books, _ := f.store.ListBooks(0)
+	for _, b := range books {
+		if b.Title == "Mort" {
+			mort = b.ID
+		}
+	}
+	if err := f.store.SetBookFileBook(fileID, mort); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	files, _ := f.store.ListBookFiles(mort)
+	found := false
+	for _, bf := range files {
+		if bf.Path == path {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("rescan cleared the manual match")
+	}
+}
+
 func TestScanAudiobookRoot(t *testing.T) {
 	f := fixture(t)
 

@@ -257,13 +257,36 @@ func Normalize(s string) string {
 	return s
 }
 
-// TitleKeys returns the normalized match keys for a title: the full title
-// and, when a subtitle is present ("Title: Subtitle"), the main title alone.
+// trailingParens matches parenthesized tail chunks — "Title (2011)",
+// "Title (retail) (epub)" — which name editions, not the title itself.
+var trailingParens = regexp.MustCompile(`(\s*\([^)]*\))+\s*$`)
+
+// TitleKeys returns the normalized match keys for a title: the full title;
+// the main title alone when a subtitle is present ("Title: Subtitle"); and
+// the title without trailing parentheticals — our own naming templates emit
+// "Title (Year)", and release names add "(retail)"-style tags, neither of
+// which should defeat a match.
 func TitleKeys(title string) []string {
 	keys := []string{Normalize(title)}
+	add := func(t string) {
+		k := Normalize(t)
+		if k == "" {
+			return
+		}
+		for _, have := range keys {
+			if have == k {
+				return
+			}
+		}
+		keys = append(keys, k)
+	}
 	if main, _, ok := strings.Cut(title, ":"); ok {
-		if k := Normalize(main); k != "" && k != keys[0] {
-			keys = append(keys, k)
+		add(main)
+	}
+	if stripped := trailingParens.ReplaceAllString(title, ""); stripped != title {
+		add(stripped)
+		if main, _, ok := strings.Cut(stripped, ":"); ok {
+			add(main)
 		}
 	}
 	return keys

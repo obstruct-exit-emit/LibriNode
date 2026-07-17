@@ -69,20 +69,23 @@ func (s *Store) UpsertBookFile(f *BookFile) error {
 	if f.MediaType == "" {
 		f.MediaType = "ebook"
 	}
+	// book_id is COALESCEd so a re-scan that can't match a filename on its own
+	// never clears an existing match — manual imports stay imported. Explicit
+	// unmatching goes through SetBookFileBook.
 	err := s.db.QueryRow(`
 		INSERT INTO book_files (root_folder_id, book_id, media_type, variant, path, size, format, modified_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
 			root_folder_id = excluded.root_folder_id,
-			book_id = excluded.book_id,
+			book_id = COALESCE(excluded.book_id, book_files.book_id),
 			media_type = excluded.media_type,
 			variant = excluded.variant,
 			size = excluded.size,
 			format = excluded.format,
 			modified_at = excluded.modified_at
-		RETURNING id`,
+		RETURNING id, COALESCE(book_id, 0)`,
 		f.RootFolderID, bookID, f.MediaType, f.Variant, f.Path, f.Size, f.Format, f.ModifiedAt,
-	).Scan(&f.ID)
+	).Scan(&f.ID, &f.BookID)
 	if err != nil {
 		return err
 	}

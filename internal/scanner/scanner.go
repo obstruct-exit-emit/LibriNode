@@ -125,7 +125,9 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 
 		seen[path] = true
 		result.Scanned++
-		if bookID > 0 {
+		// file.BookID is the effective match after the upsert — a manual
+		// match the walk couldn't reproduce is preserved, and counts as such.
+		if file.BookID > 0 {
 			result.Matched++
 		} else {
 			result.Unmatched++
@@ -180,7 +182,7 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 		}
 		seen[path] = true
 		result.Scanned++
-		if bookID > 0 {
+		if file.BookID > 0 { // effective match after upsert (see scanRoot)
 			result.Matched++
 		} else {
 			result.Unmatched++
@@ -357,7 +359,7 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 		}
 		seen[path] = true
 		result.Scanned++
-		if bookID > 0 {
+		if file.BookID > 0 { // effective match after upsert (see scanRoot)
 			result.Matched++
 		} else {
 			result.Unmatched++
@@ -470,7 +472,7 @@ func (s *Service) scanMagazineRoot(ctx context.Context, root library.RootFolder,
 		}
 		seen[path] = true
 		result.Scanned++
-		if bookID > 0 {
+		if file.BookID > 0 { // effective match after upsert (see scanRoot)
 			result.Matched++
 		} else {
 			result.Unmatched++
@@ -570,11 +572,40 @@ func comicGuess(rel string) (string, float64) {
 // matchIndex holds normalized lookups over the whole library, built once per
 // scan run.
 type matchIndex struct {
-	authorsByName map[string]int64             // Normalize(author name) → author id
-	byAuthorTitle map[int64]map[string]int64   // author id → title key → book id
-	byTitle       map[string]map[int64]bool    // title key → set of book ids
-	volumes       map[string]map[float64]int64 // mediaType/series key → number → book id
-	magazines     map[string]*library.Series   // Normalize(title) → magazine series
+	authorsByName map[string]int64               // Normalize(author name) → author id
+	byAuthorTitle map[int64]map[string]keyedBook // author id → title key → best claimant
+	byTitle       map[string]map[int64]bool      // title key → set of book ids
+	volumes       map[string]map[float64]int64   // mediaType/series key → number → book id
+	magazines     map[string]*library.Series     // Normalize(title) → magazine series
+}
+
+// keyedBook is one book's claim on a title key. Several books can emit the
+// same key — "The Martian" (full title) and "The Martian: Stranded" (subtitle
+// variant) both produce "the martian" — and the wrong winner files imports
+// under a derivative work. Priority: a full-title claim beats a variant
+// claim, then a library member beats a stray, then the first stays.
+type keyedBook struct {
+	id      int64
+	primary bool // the key IS the book's full title, not a variant
+	inLib   bool
+}
+
+// claim records a book's claim on a key when it beats the current holder.
+func (idx *matchIndex) claim(authorID int64, key string, b keyedBook) {
+	if idx.byAuthorTitle[authorID] == nil {
+		idx.byAuthorTitle[authorID] = map[string]keyedBook{}
+	}
+	cur, taken := idx.byAuthorTitle[authorID][key]
+	if taken {
+		if cur.primary != b.primary {
+			if cur.primary {
+				return
+			}
+		} else if cur.inLib || !b.inLib {
+			return
+		}
+	}
+	idx.byAuthorTitle[authorID][key] = b
 }
 
 // matchVolume resolves a manga/comic archive to a volume book id, or 0.
@@ -588,7 +619,7 @@ func (idx *matchIndex) matchVolume(mediaType, seriesGuess string, number float64
 func (s *Service) buildIndex() (*matchIndex, error) {
 	idx := &matchIndex{
 		authorsByName: map[string]int64{},
-		byAuthorTitle: map[int64]map[string]int64{},
+		byAuthorTitle: map[int64]map[string]keyedBook{},
 		byTitle:       map[string]map[int64]bool{},
 		volumes:       map[string]map[float64]int64{},
 	}
@@ -627,14 +658,14 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 		return nil, err
 	}
 	for _, b := range books {
-		if idx.byAuthorTitle[b.AuthorID] == nil {
-			idx.byAuthorTitle[b.AuthorID] = map[string]int64{}
-		}
-		for _, key := range TitleKeys(b.Title) {
+		inLib := b.InEbookLibrary || b.InAudiobookLibrary || b.Monitored
+		for i, key := range TitleKeys(b.Title) {
 			if key == "" {
 				continue
 			}
-			idx.byAuthorTitle[b.AuthorID][key] = b.ID
+			// TitleKeys' first entry is the full title; the rest are variants
+			// (subtitle cut, parentheticals stripped) with weaker claims.
+			idx.claim(b.AuthorID, key, keyedBook{id: b.ID, primary: i == 0, inLib: inLib})
 			if idx.byTitle[key] == nil {
 				idx.byTitle[key] = map[int64]bool{}
 			}
@@ -660,8 +691,8 @@ func (idx *matchIndex) match(p ParsedFile) int64 {
 	if p.Author != "" {
 		if authorID, ok := idx.authorsByName[Normalize(p.Author)]; ok {
 			for _, key := range keys {
-				if bookID, ok := idx.byAuthorTitle[authorID][key]; ok {
-					return bookID
+				if kb, ok := idx.byAuthorTitle[authorID][key]; ok {
+					return kb.id
 				}
 			}
 		}
