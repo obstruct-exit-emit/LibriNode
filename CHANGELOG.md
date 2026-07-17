@@ -10,6 +10,16 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- White-glove UX wave: an app-wide toast layer (stacking, dismissible)
+  replaces the top-of-page error card for in-app errors; every native
+  browser confirm() popup (13) is now a styled confirm dialog; search-and-add
+  renders provider results as poster cards with cover art and per-card add
+  state; URL routing (hash-based) makes every page bookmarkable with working
+  back/forward and refresh; indexers, download clients, and quality profiles
+  are editable in place (including the 1–50 priority, finally exposed);
+  global search in the sidebar spans every library; skeleton loading states
+  replace "Loading…" text; Activity history, the blocklist, and backups show
+  relative ages via shared date/size formatting utils.
 - Existing-file import across all five libraries: unmatched files get a
   best-guess suggestion with a 0–100% confidence rating, one-click Import and
   bulk "Import all matched", duplicate resolution (both files shown, Replace

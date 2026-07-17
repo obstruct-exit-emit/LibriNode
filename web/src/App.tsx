@@ -16,6 +16,7 @@ import BookDetailView from "./views/BookDetailView";
 import BooksLibraryView from "./views/BooksLibraryView";
 import CalendarView from "./views/CalendarView";
 import HomeView from "./views/HomeView";
+import SearchView from "./views/SearchView";
 import SeriesDetailView from "./views/SeriesDetailView";
 import SeriesLibraryView from "./views/SeriesLibraryView";
 import SettingsView from "./views/SettingsView";
@@ -30,6 +31,7 @@ type Page =
   | { name: "author"; id: number; library: "ebook" | "audiobook" }
   | { name: "book"; id: number; library: "ebook" | "audiobook"; authorId: number }
   | { name: "series-detail"; id: number; mediaType: string }
+  | { name: "search"; q: string }
   | { name: "calendar" }
   | { name: "activity" }
   | { name: "settings" }
@@ -67,6 +69,8 @@ function pageToHash(p: Page): string {
       return `#/book/${p.id}?lib=${p.library}&author=${p.authorId}`;
     case "series-detail":
       return `#/series/${p.id}?type=${p.mediaType}`;
+    case "search":
+      return `#/search?q=${encodeURIComponent(p.q)}`;
     default:
       return `#/${p.name}`;
   }
@@ -93,6 +97,8 @@ function hashToPage(hash: string): Page {
       return id > 0
         ? { name: "series-detail", id, mediaType: q.get("type") ?? "manga" }
         : { name: "home" };
+    case "search":
+      return { name: "search", q: q.get("q") ?? "" };
     case "calendar":
       return { name: "calendar" };
     case "activity":
@@ -224,6 +230,7 @@ function AppInner() {
       {connected && (
         <aside className="sidebar">
           <h1 className="brand">🖋️ LibriNode</h1>
+          <SidebarSearch onSearch={(q) => go({ name: "search", q })} />
           <nav>
             {navButton({ name: "home" }, "Home", "🏠")}
             {active.length > 0 && <div className="nav-group">Libraries</div>}
@@ -388,6 +395,18 @@ function AppInner() {
             onBack={() => go({ name: "library", mediaType: page.mediaType })}
           />
         )}
+        {connected && page.name === "search" && (
+          <SearchView
+            key={page.q}
+            query={page.q}
+            onError={onError}
+            onOpenAuthor={(id, library) => go({ name: "author", id, library })}
+            onOpenBook={(b, library) =>
+              go({ name: "book", id: b.id, library, authorId: b.authorId })
+            }
+            onOpenSeries={(id, mediaType) => go({ name: "series-detail", id, mediaType })}
+          />
+        )}
         {connected && page.name === "calendar" && <CalendarView onError={onError} />}
         {connected && page.name === "activity" && <ActivityView onError={onError} />}
         {connected && page.name === "settings" && (
@@ -396,6 +415,27 @@ function AppInner() {
         {connected && page.name === "system" && <SystemView onError={onError} />}
       </main>
     </div>
+  );
+}
+
+// SidebarSearch: the global search box — Enter searches every library.
+function SidebarSearch({ onSearch }: { onSearch: (q: string) => void }) {
+  const [q, setQ] = useState("");
+  return (
+    <form
+      className="sidebar-search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (q.trim()) onSearch(q.trim());
+      }}
+    >
+      <input
+        placeholder="🔍 Search libraries…"
+        aria-label="Search all libraries"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+    </form>
   );
 }
 

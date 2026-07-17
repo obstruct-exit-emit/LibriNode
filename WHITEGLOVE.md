@@ -24,45 +24,44 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
       organizes
 - [x] Magazines switched to organize-only (acquisition disabled everywhere;
       engine kept for later)
-
-## P1 — most visible, worst polish gap
-- [ ] **Search-and-add flow.** The primary "add content" surface is plain text
-      rows (`name · N books` + Add button) with no cover art, descriptions, or
-      grid — the least polished screen in the app. Give it the poster-grid look
-      with covers/year/blurb. `BooksLibraryView` AddPanel + series add.
-- [ ] **Kill the 12 native `confirm()` dialogs.** Unstyled browser popups for
-      remove-client/indexer/root-folder/user, disable-login, clear-caches,
-      restore/delete-backup. A styled confirm (`RemovePanel`) already exists —
-      unify on one. `ActivityView`, `SettingsView`, `SystemView`.
-- [ ] **Fix the `confirm()`-as-monitor-prompt.** `BookDetailView:188` uses a
-      yes/no dialog to make a three-way choice ("OK = monitor, Cancel = just
-      add"). Replace with a real small dialog with labeled options.
-
-## P2 — systemic consistency
-- [ ] **Unified toast/notification layer.** Errors are one big top-of-page red
-      card (a new one replaces the old); success notices are inline per
-      component in ~4 formats. Add dismissible, stacking toasts used everywhere.
-      `App.tsx` error card + scattered `notice ok/bad`.
-- [ ] **URL routing / deep-linking.** Page state is a plain React `useState`
-      (`App.tsx`), so a refresh resets to Home, pages can't be bookmarked or
-      shared, and the browser back button doesn't work inside the app. Add
-      real routing (history/URL) so every book/series/settings view is a link.
-- [ ] **Edit-in-place for saved config.** Indexers, download clients, and
-      quality profiles can only be added, removed, or toggled — to change a
-      URL, host, or format list you must delete and re-add. The `update*` APIs
-      exist and are only wired to the enable/upgrade toggles; add edit forms.
-- [ ] **Skeleton loading states.** Replace plain "Loading…" / "Loading book…"
-      text with poster-grid and detail-header skeletons.
+- [x] **P1: Search-and-add flow** — shared AddResultsGrid poster cards with
+      cover art, title/subtitle, clamped blurbs (series), per-card
+      adding→added state; wired into prose AddPanel and series add
+- [x] **P1: All 13 native `confirm()` dialogs killed** — app-wide styled
+      confirm dialog (title, danger styling, Escape/backdrop cancel) via the
+      new `useUi()` layer
+- [x] **P1: `confirm()`-as-monitor-prompt** — cross-format add is a real
+      inline three-way choice (Add + monitor / Just add / cancel)
+- [x] **P2: Toast layer** — stacking, dismissible toasts (`web/src/ui.tsx`);
+      every view's errors surface as toasts (the connection error keeps its
+      card for its recovery UI); add flows toast successes. Some contextual
+      inline notices (form validation, scan summaries) intentionally remain.
+- [x] **P2: URL routing / deep-linking** — hash router in App.tsx: every
+      page has a URL, refresh keeps the page, back/forward work, views are
+      bookmarkable
+- [x] **P2: Edit-in-place** — indexers, download clients, and quality
+      profiles load into their form via an edit button (Save changes /
+      Cancel); no more delete-and-re-add to change a URL or format list
+- [x] **P2: Skeleton loading states** — shimmering poster-grid, detail-head,
+      and list skeletons replace every bare "Loading…" text
+- [x] **Power: Indexer/client priority UI** — the 1–50 priority (lower wins)
+      is editable under Advanced on both forms
+- [x] **Power: Global search** — sidebar search box across every library
+      (authors, prose books, series/magazines) with grouped poster results
+- [x] **Foundation: shared formatting utils** — one formatBytes (the
+      "936278 KiB" bug is dead) + formatDate + relativeTime in
+      `web/src/format.ts`; history/blocklist/backups now show ages
 
 ## P3 — per-surface passes not yet done
 - [ ] **Author & Series detail pages** — got download badges but no full pass;
       action rows, Missing rows, and file lists are utilitarian.
-- [ ] **Quality Profiles editor** — formats are a raw comma-separated text
-      field; make a format-chips / drag-to-order editor (prettier + powerful).
-- [ ] **Indexers & Download Clients cards** — saved-item rows are tiny text
-      buttons (test/enable/remove); match the rest of Settings.
-- [ ] **System page** (backups / logs / health) — never polished; basic backup
-      rows and log viewer.
+- [ ] **Quality Profiles editor** — edit-in-place landed, but formats are
+      still a raw comma-separated text field; a format-chips / drag-to-order
+      editor would be prettier + more powerful.
+- [ ] **Indexers & Download Clients cards** — edit-in-place landed; the
+      saved-item rows are still tiny text buttons — a visual pass remains.
+- [ ] **System page** (backups / logs / health) — backup ages now show, but
+      the page has never had a real polish pass.
 - [ ] **Calendar view** — plain agenda list, untouched.
 - [ ] **Auth entry screens** (`LoginForm`, `ApiKeyForm` in `App.tsx`) — the
       first thing a non-wizard user sees; no polish pass.
@@ -70,15 +69,9 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
 ## Power — the "powerful" half
 - [ ] **Bulk actions.** Everything is one-at-a-time. Multi-select on library
       grids / Missing / Wanted for bulk monitor / grab / remove.
-- [ ] **Global search.** Add-search is per-library only; a top-bar search across
-      all libraries would be a big win.
 - [ ] **Series pack grab.** Known content gap — manga/comic torrents are
       whole-series packs that get rejected. A deliberate series-level pack grab
       (reusing the pack importer) would close it.
-- [ ] **Indexer / download-client priority UI.** Both carry a `priority` field
-      (lowest wins) that's only ever set to the add-time default — no way to
-      reorder or prefer one indexer/client without delete-and-re-add. Add
-      drag-to-order or a priority control.
 - [ ] **Configurable timings.** Wanted-search (6h), metadata refresh (24h),
       health check (15m), import (1m), stale-grab grace (30m) are hardcoded in
       `main.go`/`importer.go` (the code even flags "not yet configurable").
@@ -86,15 +79,11 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
       settings section.
 
 ## Foundation — cross-cutting
-- [ ] **Shared formatting utils.** Three different byte formatters
-      (`formatSize` in BookDetailView, `fmtSize` in ReleaseBrowser without a KiB
-      tier, and a raw `(size/1024) KiB` inline in `SeriesDetailView` — the
-      "936278 KiB" huge-number bug still shows there). One `formatBytes` +
-      `formatDate` + `relativeTime` util, used everywhere.
-- [ ] **Accessibility.** Near-zero today: no `role=`, icon-only buttons (✕,
-      remove, toggles) rely on `title` not `aria-label`, book covers use empty
-      `alt`, no focus trapping on inline dialogs, ~one keyboard handler in the
-      whole app. Add labels, focus management, and keyboard paths.
+- [ ] **Accessibility.** Improved at the edges (aria-labels on new
+      components, role=dialog/status, Escape handling on the confirm modal)
+      but still no systematic pass: icon-only buttons rely on `title`, book
+      covers use empty `alt`, no focus trapping. Add labels, focus
+      management, and keyboard paths.
 - [ ] **Responsive / mobile.** Only two media queries (sidebar collapse at
       800px, detail-head stack at 600px). Poster grids, Settings forms, the
       release browser controls, and Activity rows have no responsive handling;
@@ -116,6 +105,8 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
       trusted instance; revisit if accounts ever gate different access.
 
 ---
-Suggested order: P1 search-and-add + the `confirm()` cleanup, then P2 toasts
-(makes everything else feel finished), then the shared formatting util (cheap,
-fixes a real inconsistency), then work down P3 / Power.
+All P1 and P2 items are done, plus global search, priority controls, and the
+shared formatting utils. Suggested order for the rest: configurable timings
+(most-requested power knob), then bulk actions, then the P3 per-surface
+passes, with accessibility + responsive as the closing foundation sweep.
+Series pack grab is the one real content-gap feature left.

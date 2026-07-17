@@ -35,6 +35,9 @@ export interface Book {
   id: number;
   authorId: number;
   foreignBookId: string;
+  // "book" for prose; "manga"/"comic" volumes and "magazine" issues carry
+  // their series' type.
+  mediaType: string;
   title: string;
   sortTitle: string;
   description: string;

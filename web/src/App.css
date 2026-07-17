@@ -1324,3 +1324,24 @@ button.link.back:hover {
     background-position: -200% 0;
   }
 }
+
+/* ---- Sidebar global search ---- */
+
+.sidebar-search {
+  margin: 0 0 0.75rem;
+}
+
+.sidebar-search input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.45rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.sidebar-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
