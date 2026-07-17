@@ -20,7 +20,7 @@ Runs on **Windows** and **Linux** (bare metal or Docker).
 ## Why another *arr?
 
 - **Readarr** is retired/unmaintained and never handled manga or comics.
-- **LazyLibrarian** covers a lot (including magazines, which LibriNode also automates) but has an aging UI and inconsistent metadata.
+- **LazyLibrarian** covers a lot (including magazines, which LibriNode also manages — organize-only for now) but has an aging UI and inconsistent metadata.
 - **Mylar** does comics only; **Kavita/Komga** are readers, not automation.
 
 Nothing today automates **all five** written-media types in one app with modern metadata (Hardcover) and clean *arr-style integrations. That's the gap LibriNode fills.
@@ -133,8 +133,11 @@ language, date formats) is planned post-1.0.
    Adding a specific book pulls its editions and monitors just that one.
 5. **Library → Scan files:** match files you already own to library books —
    every book shows an **owned**/**wanted** badge. Strays land in an
-   unmatched list and attach automatically the moment you add their book
-   from Search; you can also match them by hand or dismiss them.
+   unmatched list with the library's best guess and a 0–100% confidence
+   rating: import one in a click (or every confident match at once), resolve
+   duplicates with Replace/Delete, and add a missing author, series, or
+   magazine right from the row. Exact-named strays still attach automatically
+   the moment you add their book from Search.
 6. **Library → Organize…:** preview, then apply, moving files into the
    naming-template layout.
 7. **Settings → Download Clients:** point LibriNode at qBittorrent
@@ -215,12 +218,14 @@ each file lives on disk.
 
 **Magazines** work LazyLibrarian-style — periodicals have no metadata
 provider, so you add one **by name** (Magazines library → **+ Add**). LibriNode
-then recognizes issues by date or number in release and file names
+then recognizes issues by date or number in file names
 (`The Economist - 2026-07-04.pdf`, `Retro Gamer Issue 261`): scanning a
 magazine root materializes owned issues into the library automatically, and
-— once you monitor the magazine (adds start unmonitored) — the automatic
-search grabs newly published issues (capped at 3 per pass)
-using each indexer's **Magazine categories** (default `7010`). Imports land
+the existing-file import adopts strays (fuzzy-named files, unknown magazines
+added by name in one click). **The magazine library is organize-only for
+now** — searching and downloading are disabled everywhere (the magazine
+usenet landscape proved to be mostly disguised malware), and the search/grab
+engine stays in the tree for when acquisition returns. Organized issues land
 as `Magazine/Magazine - date.pdf`.
 
 **Indexers** can be added two ways: manually under **Settings → Indexers**
@@ -308,8 +313,8 @@ scriptable:
 | Libraries | `GET /libraries` (which media types are set up), `GET /home` (per-library Recently-added/Wanted sections), `GET /wanted?library=X` (Wanted page), `GET /calendar?past=&days=` (dated releases) |
 | Authors | `GET/POST /author` (`?library=` scopes; adds take `"library"`), `GET/DELETE /author/{id}` (`?deleteFiles=true` also removes files — deletes outright, every library), `PUT /author/{id}/library` (scoped add/remove from ONE format library; `deleteFiles` on remove; auto-deletes the author once they're in no library), `PUT /author/{id}/monitor`, `PUT /author/{id}/provider` (per-author provider override; `""` follows settings), `POST /author/{id}/refresh` (never changes membership or monitoring), `GET /author/{id}/missing?library=` (bibliography gaps), `POST /author/{id}/search?library=` (search this author's wanted books only) |
 | Books | `GET/POST /book` (adds take `"library"`), `GET/DELETE /book/{id}` (`?deleteFiles=true` also removes files), `GET /book/{id}/cover` (cover image extracted from the owned CBZ/CBR's first page; cached under `<data>/covers`, refreshed when the file changes), `PUT /book/{id}/library` (per-format membership + monitored; `deleteFiles` removes that format's files on leave; `library:"manga"`/`"comic"` adds/removes a volume/issue from its series — `member:false` forgets its file records so it drops to Missing), `PUT /book/{id}/monitor`, `POST /book/{id}/refresh` |
-| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?bookId=N\|unmatched=true`, `POST /bookfile/{id}/match`, `DELETE /bookfile/{id}`, `DELETE /library/covers/cache` (clear extracted comic covers) |
-| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic\|magazine`; volumes imply their own type) — parsed + scored candidates from all enabled indexers |
+| Files | `POST /library/scan`, `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, or `?seriesId=`/`{"seriesId":N}` scopes, otherwise everything), `GET /bookfile?bookId=N\|unmatched=true`, `GET /bookfile/unmatched/options?mediaType=` (existing-file import: per-file suggestions with confidence, candidates, duplicates — all five types), `POST /bookfile/import-matched` (bulk-import every confident match), `POST /bookfile/{id}/match` (`{"bookId":N}`, or `{"seriesId":N,"issue":"…"}` to materialize a magazine issue), `POST /bookfile/{id}/replace` (swap an owned file for this one; manga replaces only the matching variant), `DELETE /bookfile/{id}` (`?deleteFiles=true` also deletes from disk), `DELETE /library/covers/cache` (clear extracted comic covers) |
+| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `GET /indexer/schema`, `POST /indexer/test`, `GET /release?term=` or `?bookId=N` (+ `&mediaType=ebook\|audiobook\|manga\|comic`; volumes imply their own type; magazines are rejected — organize-only) — parsed + scored candidates from all enabled indexers |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient`, `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (with `bookId` for auto-import), `GET /queue` (items enriched with their book/grab + live progress; short-cached snapshot shared across pollers), `DELETE /queue/{clientId}/{itemId}` (remove one download + its data, not blocklisted), `POST /library/import`, `GET /history`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=` (grab best release for one book), `POST /library/search` (sweep all wanted books and formats) |
@@ -425,7 +430,7 @@ metadata endpoints return 503.
 - [x] Issue/volume monitoring: per-series "monitor future volumes" — refresh discovers new volumes and monitors them automatically. *(Series adds later became metadata-only, like author adds: volumes start unmonitored in the series' Missing section, and the series toggle is the bulk opt-in that also enables monitor-future-volumes)*
 - [x] Kavita/Komga-friendly folder layouts (`Series/Series Vol. N.cbz`, templates editable)
 - [x] Magazines as provider-less series: add by name, issues recognized by date/number parsing (ISO dates, "July 2026", "Issue 452")
-- [x] Magazine scanning materializes owned issues; automatic search grabs new issues (capped per pass); `Magazine/Magazine - date.pdf` layout; indexer categories 7010
+- [x] Magazine scanning materializes owned issues; automatic search grabs new issues (capped per pass); `Magazine/Magazine - date.pdf` layout; indexer categories 7010 *(magazine acquisition was later disabled — the library is organize-only for now, the search engine kept in the tree; see Status)*
 
 ### Phase 5 — Polish & 1.0
 - [x] **Plex-style library layout**: a media type appears in the UI only once the user creates its library by adding a root folder (content alone never surfaces one); each active library gets its own sidebar area with *arr-style browsing — a poster grid (author-first for books, series-first for manga/comics/magazines, owned/total counts on each card), scoped add-and-search, and unmatched files. Prose books browse three levels deep: library grid → author page (bio, author-scoped actions, a poster grid of that author's books, and Missing below it) → book page (cover, description, acquisition controls); manga/comics/magazines stay two levels deep, with volumes/issues as rows on the series page. The Home page is the only place types meet, as stacked per-library sections (Recently added / Wanted with cover art) that never interleave types; type-specific settings render only for active libraries
@@ -483,7 +488,7 @@ turns "works on the dev box" into "trustable release".
 
 ## Status
 
-🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga flows series-first from AniList or Hardcover and comics from Hardcover or ComicVine (both selectable) — series adds pull metadata only, with volumes/issues monitored selectively from a per-series Missing section or in bulk via the series toggle ("monitor future volumes" included), and manga ownable in colorized and monochrome variants at once; magazines are provider-less periodicals added by name, with issues recognized by date. One acquisition pipeline serves everything: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, an optional login, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover, AniList, **Prowlarr** (application sync, both usenet and torrent indexers), and the **download clients** (qBittorrent and SABnzbd, both usenet and torrents, verified through a TorBox/Real-Debrid bridge from search to organized file) are verified against live services; ComicVine is mock-tested and awaits live confirmation. **1.0 waits on [Phase 5.5 — Pre-1.0 hardening](#phase-55--pre-10-hardening)**: live-verifying the mock-tested integrations, real-world burn-in, upgrade-path and restore drills, failure-mode/security/performance passes, and signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
+🚧 **Pre-1.0 — Phases 0–5 built, hardening remains.** All five media types work end-to-end: ebooks and audiobooks flow author-first from Hardcover into separate per-format libraries with explicit membership; manga flows series-first from AniList or Hardcover and comics from Hardcover or ComicVine (both selectable) — series adds pull metadata only, with volumes/issues monitored selectively from a per-series Missing section or in bulk via the series toggle ("monitor future volumes" included), and manga ownable in colorized and monochrome variants at once; magazines are provider-less periodicals added by name, with issues recognized by date (organize-only for now — magazine searching/downloading is disabled). One acquisition pipeline serves the four acquiring libraries: per-type indexer categories with failure backoff, release parsing that understands formats, narrators, volume numbers, and issue dates, quality profiles with upgrade handling, a failed-release blocklist, qBittorrent/SABnzbd grabbing with seed-goal cleanup, and imports that land in reader-friendly layouts (Audiobookshelf folders with `metadata.opf` for audio, Kavita/Komga layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre) — with rename/organize covering every type. The UI is Plex-style (sidebar libraries, filterable poster grids, detail pages, grouped settings) with per-library Wanted pages, per-author Missing sections with author-scoped actions, a release calendar, health-check banners, multi-user login accounts with a first-run setup wizard, delete-from-disk options, backups with staged restore, and a log viewer; packaging (Docker, systemd, Windows scripts, release CI) and a docs site are in the repo. Hardcover, AniList, **Prowlarr** (application sync, both usenet and torrent indexers), and the **download clients** (qBittorrent and SABnzbd, both usenet and torrents, verified through a TorBox/Real-Debrid bridge from search to organized file) are verified against live services; ComicVine is mock-tested and awaits live confirmation. **1.0 waits on [Phase 5.5 — Pre-1.0 hardening](#phase-55--pre-10-hardening)**: live-verifying the mock-tested integrations, real-world burn-in, upgrade-path and restore drills, failure-mode/security/performance passes, and signed installers/published images — external notifications and the rest of the [Post-1.0 ideas](#post-10-ideas) stay parked for now.
 
 ## License
 

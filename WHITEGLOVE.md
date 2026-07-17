@@ -2,7 +2,8 @@
 
 UX polish + power-feature tracker for LibriNode: making the app powerful,
 user-friendly, good-looking, and consistent. Grounded in a code audit of
-`web/src` (2026-07). **Magazines are intentionally out of scope** for now.
+`web/src` (2026-07). **Magazine acquisition is disabled** (organize-only
+library) — magazine polish is limited to the organizational surfaces.
 
 Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
 **P3** per-surface pass · **Power** capability · **Foundation** cross-cutting.
@@ -15,11 +16,14 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
 - [x] Live download badges — book page, series volume rows, Wanted cards (shared cached queue poll)
 - [x] Multi-file audiobooks — disc subfolders, collision-safe flatten, per-book folder unit
 - [x] Cross-format book links · clickable Home tiles · first-run setup wizard
-- [x] Existing-file import — unmatched files get confident suggestions
-      (longest-title-wins matching against the path's author), one-click
-      per-file Import and bulk "Import all matched"; adopted books are
-      enrolled + monitored; manual fallback lists the author's books
-      (owned-in-format excluded), then the whole library
+- [x] Existing-file import — ALL five libraries: confident suggestions with a
+      0–100% confidence rating, one-click Import + bulk "Import all matched",
+      duplicate resolution (Replace/Delete, variant-aware for manga),
+      one-click add of missing author/series/magazine from the row; magazine
+      imports materialize the issue; scanner keeps matches sticky across
+      organizes
+- [x] Magazines switched to organize-only (acquisition disabled everywhere;
+      engine kept for later)
 
 ## P1 — most visible, worst polish gap
 - [ ] **Search-and-add flow.** The primary "add content" surface is plain text

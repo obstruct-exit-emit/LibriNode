@@ -26,11 +26,14 @@
    authors: adding one pulls its volumes as metadata, all starting in the
    series' **Missing** section — monitor volumes selectively, or flip the
    series' monitor toggle to monitor everything (including future volumes).
-   Magazines are added by name and start unmonitored too.
+   Magazines are added by name and are organize-only for now — scanning and
+   organizing work, downloading is disabled.
 
 5. **Scan what you own.** **Scan files** on a library page matches existing
    files to your books — every item gets an owned/wanted badge. Strays land
-   in an unmatched list and attach automatically when you add their book.
+   in an unmatched list with a confidence-rated best guess: import them in
+   one click (or all confident matches at once), resolve duplicates, or add
+   the missing author/series/magazine right from the row.
 
 6. **Automate acquisition.** Add indexers (**Settings → Indexers**, or sync
    them from Prowlarr by adding LibriNode as a *Readarr* application) and a

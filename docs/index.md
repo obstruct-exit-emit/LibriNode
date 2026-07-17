@@ -19,7 +19,7 @@ per-type libraries — automatically.
 | Audiobooks | Hardcover | m4b, m4a, mp3, flac, opus |
 | Manga | AniList (no key) or Hardcover | cbz, cbr, epub |
 | Comics | Hardcover or ComicVine (free key) | cbz, cbr, pdf |
-| Magazines | none — added by name | pdf, epub, cbz |
+| Magazines | none — added by name (organize-only for now) | pdf, epub, cbz |
 
 Each library is independent: its own root folders, naming templates, and
 quality profiles. Plex-style, a library only appears in the UI once you

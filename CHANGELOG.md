@@ -10,9 +10,30 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Existing-file import across all five libraries: unmatched files get a
+  best-guess suggestion with a 0–100% confidence rating, one-click Import and
+  bulk "Import all matched", duplicate resolution (both files shown, Replace
+  or Delete — variant-aware for manga), and one-click adding of a missing
+  author (provider search), manga/comic series (provider search), or magazine
+  (by name). Magazine imports materialize the issue on the spot; adopted
+  prose books are enrolled and monitored.
+- First-run setup wizard: a fresh instance is claimed by its first visitor —
+  create the account, then guided steps for library folders (with a visual
+  folder browser), the Hardcover token, an indexer, and a download client.
+  No API-key paste required.
+- Multi-user accounts: the Security card lists users with add, change
+  password, make-default, and remove (the default account is protected).
+- Visual folder picker for root folders (Settings and the wizard): browse the
+  server's filesystem instead of typing paths blind.
+- Release browser: interactive search results in one organized component —
+  approved/all and protocol filters, sorting (score/size/seeders/age),
+  always-visible size/seeders/leechers/age per row with the active sort
+  highlighted, rejection reasons inline with a "grab anyway" override, and
+  per-row grab feedback.
 - Live download progress: Activity queue rows carry progress bars and per-line
   remove; blocklist and history collapse into dropdowns; a book page's badge
-  turns "downloading N%" while its grab is active and reverts on its own.
+  turns "downloading N%" while its grab is active and reverts on its own;
+  series volume rows and Wanted cards show the same live state.
   Queue responses are served from a shared 15-second snapshot so open pages
   never stampede the download clients.
 - Richer default file naming across all libraries: per-book ebook folders,
@@ -35,6 +56,9 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- Scanner matches survive organizing: template-named files re-match their
+  books on every scan (template-aware keys), manual matches stick, and a
+  re-found file no longer duplicates its record.
 - An import whose organized target already exists on disk but is unrecorded
   now adopts the file instead of skipping forever with the grab stuck.
 - Format-less release names (manga/comic/magazine/audiobook convention) are
@@ -44,6 +68,10 @@ in progress. Highlights from the hardening period, newest first:
   covering clients that ignore the delete-files flag.
 
 ### Changed
+- Magazines are organize-only for now: searching and downloading are disabled
+  everywhere (wanted sweep, series search, release search, grab), while
+  add-by-name, scanning, issue materialization, import, and organizing all
+  keep working. The magazine search engine stays in the tree for later.
 - Unstamped (dev) builds now report `dev-<sha> (<date>)` from the embedded
   build info instead of a stale placeholder; releases keep stamping real
   versions via ldflags.

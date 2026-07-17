@@ -127,14 +127,49 @@ lives on disk. Grabbing is variant-agnostic (a release doesn't reveal
 whether it's color or mono); per-variant ownership is recorded by the
 scanner as files land under their variant root.
 
-## Magazines (provider-less)
+## Magazines (provider-less, organize-only)
 
 Add a magazine **by name**; LibriNode recognizes issues by date or number in
-release and file names (`The Economist - 2026-07-04.pdf`, `Issue 452`).
-Scanning materializes owned issues; once the magazine is monitored (adds
-start unmonitored, like every series), automatic search grabs newly
-published issues (capped per pass). Imports land as
+file names (`The Economist - 2026-07-04.pdf`, `Issue 452`). Scanning
+materializes owned issues automatically, the existing-file import (below)
+adopts fuzzy-named strays, and organized issues land as
 `Magazine/Magazine - date.pdf`.
+
+**The magazine library is organize-only for now**: searching and downloading
+are disabled everywhere — the wanted sweep skips magazines, the series
+Search-wanted button is hidden, and the release/grab endpoints reject
+`mediaType=magazine`. Everything organizational (add by name, scan, import,
+organize, browse, calendar) still works.
+
+## Existing-file import (unmatched files)
+
+Every library page ends with an **Unmatched files** card when a scan found
+files it couldn't confidently place. Each row shows the library's best
+suggestion with a **0–100% confidence rating** (100% = exact title; a unique
+longer match scores by how much of the filename it explains and its lead
+over the runner-up; ties cap at 40% and never auto-import):
+
+- **Confident rows import in one click** — and **Import all matched (N)**
+  takes every confident row at once. Adopted prose books are enrolled in the
+  library and monitored, like books added by hand.
+- **Duplicates** (the file matches a book/volume/issue already owned) show
+  both files side by side with **Replace** (this file takes the library
+  copy's place — the old file is deleted from disk) or **Delete** (this file
+  is deleted, the library copy kept). Manga is variant-aware: a colorized
+  file only duplicates — and Replace only touches — the colorized copy.
+- **Unknown owners get a one-click add**: an unrecognized author folder
+  offers "+ Add ‹author›" (provider search inline), an unknown manga/comic
+  series offers "+ Add ‹series›", and an unknown magazine is created by
+  name on the spot. After adding, the row (and its siblings) gain real
+  suggestions.
+- The manual fallback lists the author's books (prose) or the series'
+  unowned volumes; **dismiss** forgets the record without touching disk.
+
+Per library: prose matches the author folder against the author's
+bibliography; manga/comics parse the series (folder or filename prefix,
+fuzzy-tolerant) and the `v02`/`#07` volume number; magazines parse the title
+and issue date/number — a confident magazine import materializes the issue
+on the spot.
 
 ## Organizing files
 
@@ -147,7 +182,9 @@ files only).
 
 ## Wanted, Home, and Calendar
 
-Every library page has a **Wanted** card (monitored but missing that
-format's file, with per-item search). **Home** shows per-library
-Recently-added and Wanted rows — types never mix. **Calendar** lists dated
-releases across all libraries, upcoming and recent.
+Every acquiring library page has a **Wanted** card (monitored but missing
+that format's file, with per-item search and live download progress) —
+magazines, being organize-only, have none. **Home** shows per-library
+Recently-added and Wanted rows — types never mix, and the magazine section
+carries no Wanted row. **Calendar** lists dated releases across all
+libraries, upcoming and recent.

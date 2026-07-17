@@ -1,5 +1,10 @@
 # Acquisition
 
+Acquisition serves **ebooks, audiobooks, manga, and comics**. Magazines are
+organize-only for now — the wanted sweep skips them and the release/grab
+endpoints reject them; see the Libraries page. (The magazine categories
+setting below is kept for when acquisition returns.)
+
 ## Indexers
 
 Two ways in:
