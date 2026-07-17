@@ -167,9 +167,12 @@ func (s *Store) Wanted(mediaType string) ([]HomeItem, error) {
 	return s.homeItems(wantedWhere(mediaType), "books.added_at DESC, books.id DESC", 1000, mediaType)
 }
 
-// CalendarItem is one dated entry on the calendar page.
+// CalendarItem is one dated entry on the calendar page. AuthorID (prose) and
+// SeriesID (volumes/issues) let the UI open the item's page.
 type CalendarItem struct {
 	BookID      int64  `json:"bookId"`
+	AuthorID    int64  `json:"authorId,omitempty"`
+	SeriesID    int64  `json:"seriesId,omitempty"`
 	Title       string `json:"title"`
 	Subtitle    string `json:"subtitle,omitempty"`
 	MediaType   string `json:"mediaType"`
@@ -184,7 +187,9 @@ func (s *Store) Calendar(from, to string) ([]CalendarItem, error) {
 	for _, mt := range MediaTypes {
 		rows, err := s.db.Query(`
 			SELECT books.id, books.title, COALESCE(a.name, ''), books.release_date,
-				EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+mt+`')
+				EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+mt+`'),
+				COALESCE(books.author_id, 0),
+				COALESCE((SELECT sb.series_id FROM series_books sb WHERE sb.book_id = books.id LIMIT 1), 0)
 			FROM books LEFT JOIN authors a ON a.id = books.author_id
 			WHERE `+itemsWhere(mt)+` AND books.release_date >= ? AND books.release_date <= ?
 			ORDER BY books.release_date`, from, to)
@@ -193,7 +198,8 @@ func (s *Store) Calendar(from, to string) ([]CalendarItem, error) {
 		}
 		for rows.Next() {
 			it := CalendarItem{MediaType: mt}
-			if err := rows.Scan(&it.BookID, &it.Title, &it.Subtitle, &it.ReleaseDate, &it.Owned); err != nil {
+			if err := rows.Scan(&it.BookID, &it.Title, &it.Subtitle, &it.ReleaseDate, &it.Owned,
+				&it.AuthorID, &it.SeriesID); err != nil {
 				rows.Close()
 				return nil, err
 			}

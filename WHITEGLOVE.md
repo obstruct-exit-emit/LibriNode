@@ -51,20 +51,28 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
 - [x] **Foundation: shared formatting utils** — one formatBytes (the
       "936278 KiB" bug is dead) + formatDate + relativeTime in
       `web/src/format.ts`; history/blocklist/backups now show ages
+- [x] **P3: Quality Profiles editor** — formats are ordered chips (‹ ›
+      reorder, ✕ remove, suggestion-backed add per media type) instead of a
+      raw comma field
+- [x] **P3: Indexers & Download Clients cards** — saved rows are two-line
+      items with protocol/priority/disabled pills and the URL underneath,
+      instead of everything squeezed into one line of tiny buttons
+- [x] **P3: Calendar** — every item is clickable (prose → book page,
+      volumes/issues → series page; backend now sends authorId/seriesId,
+      covered by TestCalendarNavIDs), with relative when-badges (today /
+      tomorrow / in Nd / Nd ago) on day headers
+- [x] **P3: System page** — status card first as an uppercase-labeled tile
+      grid, ERROR/WARN log lines colored, backups show ages
+- [x] **P3: Auth entry screens** — centered branded cards with welcome
+      copy and stacked full-width form fields
+- [x] **P3: Author & Series detail** — ownership meter (owned/total
+      progress bar) in both headers; file lists and sizes had already been
+      unified in the formatting pass
 
 ## P3 — per-surface passes not yet done
-- [ ] **Author & Series detail pages** — got download badges but no full pass;
-      action rows, Missing rows, and file lists are utilitarian.
-- [ ] **Quality Profiles editor** — edit-in-place landed, but formats are
-      still a raw comma-separated text field; a format-chips / drag-to-order
-      editor would be prettier + more powerful.
-- [ ] **Indexers & Download Clients cards** — edit-in-place landed; the
-      saved-item rows are still tiny text buttons — a visual pass remains.
-- [ ] **System page** (backups / logs / health) — backup ages now show, but
-      the page has never had a real polish pass.
-- [ ] **Calendar view** — plain agenda list, untouched.
-- [ ] **Auth entry screens** (`LoginForm`, `ApiKeyForm` in `App.tsx`) — the
-      first thing a non-wizard user sees; no polish pass.
+- [ ] **Deeper detail-page work** (beyond the completed header/meter pass):
+      Missing rows and file lists could still carry richer actions — batch
+      monitor from Missing, per-file actions inline.
 
 ## Power — the "powerful" half
 - [ ] **Bulk actions.** Everything is one-at-a-time. Multi-select on library
@@ -105,8 +113,8 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
       trusted instance; revisit if accounts ever gate different access.
 
 ---
-All P1 and P2 items are done, plus global search, priority controls, and the
-shared formatting utils. Suggested order for the rest: configurable timings
-(most-requested power knob), then bulk actions, then the P3 per-surface
-passes, with accessibility + responsive as the closing foundation sweep.
-Series pack grab is the one real content-gap feature left.
+All P1, P2, and P3 passes are done, plus global search, priority controls,
+and the shared formatting utils. What remains is the Power list
+(configurable timings, bulk actions, series pack grab) and the closing
+foundation sweeps (accessibility, responsive). Series pack grab is the one
+real content-gap feature left.

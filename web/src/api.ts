@@ -269,6 +269,8 @@ export interface HomeItem {
 
 export interface CalendarItem {
   bookId: number;
+  authorId?: number;
+  seriesId?: number;
   title: string;
   subtitle?: string;
   mediaType: string;

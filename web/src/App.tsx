@@ -276,8 +276,9 @@ function AppInner() {
         )}
 
         {setupNeeded === false && auth?.authEnabled && !auth.authenticated && (
-          <section className="card">
+          <section className="card auth-card">
             <h2>Sign in</h2>
+            <p className="muted">Welcome back — sign in to your LibriNode.</p>
             <LoginForm
               onLoggedIn={() => setAuth({ authEnabled: true, authenticated: true })}
             />
@@ -285,12 +286,12 @@ function AppInner() {
         )}
 
         {setupNeeded === false && auth && !auth.authEnabled && !key && (
-          <section className="card">
+          <section className="card auth-card">
             <h2>Connect</h2>
-            <p>
+            <p className="muted">
               Paste the API key from <code>config.yaml</code> in your LibriNode
               data directory. (You can set up a login account later under
-              Settings → General.)
+              Settings → General → Security.)
             </p>
             <ApiKeyForm onSave={setKey} />
           </section>
@@ -407,7 +408,22 @@ function AppInner() {
             onOpenSeries={(id, mediaType) => go({ name: "series-detail", id, mediaType })}
           />
         )}
-        {connected && page.name === "calendar" && <CalendarView onError={onError} />}
+        {connected && page.name === "calendar" && (
+          <CalendarView
+            onError={onError}
+            onOpenBook={(it) =>
+              go({
+                name: "book",
+                id: it.bookId,
+                library: it.mediaType as "ebook" | "audiobook",
+                authorId: it.authorId ?? 0,
+              })
+            }
+            onOpenSeries={(it) =>
+              go({ name: "series-detail", id: it.seriesId ?? 0, mediaType: it.mediaType })
+            }
+          />
+        )}
         {connected && page.name === "activity" && <ActivityView onError={onError} />}
         {connected && page.name === "settings" && (
           <SettingsView onError={onError} onLibrariesChanged={reloadLibraries} />

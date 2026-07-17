@@ -21,12 +21,9 @@ export default function SystemView({
 
   return (
     <>
-      <HealthCard onError={onError} />
-      <BackupsCard onError={onError} />
-      <LogCard onError={onError} />
       <section className="card">
         <h2>System</h2>
-        <dl>
+        <dl className="status-grid">
           <dt>Version</dt>
           <dd>{status.appVersion ?? status.version}</dd>
           <dt>Platform</dt>
@@ -55,6 +52,9 @@ export default function SystemView({
           </dd>
         </dl>
       </section>
+      <HealthCard onError={onError} />
+      <BackupsCard onError={onError} />
+      <LogCard onError={onError} />
     </>
   );
 }
@@ -238,7 +238,22 @@ function LogCard({ onError }: { onError: (message: string) => void }) {
             : "No lines match the filter."}
         </p>
       ) : (
-        <pre className="log-view">{shown.join("\n")}</pre>
+        <pre className="log-view">
+          {shown.map((l, i) => (
+            <div
+              key={i}
+              className={
+                l.includes("level=ERROR")
+                  ? "log-line err"
+                  : l.includes("level=WARN")
+                    ? "log-line warn"
+                    : "log-line"
+              }
+            >
+              {l}
+            </div>
+          ))}
+        </pre>
       )}
     </section>
   );

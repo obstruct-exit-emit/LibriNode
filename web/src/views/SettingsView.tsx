@@ -544,11 +544,20 @@ function DownloadClientsCard({
           {clients.map((c) => (
             <li key={c.id}>
               <div className="row">
-                <span>
-                  {c.name} <span className="muted">({c.type})</span>
+                <span className="saved-main">
+                  <span className="saved-head">
+                    <strong>{c.name}</strong>
+                    <span className="pill" title={c.type}>
+                      {c.type === "qbittorrent" ? "🧲 qBittorrent" : "📡 SABnzbd"}
+                    </span>
+                    <span className="pill" title="Priority — lower wins ties">
+                      prio {c.priority}
+                    </span>
+                    {!c.enabled && <span className="pill off">disabled</span>}
+                  </span>
+                  <span className="muted file-path saved-sub">{c.host}</span>
                 </span>
                 <span className="row-actions">
-                  <span className="muted file-path">{c.host}</span>
                   <button
                     className="toggle"
                     disabled={busy}
@@ -834,6 +843,105 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
   );
 }
 
+// Formats each media type is known to use — offered as suggestions in the
+// chips editor (anything else can still be typed).
+const knownFormats: Record<string, string[]> = {
+  ebook: ["epub", "azw3", "mobi", "pdf", "txt"],
+  audiobook: ["m4b", "m4a", "mp3", "flac", "opus", "ogg"],
+  manga: ["cbz", "cbr", "epub", "pdf"],
+  comic: ["cbz", "cbr", "pdf"],
+  magazine: ["pdf", "epub", "cbz"],
+};
+
+// FormatChips: the quality profile's format list as ordered chips —
+// best-preferred first, ‹ › to reorder, ✕ to remove, and a suggestion-backed
+// input to add more.
+function FormatChips({
+  value,
+  onChange,
+  suggestions,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  suggestions: string[];
+}) {
+  const [entry, setEntry] = useState("");
+
+  const add = (raw: string) => {
+    const f = raw.trim().toLowerCase().replace(/^\./, "");
+    setEntry("");
+    if (f && !value.includes(f)) onChange([...value, f]);
+  };
+
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= value.length) return;
+    const next = [...value];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+
+  return (
+    <div className="chips">
+      {value.map((f, i) => (
+        <span key={f} className="chip">
+          <button
+            type="button"
+            className="chip-btn"
+            disabled={i === 0}
+            aria-label={`Prefer ${f} more`}
+            title="Prefer more"
+            onClick={() => move(i, -1)}
+          >
+            ‹
+          </button>
+          <span className="chip-label">{f}</span>
+          <button
+            type="button"
+            className="chip-btn"
+            disabled={i === value.length - 1}
+            aria-label={`Prefer ${f} less`}
+            title="Prefer less"
+            onClick={() => move(i, 1)}
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            className="chip-btn chip-x"
+            aria-label={`Remove ${f}`}
+            title="Remove"
+            onClick={() => onChange(value.filter((x) => x !== f))}
+          >
+            ✕
+          </button>
+        </span>
+      ))}
+      <input
+        className="chip-entry"
+        list="format-suggestions"
+        placeholder="+ add format"
+        value={entry}
+        onChange={(e) => setEntry(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            add(entry);
+          }
+        }}
+        onBlur={() => entry && add(entry)}
+      />
+      <datalist id="format-suggestions">
+        {suggestions
+          .filter((s) => !value.includes(s))
+          .map((s) => (
+            <option key={s} value={s} />
+          ))}
+      </datalist>
+    </div>
+  );
+}
+
 function QualityProfilesCard({
   onError,
   activeTypes,
@@ -842,17 +950,17 @@ function QualityProfilesCard({
   activeTypes: string[];
 }) {
   const profileTypes = activeTypes.length > 0 ? activeTypes : ["ebook"];
-  const defaultFormats: Record<string, string> = {
-    ebook: "epub,azw3,mobi",
-    audiobook: "m4b,m4a,mp3",
-    manga: "cbz,cbr",
-    comic: "cbz,cbr",
-    magazine: "pdf,epub",
+  const defaultFormats: Record<string, string[]> = {
+    ebook: ["epub", "azw3", "mobi"],
+    audiobook: ["m4b", "m4a", "mp3"],
+    manga: ["cbz", "cbr"],
+    comic: ["cbz", "cbr"],
+    magazine: ["pdf", "epub"],
   };
   const [profiles, setProfiles] = useState<QualityProfile[]>([]);
   const [name, setName] = useState("");
   const [profileType, setProfileType] = useState("ebook");
-  const [formats, setFormats] = useState(defaultFormats.ebook);
+  const [formats, setFormats] = useState<string[]>(defaultFormats.ebook);
   const [language, setLanguage] = useState("english");
   const [upgrades, setUpgrades] = useState(false);
   // Edit-in-place: the saved profile loaded into the form, or null when adding.
@@ -884,7 +992,7 @@ function QualityProfilesCard({
     setEditing(p);
     setName(p.name);
     setProfileType(p.mediaType);
-    setFormats(p.formats.join(","));
+    setFormats(p.formats);
     setLanguage(p.language);
     setUpgrades(p.upgradesAllowed);
     setNotice("");
@@ -893,7 +1001,7 @@ function QualityProfilesCard({
   const cancelEdit = () => {
     setEditing(null);
     setName("");
-    setFormats(defaultFormats[profileType] ?? "");
+    setFormats(defaultFormats[profileType] ?? []);
     setUpgrades(false);
     setNotice("");
   };
@@ -902,7 +1010,7 @@ function QualityProfilesCard({
     const fields = {
       name: name.trim(),
       mediaType: profileType,
-      formats: formats.split(",").map((f) => f.trim()).filter(Boolean),
+      formats,
       language,
       upgradesAllowed: upgrades,
     };
@@ -933,15 +1041,18 @@ function QualityProfilesCard({
         {profiles.map((p) => (
           <li key={p.id}>
             <div className="row">
-              <span>
-                {p.name} <span className="muted">({p.mediaType})</span>{" "}
-                {p.isDefault && <span className="owned yes">default</span>}
-              </span>
-              <span className="row-actions">
-                <span className="muted">
+              <span className="saved-main">
+                <span className="saved-head">
+                  <strong>{p.name}</strong>
+                  <span className="pill">{p.mediaType}</span>
+                  {p.isDefault && <span className="owned yes">default</span>}
+                </span>
+                <span className="muted saved-sub">
                   {p.formats.join(" › ")}
                   {p.language ? ` · ${p.language}` : " · any language"}
                 </span>
+              </span>
+              <span className="row-actions">
                 <button
                   className={p.upgradesAllowed ? "toggle on" : "toggle"}
                   disabled={busy}
@@ -996,7 +1107,7 @@ function QualityProfilesCard({
             value={profileType}
             onChange={(e) => {
               setProfileType(e.target.value);
-              setFormats(defaultFormats[e.target.value] ?? "");
+              setFormats(defaultFormats[e.target.value] ?? []);
             }}
           >
             {profileTypes.map((t) => (
@@ -1007,11 +1118,11 @@ function QualityProfilesCard({
           </select>
         </label>
         <label>
-          Formats (best first)
-          <input
+          Formats (best first — reorder with ‹ ›)
+          <FormatChips
             value={formats}
-            onChange={(e) => setFormats(e.target.value)}
-            placeholder="epub,azw3,mobi"
+            onChange={setFormats}
+            suggestions={knownFormats[profileType] ?? []}
           />
         </label>
         <label>
@@ -1035,7 +1146,7 @@ function QualityProfilesCard({
           </select>
         </label>
         <div className="settings-actions">
-          <button disabled={busy || !name.trim() || !formats.trim()} onClick={add}>
+          <button disabled={busy || !name.trim() || formats.length === 0} onClick={add}>
             {editing ? "Save changes" : "Add profile"}
           </button>
           {editing && (
@@ -1181,11 +1292,20 @@ function IndexersCard({
           {indexers.map((ind) => (
             <li key={ind.id}>
               <div className="row">
-                <span>
-                  {ind.name} <span className="muted">({ind.type})</span>
+                <span className="saved-main">
+                  <span className="saved-head">
+                    <strong>{ind.name}</strong>
+                    <span className="pill" title={ind.type}>
+                      {ind.type === "torznab" ? "🧲 torrent" : "📡 usenet"}
+                    </span>
+                    <span className="pill" title="Priority — lower wins ties">
+                      prio {ind.priority}
+                    </span>
+                    {!ind.enabled && <span className="pill off">disabled</span>}
+                  </span>
+                  <span className="muted file-path saved-sub">{ind.baseUrl}</span>
                 </span>
                 <span className="row-actions">
-                  <span className="muted file-path">{ind.baseUrl}</span>
                   <button
                     className="toggle"
                     disabled={busy}

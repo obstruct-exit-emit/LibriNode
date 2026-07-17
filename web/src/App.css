@@ -1345,3 +1345,169 @@ button.link.back:hover {
   outline: none;
   border-color: var(--accent);
 }
+
+/* ---- Saved-item rows (Settings: indexers, clients, profiles) ---- */
+
+.saved-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.saved-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.saved-sub {
+  font-size: 0.8rem;
+}
+
+.pill.off {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---- Quality profile format chips ---- */
+
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.85rem;
+}
+
+.chip-label {
+  padding: 0 0.25rem;
+  font-weight: 600;
+}
+
+.chip-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.chip-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.chip-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.chip-x:hover {
+  color: var(--danger);
+}
+
+.chip-entry {
+  width: 7.5rem;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+.chip-entry:focus {
+  outline: none;
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+/* ---- P3 surface passes ---- */
+
+/* Calendar: clickable items + when-badges */
+.cal-item {
+  text-align: left;
+  padding: 0;
+}
+
+.pill.cal-when {
+  margin-left: 0.5rem;
+  font-weight: 500;
+}
+
+.calendar-date.today .pill.cal-when {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* System: status as a tile grid */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem 1.25rem;
+  margin: 0;
+}
+
+.status-grid dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.status-grid dd {
+  margin: 0 0 0.4rem;
+  overflow-wrap: anywhere;
+}
+
+/* Log: level coloring */
+.log-line.err {
+  color: #e08575;
+}
+
+.log-line.warn {
+  color: #d9b26a;
+}
+
+/* Auth entry screens */
+.auth-card {
+  max-width: 400px;
+  margin: 2.5rem auto 0;
+}
+
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.auth-card form button[type=submit] {
+  align-self: stretch;
+}
+
+.app:not(.with-sidebar) > .content > .brand {
+  text-align: center;
+  margin-top: 7vh;
+  font-size: 1.9rem;
+}
+
+/* Detail pages: ownership meter */
+.progress.owned-meter {
+  max-width: 260px;
+  margin: 0.15rem 0 0.6rem;
+}

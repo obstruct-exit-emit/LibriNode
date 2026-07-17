@@ -10,6 +10,14 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- White-glove P3 surface passes: quality profile formats are ordered chips
+  (reorder/remove/add with per-type suggestions); indexer and download
+  client rows show protocol/priority/disabled pills with the URL beneath;
+  calendar items are clickable (through new authorId/seriesId on the
+  calendar API) with relative when-badges on day headers; the System page
+  leads with a status tile grid and colors ERROR/WARN log lines; sign-in
+  and API-key screens are centered branded cards; author and series pages
+  show an owned/total progress meter.
 - White-glove UX wave: an app-wide toast layer (stacking, dismissible)
   replaces the top-of-page error card for in-app errors; every native
   browser confirm() popup (13) is now a styled confirm dialog; search-and-add

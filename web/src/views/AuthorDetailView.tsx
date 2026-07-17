@@ -151,6 +151,17 @@ export default function AuthorDetailView({
           <p className="muted">
             {books.length} book{books.length === 1 ? "" : "s"} in {label} · {owned} owned
           </p>
+          {books.length > 0 && (
+            <div
+              className="progress owned-meter"
+              title={`${owned} of ${books.length} owned in ${label}`}
+            >
+              <div
+                className="progress-fill done"
+                style={{ width: `${Math.min(100, (owned / books.length) * 100)}%` }}
+              />
+            </div>
+          )}
           {author.description && <p className="detail-desc">{author.description}</p>}
           <div className="settings-actions">
             <button
