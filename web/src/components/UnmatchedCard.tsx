@@ -6,6 +6,7 @@ import {
   type SeriesResult,
   type UnmatchedOption,
 } from "../api";
+import { formatBytes } from "../format";
 
 // UnmatchedCard is the existing-file import flow, shared by every library:
 // files a scan found but couldn't confidently place, each with the library's
@@ -176,8 +177,6 @@ function UnmatchedRow({
     }
   };
 
-  const fmtSize = (bytes: number) =>
-    bytes >= 1 << 20 ? `${(bytes / (1 << 20)).toFixed(1)} MiB` : `${(bytes / 1024).toFixed(0)} KiB`;
 
   // Duplicate of an owned book/volume/issue: show both files and resolve.
   if (duplicate) {
@@ -197,7 +196,7 @@ function UnmatchedRow({
             <div className="row">
               <span className="file-path muted">in library: 📄 {duplicate.file.path}</span>
               <span className="muted">
-                {duplicate.file.format} · {fmtSize(duplicate.file.size)}
+                {duplicate.file.format} · {formatBytes(duplicate.file.size)}
               </span>
             </div>
           </li>
@@ -206,7 +205,7 @@ function UnmatchedRow({
               <span className="file-path">this file: 📄 {file.path}</span>
               <span className="row-actions">
                 <span className="muted">
-                  {file.format} · {fmtSize(file.size)}
+                  {file.format} · {formatBytes(file.size)}
                 </span>
                 <button
                   disabled={busy}

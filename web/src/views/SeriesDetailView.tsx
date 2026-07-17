@@ -11,6 +11,7 @@ import { libraryLabels } from "../App";
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
 import { downloadPct, useQueue } from "../useQueue";
+import { formatBytes } from "../format";
 
 // Full-page series detail, *arr-style: header with cover, description and
 // series-level actions, then volumes/issues as rows. Manga volumes and comic
@@ -476,7 +477,7 @@ function VolumeRow({
                         {f.path}
                       </span>
                       <span className="muted">
-                        {f.format} · {(f.size / 1024).toFixed(0)} KiB
+                        {f.format} · {formatBytes(f.size)}
                       </span>
                     </div>
                   </li>

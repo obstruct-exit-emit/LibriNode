@@ -3,13 +3,7 @@ import { api, proxiedImage, type Author, type Book } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
 import { downloadPct, useQueue } from "../useQueue";
-
-// formatSize renders a byte count in the most readable unit.
-function formatSize(bytes: number): string {
-  if (bytes >= 1 << 30) return `${(bytes / (1 << 30)).toFixed(1)} GiB`;
-  if (bytes >= 1 << 20) return `${(bytes / (1 << 20)).toFixed(1)} MiB`;
-  return `${(bytes / 1024).toFixed(0)} KiB`;
-}
+import { formatBytes } from "../format";
 
 // Full-page book detail, mirroring the author page: header with cover art,
 // about text, and per-format status/actions, then releases, files, and
@@ -34,6 +28,7 @@ export default function BookDetailView({
   const [showReleases, setShowReleases] = useState(false);
   const [searching, setSearching] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [addingOther, setAddingOther] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
 
   const reload = useCallback(() => {
@@ -180,16 +175,38 @@ export default function BookDetailView({
                 {otherLibrary === "audiobook" ? "🎧" : "📖"}{" "}
                 {otherLibrary} {ownedOther ? "owned" : "in library"} →
               </button>
+            ) : addingOther ? (
+              // A real three-way choice — monitor, just add, or back out —
+              // instead of a yes/no dialog pretending to be one.
+              <span className="row-actions cross-format">
+                <button
+                  onClick={() => {
+                    setAddingOther(false);
+                    setMembership(otherLibrary, true, true);
+                  }}
+                  title="Add and search for it automatically"
+                >
+                  Add + monitor
+                </button>
+                <button
+                  className="toggle"
+                  onClick={() => {
+                    setAddingOther(false);
+                    setMembership(otherLibrary, true, false);
+                  }}
+                  title="Add without monitoring — track it, don't search for it"
+                >
+                  Just add
+                </button>
+                <button className="toggle" onClick={() => setAddingOther(false)} title="Cancel">
+                  ✕
+                </button>
+              </span>
             ) : (
               <button
                 className="toggle cross-format"
                 title={`This book isn't in the ${otherLibrary} library yet`}
-                onClick={() => {
-                  const mon = confirm(
-                    `Add "${book.title}" to the ${otherLibrary} library.\n\nOK = monitor (search for it automatically) · Cancel = just add`,
-                  );
-                  setMembership(otherLibrary, true, mon);
-                }}
+                onClick={() => setAddingOther(true)}
               >
                 + Add to {otherLibrary === "ebook" ? "Ebooks" : "Audiobooks"}
               </button>
@@ -230,7 +247,7 @@ export default function BookDetailView({
                     {f.tracks?.length ? "📁" : "📄"} {f.path}
                   </span>
                   <span className="muted">
-                    {f.format} · {formatSize(f.size)}
+                    {f.format} · {formatBytes(f.size)}
                   </span>
                 </div>
                 {(f.tracks?.length ?? 0) > 0 && (
@@ -243,7 +260,7 @@ export default function BookDetailView({
                         <li key={t.name}>
                           <div className="row">
                             <span className="file-path">🎵 {t.name}</span>
-                            <span className="muted">{formatSize(t.size)}</span>
+                            <span className="muted">{formatBytes(t.size)}</span>
                           </div>
                         </li>
                       ))}

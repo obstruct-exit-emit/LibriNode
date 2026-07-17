@@ -134,9 +134,7 @@ func (s *server) proseOptions(mediaType string, files []relFile) ([]unmatchedOpt
 			continue
 		}
 		opt.AuthorID = author.ID
-		if opt.AuthorName == "" {
-			opt.AuthorName = author.Name
-		}
+		opt.AuthorName = author.Name // canonical casing over the folder's
 
 		books, err := s.store.ListBooks(author.ID)
 		if err != nil {

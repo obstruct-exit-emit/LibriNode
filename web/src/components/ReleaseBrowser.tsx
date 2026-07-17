@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type ReleaseCandidate } from "../api";
+import { formatBytes } from "../format";
 
 // ReleaseBrowser is the interactive search: every release candidate for a
 // book/volume, scored and organized — approved first, sortable, filterable by
@@ -11,12 +12,6 @@ type SortKey = "score" | "size" | "seeders" | "age";
 type ProtoFilter = "all" | "usenet" | "torrent";
 
 const protoIcon = (p: string) => (p === "usenet" ? "📡" : "🧲");
-
-function fmtSize(bytes: number): string {
-  if (bytes <= 0) return "";
-  if (bytes >= 1 << 30) return `${(bytes / (1 << 30)).toFixed(1)} GiB`;
-  return `${(bytes / (1 << 20)).toFixed(1)} MiB`;
-}
 
 function fmtAge(publishDate?: string): string {
   if (!publishDate) return "";
@@ -240,7 +235,7 @@ export default function ReleaseBrowser({
                 <div className="rb-meta muted">
                   {c.indexer}
                   <span className={`metric${sort === "size" ? " on" : ""}`} title="Size">
-                    📦 {fmtSize(c.size) || "—"}
+                    📦 {formatBytes(c.size) || "—"}
                   </span>
                   <span
                     className={`metric${sort === "seeders" ? " on" : ""}`}

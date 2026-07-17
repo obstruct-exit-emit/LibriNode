@@ -16,6 +16,7 @@ import {
   type SystemStatus,
   type UserAccount,
 } from "../api";
+import { formatBytes } from "../format";
 
 // Settings groups, *arr-style: pages organized by concern instead of one
 // long scroll. Order matches the README spec.
@@ -1316,7 +1317,7 @@ function MetadataCard({
       .then((r) => {
         const parts: string[] = [];
         if (r.removed !== undefined) {
-          parts.push(`${r.removed} image(s) (${((r.freedBytes ?? 0) / (1 << 20)).toFixed(1)} MiB)`);
+          parts.push(`${r.removed} image(s) (${formatBytes(r.freedBytes ?? 0) || "0 KiB"})`);
         }
         if (r.descriptionsCleared !== undefined) {
           parts.push(`${r.descriptionsCleared} description(s)`);

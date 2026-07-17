@@ -238,6 +238,12 @@ func (s *server) handleReplaceBookFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "file is already matched to a book")
 		return
 	}
+	// Verify the target book before anything is deleted — a bad bookId must
+	// fail cleanly, not after the library's copy is gone.
+	if _, err := s.store.GetBook(req.BookID); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	old, err := s.store.ListBookFiles(req.BookID)
 	if err != nil {
 		writeStoreError(w, err)

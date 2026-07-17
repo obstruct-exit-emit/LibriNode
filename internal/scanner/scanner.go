@@ -76,16 +76,48 @@ func (s *Service) Scan(ctx context.Context) (*Result, error) {
 	return result, nil
 }
 
+// walkEntryErr converts a walk callback's entry error into scan policy: the
+// root itself failing is fatal, but one unreadable child must not kill the
+// whole root — record it, skip the subtree, and flag the walk incomplete so
+// pruning is held (an unvisited file must never count as deleted).
+func walkEntryErr(rootPath, path string, d fs.DirEntry, err error, result *Result, incomplete *bool) error {
+	if path == rootPath {
+		return err
+	}
+	*incomplete = true
+	result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", path, err))
+	if d != nil && d.IsDir() {
+		return filepath.SkipDir
+	}
+	return nil
+}
+
+// pruneMissing deletes records whose files were not seen on disk. Only ever
+// called after a COMPLETE walk of the root.
+func (s *Service) pruneMissing(known map[string]int64, seen map[string]bool, result *Result) error {
+	for path, id := range known {
+		if seen[path] {
+			continue
+		}
+		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
+			return err
+		}
+		result.Removed++
+	}
+	return nil
+}
+
 func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *matchIndex, result *Result) error {
 	known, err := s.store.BookFilePathsUnderRoot(root.ID)
 	if err != nil {
 		return err
 	}
 	seen := map[string]bool{}
+	walkIncomplete := false
 
 	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return walkEntryErr(root.Path, path, d, err, result, &walkIncomplete)
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -139,16 +171,10 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 	}
 
 	// Prune records whose files are gone from disk.
-	for path, id := range known {
-		if seen[path] {
-			continue
-		}
-		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
-			return err
-		}
-		result.Removed++
+	if walkIncomplete {
+		return nil // partial walk — pruning would misread unvisited files as deleted
 	}
-	return nil
+	return s.pruneMissing(known, seen, result)
 }
 
 // scanAudiobookRoot walks an audiobook root where the unit is either a
@@ -161,6 +187,7 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 		return err
 	}
 	seen := map[string]bool{}
+	walkIncomplete := false
 
 	record := func(path string, size int64, format string, modified time.Time) error {
 		rel, err := filepath.Rel(root.Path, path)
@@ -192,7 +219,7 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 
 	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return walkEntryErr(root.Path, path, d, err, result, &walkIncomplete)
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -268,16 +295,10 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 		return err
 	}
 
-	for path, id := range known {
-		if seen[path] {
-			continue
-		}
-		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
-			return err
-		}
-		result.Removed++
+	if walkIncomplete {
+		return nil // partial walk — pruning would misread unvisited files as deleted
 	}
-	return nil
+	return s.pruneMissing(known, seen, result)
 }
 
 // audiobookDirInfo sums a book directory's audio content: total size, the
@@ -316,10 +337,11 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 		return err
 	}
 	seen := map[string]bool{}
+	walkIncomplete := false
 
 	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return walkEntryErr(root.Path, path, d, err, result, &walkIncomplete)
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -370,16 +392,10 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 		return err
 	}
 
-	for path, id := range known {
-		if seen[path] {
-			continue
-		}
-		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
-			return err
-		}
-		result.Removed++
+	if walkIncomplete {
+		return nil // partial walk — pruning would misread unvisited files as deleted
 	}
-	return nil
+	return s.pruneMissing(known, seen, result)
 }
 
 // MagazineGuess extracts the magazine title and issue identifier from a
@@ -430,10 +446,11 @@ func (s *Service) scanMagazineRoot(ctx context.Context, root library.RootFolder,
 		return err
 	}
 	seen := map[string]bool{}
+	walkIncomplete := false
 
 	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return walkEntryErr(root.Path, path, d, err, result, &walkIncomplete)
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -483,16 +500,10 @@ func (s *Service) scanMagazineRoot(ctx context.Context, root library.RootFolder,
 		return err
 	}
 
-	for path, id := range known {
-		if seen[path] {
-			continue
-		}
-		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
-			return err
-		}
-		result.Removed++
+	if walkIncomplete {
+		return nil // partial walk — pruning would misread unvisited files as deleted
 	}
-	return nil
+	return s.pruneMissing(known, seen, result)
 }
 
 // RematchUnmatched re-runs matching for unmatched file records against the
