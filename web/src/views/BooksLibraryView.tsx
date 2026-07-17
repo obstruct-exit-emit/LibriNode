@@ -371,6 +371,8 @@ function UnmatchedRow({
   const suggested = candidates.find((c) => c.id === option.suggested);
   const [bookID, setBookID] = useState(option.suggested ?? 0);
   const [busy, setBusy] = useState(false);
+  const [findingAuthor, setFindingAuthor] = useState(false);
+  const [authorResults, setAuthorResults] = useState<SearchAuthor[] | null>(null);
 
   const run = (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -378,6 +380,22 @@ function UnmatchedRow({
       .then(onDone)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusy(false));
+  };
+
+  // The file's author isn't in the library: search the metadata provider so
+  // one click adds them — after which this file (and any siblings) gets real
+  // candidates and, usually, a confident suggestion.
+  const findAuthor = () => {
+    if (authorResults) {
+      setAuthorResults(null); // toggle closed
+      return;
+    }
+    setFindingAuthor(true);
+    api
+      .searchAuthors(option.authorName ?? "")
+      .then((results) => setAuthorResults(results.slice(0, 5)))
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setFindingAuthor(false));
   };
 
   const fmtSize = (bytes: number) =>
@@ -496,29 +514,62 @@ function UnmatchedRow({
                 Import
               </button>
             </>
-          ) : books.length > 0 ? (
+          ) : (
             <>
-              {option.authorName && (
-                <span className="muted" title="No author with this name in the library — add the author, or match to any library book">
-                  {option.authorName} not in library
-                </span>
+              {option.authorName && !option.authorId && (
+                <button
+                  className="toggle"
+                  disabled={busy || findingAuthor}
+                  title={`"${option.authorName}" isn't in the library — search the metadata provider and add them`}
+                  onClick={findAuthor}
+                >
+                  {findingAuthor ? "Searching…" : `+ Add ${option.authorName}`}
+                </button>
               )}
-              <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
-                <option value={0}>Match to book…</option>
-                {books.map((b) => (
-                  <option key={b.id} value={b.id}>{b.title}</option>
-                ))}
-              </select>
-              <button disabled={busy || bookID === 0} onClick={() => run(() => api.matchFile(file.id, bookID))}>
-                Import
-              </button>
+              {books.length > 0 && (
+                <>
+                  <select value={bookID} onChange={(e) => setBookID(Number(e.target.value))}>
+                    <option value={0}>Match to book…</option>
+                    {books.map((b) => (
+                      <option key={b.id} value={b.id}>{b.title}</option>
+                    ))}
+                  </select>
+                  <button disabled={busy || bookID === 0} onClick={() => run(() => api.matchFile(file.id, bookID))}>
+                    Import
+                  </button>
+                </>
+              )}
             </>
-          ) : null}
+          )}
           <button className="toggle" disabled={busy} onClick={() => run(() => api.dismissFile(file.id))}>
             dismiss
           </button>
         </span>
       </div>
+      {authorResults && (
+        <ul className="rows nested">
+          {authorResults.length === 0 && (
+            <li className="muted fb-empty">No author named “{option.authorName}” found on the provider.</li>
+          )}
+          {authorResults.map((a) => (
+            <li key={a.foreignAuthorId}>
+              <div className="row">
+                <span>
+                  {a.name}
+                  {(a.bookCount ?? 0) > 0 && <span className="muted"> · {a.bookCount} books</span>}
+                </span>
+                <button
+                  disabled={busy}
+                  title={`Add ${a.name} to this library — their bibliography becomes matchable`}
+                  onClick={() => run(() => api.addAuthor(a.foreignAuthorId, file.mediaType))}
+                >
+                  {busy ? "Adding…" : "Add author"}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
