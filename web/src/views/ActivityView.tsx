@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type BlockEntry, type GrabRecord, type QueueItem } from "../api";
+import { relativeTime } from "../format";
+import { RowsSkeleton } from "../components/Skeleton";
 import { useUi } from "../ui";
 
 export default function ActivityView({
@@ -66,7 +68,7 @@ export default function ActivityView({
     return () => clearInterval(timer);
   }, [reload]);
 
-  if (loading) return <p className="muted">Loading queue…</p>;
+  if (loading) return <RowsSkeleton />;
 
   return (
     <>
@@ -147,6 +149,9 @@ export default function ActivityView({
                       {b.reason && <span className="file-path muted"> — {b.reason}</span>}
                     </span>
                     <span className="row-actions">
+                      <span className="muted" title={b.blockedAt}>
+                        {relativeTime(b.blockedAt)}
+                      </span>
                       <button
                         className="toggle"
                         onClick={() =>
@@ -184,6 +189,9 @@ export default function ActivityView({
                       {g.message && <span className="file-path muted"> — {g.message}</span>}
                     </span>
                     <span className="row-actions">
+                      <span className="muted" title={g.grabbedAt}>
+                        {relativeTime(g.grabbedAt)}
+                      </span>
                       <span className="muted">{g.protocol}</span>
                       <span className={`owned ${g.status === "failed" ? "no" : "yes"}`}>
                         {g.status}

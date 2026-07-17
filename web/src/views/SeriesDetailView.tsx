@@ -11,6 +11,7 @@ import { libraryLabels } from "../App";
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
 import { downloadPct, useQueue } from "../useQueue";
+import { DetailSkeleton } from "../components/Skeleton";
 import { formatBytes } from "../format";
 
 // Full-page series detail, *arr-style: header with cover, description and
@@ -63,7 +64,7 @@ export default function SeriesDetailView({
       .catch(() => setProviderOptions([]));
   }, [mediaType]);
 
-  if (!series) return <p className="muted">Loading series…</p>;
+  if (!series) return <DetailSkeleton />;
 
   const volumes = series.volumes ?? [];
   const owned = volumes.filter((v) => v.hasFile).length;

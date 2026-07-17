@@ -466,6 +466,8 @@ function DownloadClientsCard({
   const { confirmDlg } = useUi();
   const [clients, setClients] = useState<DownloadClient[]>([]);
   const [draft, setDraft] = useState(emptyDownloadClient);
+  // Edit-in-place: the saved client loaded into the form, or null when adding.
+  const [editing, setEditing] = useState<DownloadClient | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -500,6 +502,33 @@ function DownloadClientsCard({
   // which the Test button surfaces).
   const draftValid =
     draft.name.trim() !== "" && /^https?:\/\//.test(draft.host.trim());
+
+  const startEdit = (c: DownloadClient) => {
+    setEditing(c);
+    setDraft({ ...c });
+    setNotice("");
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setDraft(emptyDownloadClient);
+    setNotice("");
+  };
+
+  const saveOrAdd = () => {
+    if (editing) {
+      act(
+        () =>
+          api.updateDownloadClient({ ...editing, ...draft }).then(() => {
+            setEditing(null);
+            setDraft(emptyDownloadClient);
+          }),
+        `✓ ${draft.name} saved`,
+      );
+    } else {
+      act(() => api.addDownloadClient(draft).then(() => setDraft(emptyDownloadClient)), "✓ Client added");
+    }
+  };
 
   return (
     <section className="card">
@@ -538,6 +567,14 @@ function DownloadClientsCard({
                     {c.enabled ? "enabled" : "disabled"}
                   </button>
                   <button
+                    className={editing?.id === c.id ? "toggle on" : "toggle"}
+                    disabled={busy}
+                    title="Load this client into the form below to change its host, credentials, or priority"
+                    onClick={() => (editing?.id === c.id ? cancelEdit() : startEdit(c))}
+                  >
+                    edit
+                  </button>
+                  <button
                     className="danger"
                     disabled={busy}
                     onClick={async () => {
@@ -561,7 +598,13 @@ function DownloadClientsCard({
         </ul>
       )}
 
-      <h3 className="settings-subhead">{clients.length > 0 ? "Add another client" : "Add a download client"}</h3>
+      <h3 className="settings-subhead">
+        {editing
+          ? `Edit ${editing.name}`
+          : clients.length > 0
+            ? "Add another client"
+            : "Add a download client"}
+      </h3>
       <div className="settings-form">
         <label>
           Name
@@ -626,6 +669,16 @@ function DownloadClientsCard({
             own — change it only if it collides with another app on the same
             client.
           </p>
+          <label>
+            Priority (1–50, lower wins ties)
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={draft.priority}
+              onChange={(e) => set({ priority: Number(e.target.value) || 1 })}
+            />
+          </label>
         </Disclosure>
         <div className="settings-actions">
           <button
@@ -644,14 +697,14 @@ function DownloadClientsCard({
           >
             Test
           </button>
-          <button
-            disabled={busy || !draftValid}
-            onClick={() =>
-              act(() => api.addDownloadClient(draft).then(() => setDraft(emptyDownloadClient)), "✓ Client added")
-            }
-          >
-            Add
+          <button disabled={busy || !draftValid} onClick={saveOrAdd}>
+            {editing ? "Save changes" : "Add"}
           </button>
+          {editing && (
+            <button className="toggle" disabled={busy} onClick={cancelEdit}>
+              Cancel
+            </button>
+          )}
           {notice && (
             <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
               {notice}
@@ -802,6 +855,8 @@ function QualityProfilesCard({
   const [formats, setFormats] = useState(defaultFormats.ebook);
   const [language, setLanguage] = useState("english");
   const [upgrades, setUpgrades] = useState(false);
+  // Edit-in-place: the saved profile loaded into the form, or null when adding.
+  const [editing, setEditing] = useState<QualityProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -825,19 +880,45 @@ function QualityProfilesCard({
       .finally(() => setBusy(false));
   };
 
-  const add = () =>
-    run(() =>
-      api
-        .addProfile({
-          name: name.trim(),
-          mediaType: profileType,
-          formats: formats.split(",").map((f) => f.trim()).filter(Boolean),
-          language,
-          retailBonus: 25,
-          upgradesAllowed: upgrades,
-        })
-        .then(() => setName("")),
-    );
+  const startEdit = (p: QualityProfile) => {
+    setEditing(p);
+    setName(p.name);
+    setProfileType(p.mediaType);
+    setFormats(p.formats.join(","));
+    setLanguage(p.language);
+    setUpgrades(p.upgradesAllowed);
+    setNotice("");
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setName("");
+    setFormats(defaultFormats[profileType] ?? "");
+    setUpgrades(false);
+    setNotice("");
+  };
+
+  const add = () => {
+    const fields = {
+      name: name.trim(),
+      mediaType: profileType,
+      formats: formats.split(",").map((f) => f.trim()).filter(Boolean),
+      language,
+      upgradesAllowed: upgrades,
+    };
+    if (editing) {
+      run(() =>
+        api.updateProfile({ ...editing, ...fields }).then(() => {
+          setEditing(null);
+          setName("");
+        }),
+      );
+    } else {
+      run(() =>
+        api.addProfile({ ...fields, retailBonus: 25 }).then(() => setName("")),
+      );
+    }
+  };
 
   return (
     <section className="card">
@@ -869,6 +950,14 @@ function QualityProfilesCard({
                 >
                   {p.upgradesAllowed ? "upgrades on" : "upgrades off"}
                 </button>
+                <button
+                  className={editing?.id === p.id ? "toggle on" : "toggle"}
+                  disabled={busy}
+                  title="Load this profile into the form below to change its formats, language, or name"
+                  onClick={() => (editing?.id === p.id ? cancelEdit() : startEdit(p))}
+                >
+                  edit
+                </button>
                 {!p.isDefault && (
                   <>
                     <button
@@ -893,7 +982,9 @@ function QualityProfilesCard({
         ))}
       </ul>
 
-      <h3 className="settings-subhead">Add a quality profile</h3>
+      <h3 className="settings-subhead">
+        {editing ? `Edit ${editing.name}` : "Add a quality profile"}
+      </h3>
       <div className="settings-form">
         <label>
           Name
@@ -945,8 +1036,13 @@ function QualityProfilesCard({
         </label>
         <div className="settings-actions">
           <button disabled={busy || !name.trim() || !formats.trim()} onClick={add}>
-            Add profile
+            {editing ? "Save changes" : "Add profile"}
           </button>
+          {editing && (
+            <button className="toggle" disabled={busy} onClick={cancelEdit}>
+              Cancel
+            </button>
+          )}
           {notice && (
             <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
               {notice}
@@ -979,6 +1075,8 @@ function IndexersCard({
   const { confirmDlg } = useUi();
   const [indexers, setIndexers] = useState<Indexer[]>([]);
   const [draft, setDraft] = useState(emptyIndexer);
+  // Edit-in-place: the saved indexer loaded into the form, or null when adding.
+  const [editing, setEditing] = useState<Indexer | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -1023,17 +1121,33 @@ function IndexersCard({
   const add = () => {
     setBusy(true);
     setNotice("");
-    api
-      .addIndexer(draft)
+    const action = editing
+      ? api.updateIndexer({ ...editing, ...draft }).then(() => {
+          setNotice(`✓ ${draft.name} saved`);
+          setEditing(null);
+        })
+      : api.addIndexer(draft).then(() => setNotice("✓ Indexer added"));
+    action
       .then(() => {
         setDraft(emptyIndexer);
-        setNotice("✓ Indexer added");
         reload();
       })
       .catch((err: unknown) =>
         setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
       )
       .finally(() => setBusy(false));
+  };
+
+  const startEdit = (ind: Indexer) => {
+    setEditing(ind);
+    setDraft({ ...ind });
+    setNotice("");
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setDraft(emptyIndexer);
+    setNotice("");
   };
 
   const toggle = (ind: Indexer) =>
@@ -1089,6 +1203,14 @@ function IndexersCard({
                   >
                     {ind.enabled ? "enabled" : "disabled"}
                   </button>
+                  <button
+                    className={editing?.id === ind.id ? "toggle on" : "toggle"}
+                    disabled={busy}
+                    title="Load this indexer into the form below to change its URL, key, categories, or priority"
+                    onClick={() => (editing?.id === ind.id ? cancelEdit() : startEdit(ind))}
+                  >
+                    edit
+                  </button>
                   <button className="danger" disabled={busy} onClick={() => remove(ind)}>
                     remove
                   </button>
@@ -1099,7 +1221,13 @@ function IndexersCard({
         </ul>
       )}
 
-      <h3 className="settings-subhead">{indexers.length > 0 ? "Add another indexer" : "Add an indexer"}</h3>
+      <h3 className="settings-subhead">
+        {editing
+          ? `Edit ${editing.name}`
+          : indexers.length > 0
+            ? "Add another indexer"
+            : "Add an indexer"}
+      </h3>
       <div className="settings-form">
         <label>
           Name
@@ -1164,14 +1292,29 @@ function IndexersCard({
               onChange={(e) => set({ magazineCategories: e.target.value })}
             />
           </label>
+          <label>
+            Priority (1–50, lower wins ties)
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={draft.priority}
+              onChange={(e) => set({ priority: Number(e.target.value) || 25 })}
+            />
+          </label>
         </Disclosure>
         <div className="settings-actions">
           <button disabled={busy || !draftValid} onClick={testDraft}>
             Test
           </button>
           <button disabled={busy || !draftValid} onClick={add}>
-            Add
+            {editing ? "Save changes" : "Add"}
           </button>
+          {editing && (
+            <button className="toggle" disabled={busy} onClick={cancelEdit}>
+              Cancel
+            </button>
+          )}
           {notice && (
             <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>
               {notice}

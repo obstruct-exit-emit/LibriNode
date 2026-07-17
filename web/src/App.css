@@ -1268,3 +1268,59 @@ button.link.back:hover {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ---- Skeleton loading states ---- */
+
+.skel {
+  background: linear-gradient(
+    100deg,
+    var(--border) 40%,
+    #3a3a4c 50%,
+    var(--border) 60%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.skel-line {
+  height: 0.85rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+.skel-line.short {
+  width: 55%;
+}
+
+.skel-line.row-skel {
+  height: 2.2rem;
+  margin: 0.65rem 0;
+}
+
+.skel-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+}
+
+.skel-poster-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.skel-art {
+  width: 150px;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+@keyframes skel-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}

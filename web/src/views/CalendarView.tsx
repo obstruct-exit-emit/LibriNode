@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type CalendarItem } from "../api";
 import { libraryLabels } from "../App";
+import { RowsSkeleton } from "../components/Skeleton";
 
 const typeIcons: Record<string, string> = {
   ebook: "📖",
@@ -26,7 +27,7 @@ export default function CalendarView({
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
 
-  if (!items) return <p className="muted">Loading calendar…</p>;
+  if (!items) return <RowsSkeleton rows={6} />;
 
   const today = new Date().toISOString().slice(0, 10);
   const byDate = new Map<string, CalendarItem[]>();

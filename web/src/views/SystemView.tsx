@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type BackupInfo, type HealthResult, type SystemStatus } from "../api";
-import { formatBytes } from "../format";
+import { formatBytes, relativeTime } from "../format";
 import { useUi } from "../ui";
 
 export default function SystemView({
@@ -136,6 +136,9 @@ function BackupsCard({ onError }: { onError: (message: string) => void }) {
               <div className="row">
                 <span className="file-path">{b.name}</span>
                 <span className="row-actions">
+                  <span className="muted" title={b.createdAt}>
+                    {relativeTime(b.createdAt)}
+                  </span>
                   <span className="muted">{formatBytes(b.size) || "—"}</span>
                   <button disabled={busy} onClick={() => download(b)}>
                     Download

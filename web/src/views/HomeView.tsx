@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, proxiedImage, type HomeItem, type HomeSection } from "../api";
 import { libraryLabels } from "../App";
+import { RowsSkeleton } from "../components/Skeleton";
 
 // Home is the only place media types meet — as stacked per-library sections,
 // never mixed within a row (Plex-style).
@@ -24,7 +25,7 @@ export default function HomeView({
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
 
-  if (!sections) return <p className="muted">Loading…</p>;
+  if (!sections) return <RowsSkeleton rows={5} />;
 
   if (sections.length === 0) {
     return (

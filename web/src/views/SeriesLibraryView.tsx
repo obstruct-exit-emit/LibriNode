@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type RenameMove, type Series, type SeriesResult } from "../api";
 import { libraryLabels } from "../App";
 import AddResultsGrid, { type AddResult } from "../components/AddResultsGrid";
+import { PosterGridSkeleton } from "../components/Skeleton";
 import UnmatchedCard from "../components/UnmatchedCard";
 import WantedCard from "../components/WantedCard";
 
@@ -92,7 +93,7 @@ export default function SeriesLibraryView({
       .finally(() => setBusy(false));
   };
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <PosterGridSkeleton />;
 
   return (
     <>

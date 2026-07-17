@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
+import { DetailSkeleton } from "../components/Skeleton";
 
 // Full-page author detail, *arr-style: header with portrait, description and
 // author-level actions, then this library's books as a cover grid — clicking
@@ -52,7 +53,7 @@ export default function AuthorDetailView({
 
   useEffect(reload, [reload]);
 
-  if (!author) return <p className="muted">Loading author…</p>;
+  if (!author) return <DetailSkeleton />;
 
   const owned = books.filter((b) =>
     library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile,

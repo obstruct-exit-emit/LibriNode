@@ -51,6 +51,61 @@ const libraryIcons: Record<string, string> = {
   magazine: "📰",
 };
 
+// Hash routing: every page has a URL (#/library/manga, #/book/34?lib=ebook…),
+// so refresh keeps the page, back/forward work, and any view can be
+// bookmarked or shared. The hash is the single source of truth — navigation
+// writes it, a hashchange listener drives the page state.
+function pageToHash(p: Page): string {
+  switch (p.name) {
+    case "home":
+      return "#/";
+    case "library":
+      return `#/library/${p.mediaType}`;
+    case "author":
+      return `#/author/${p.id}?lib=${p.library}`;
+    case "book":
+      return `#/book/${p.id}?lib=${p.library}&author=${p.authorId}`;
+    case "series-detail":
+      return `#/series/${p.id}?type=${p.mediaType}`;
+    default:
+      return `#/${p.name}`;
+  }
+}
+
+function hashToPage(hash: string): Page {
+  const [path, query] = hash.replace(/^#\/?/, "").split("?");
+  const q = new URLSearchParams(query ?? "");
+  const seg = path.split("/").filter(Boolean);
+  const lib = q.get("lib") === "audiobook" ? ("audiobook" as const) : ("ebook" as const);
+  const id = Number(seg[1]);
+  switch (seg[0]) {
+    case undefined:
+      return { name: "home" };
+    case "library":
+      return seg[1] ? { name: "library", mediaType: seg[1] } : { name: "home" };
+    case "author":
+      return id > 0 ? { name: "author", id, library: lib } : { name: "home" };
+    case "book":
+      return id > 0
+        ? { name: "book", id, library: lib, authorId: Number(q.get("author")) || 0 }
+        : { name: "home" };
+    case "series":
+      return id > 0
+        ? { name: "series-detail", id, mediaType: q.get("type") ?? "manga" }
+        : { name: "home" };
+    case "calendar":
+      return { name: "calendar" };
+    case "activity":
+      return { name: "activity" };
+    case "settings":
+      return { name: "settings" };
+    case "system":
+      return { name: "system" };
+    default:
+      return { name: "home" };
+  }
+}
+
 export default function App() {
   return (
     <UiProvider>
@@ -67,7 +122,7 @@ function AppInner() {
   const [connected, setConnected] = useState(false);
   const [libraries, setLibraries] = useState<LibraryStatus[]>([]);
   const [health, setHealth] = useState<HealthIssue[]>([]);
-  const [page, setPage] = useState<Page>({ name: "home" });
+  const [page, setPage] = useState<Page>(() => hashToPage(location.hash));
   // The connection error keeps its dedicated card (it carries recovery UI);
   // every in-app error surfaces as a toast instead.
   const [error, setError] = useState("");
@@ -130,9 +185,21 @@ function AppInner() {
 
   const active = libraries.filter((l) => l.active);
 
+  // Back/forward and hand-edited URLs drive the page through the hash.
+  useEffect(() => {
+    const onHash = () => setPage(hashToPage(location.hash));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
   const go = (p: Page) => {
     setError("");
-    setPage(p);
+    const target = pageToHash(p);
+    if (location.hash === target) {
+      setPage(p); // same-URL navigation still re-renders the page
+    } else {
+      location.hash = target; // hashchange listener updates the state
+    }
     reloadLibraries(); // library activity can change after adds/scans
   };
 
@@ -301,7 +368,13 @@ function AppInner() {
             id={page.id}
             library={page.library}
             onError={onError}
-            onBack={() => go({ name: "author", id: page.authorId, library: page.library })}
+            onBack={() =>
+              // Deep-linked book URLs may not carry the author id — fall back
+              // to the library grid rather than a broken author page.
+              page.authorId > 0
+                ? go({ name: "author", id: page.authorId, library: page.library })
+                : go({ name: "library", mediaType: page.library })
+            }
             onSwitchLibrary={(library) =>
               go({ name: "book", id: page.id, library, authorId: page.authorId })
             }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, proxiedImage, type Author, type Book } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
+import { DetailSkeleton } from "../components/Skeleton";
 import { downloadPct, useQueue } from "../useQueue";
 import { formatBytes } from "../format";
 
@@ -54,7 +55,7 @@ export default function BookDetailView({
     hadDl.current = dl !== null;
   }, [dl, reload]);
 
-  if (!book) return <p className="muted">Loading book…</p>;
+  if (!book) return <DetailSkeleton />;
 
   const owned = library === "ebook" ? book.hasEbookFile : book.hasAudiobookFile;
   const monitored = library === "ebook" ? book.ebookMonitored : book.audiobookMonitored;
