@@ -58,7 +58,7 @@ func (s *Service) SearchBook(ctx context.Context, bookID int64, mediaType string
 	}
 	if book.MediaType == "magazine" {
 		return &BookOutcome{BookID: bookID, BookTitle: book.Title, MediaType: "magazine",
-			Message: "magazine issues are searched at the series level"}, nil
+			Message: "magazine acquisition is disabled — the magazine library is organize-only for now"}, nil
 	}
 	// Prose searches require library membership — the Plex-style model:
 	// a book is only acquirable as a format it was added as.
@@ -408,26 +408,8 @@ func (s *Service) SearchWanted(ctx context.Context) ([]BookOutcome, error) {
 
 	outcomes := []BookOutcome{}
 
-	magazines, err := s.store.ListSeries("magazine")
-	if err != nil {
-		return nil, err
-	}
-	for i := range magazines {
-		if !magazines[i].Monitored {
-			continue
-		}
-		if ctx.Err() != nil {
-			return outcomes, ctx.Err()
-		}
-		found, err := s.searchMagazine(ctx, &magazines[i])
-		if err != nil {
-			outcomes = append(outcomes, BookOutcome{
-				BookTitle: magazines[i].Title, MediaType: "magazine", Message: err.Error(),
-			})
-			continue
-		}
-		outcomes = append(outcomes, found...)
-	}
+	// Magazines are organize-only for now: the sweep never searches or grabs
+	// issues (searchMagazine stays for when acquisition returns).
 	for i := range books {
 		book := &books[i]
 		for _, w := range s.wants(book) {

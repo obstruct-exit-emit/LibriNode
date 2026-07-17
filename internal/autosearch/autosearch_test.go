@@ -244,44 +244,25 @@ func TestSearchWantedMagazine(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Magazines are organize-only for now: even with grabbable issues on the
+	// indexer and a monitored magazine, the sweep must not search, grab, or
+	// materialize anything for it.
 	outcomes, err := f.svc.SearchWanted(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Exactly one new issue grabbed (pdf beats epub for the same identifier).
-	magGrabs := 0
 	for _, o := range outcomes {
 		if o.MediaType == "magazine" {
-			magGrabs++
-			if !o.Grabbed || o.Release != "The Economist - 2026-07-04 PDF" {
-				t.Fatalf("magazine outcome = %+v", o)
-			}
+			t.Fatalf("magazine swept despite acquisition being disabled: %+v", o)
 		}
 	}
-	if magGrabs != 1 {
-		t.Fatalf("magazine outcomes = %+v", outcomes)
+	if len(f.sabAdd) != 0 {
+		t.Errorf("sab adds = %v, want none", f.sabAdd)
 	}
-	if len(f.sabAdd) != 1 || f.sabAdd[0] != "https://idx/get/eco-0704.nzb" {
-		t.Errorf("sab adds = %v", f.sabAdd)
-	}
-	// The issue book exists, monitored, wanted-shaped.
+	// Only the pre-existing issue remains; nothing was materialized.
 	volumes, _ := f.store.ListVolumes(mag.ID)
-	if len(volumes) != 2 {
-		t.Fatalf("volumes = %+v", volumes)
-	}
-
-	// Second pass: the new issue is pending; nothing more is grabbed.
-	outcomes, err = f.svc.SearchWanted(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, o := range outcomes {
-		if o.Grabbed {
-			t.Fatalf("second pass grabbed: %+v", o)
-		}
-	}
-	if len(f.sabAdd) != 1 {
-		t.Errorf("double grab: %v", f.sabAdd)
+	if len(volumes) != 1 {
+		t.Fatalf("volumes = %+v, want just the owned issue", volumes)
 	}
 }
 

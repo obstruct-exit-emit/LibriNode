@@ -182,13 +182,15 @@ export default function SeriesDetailView({
             >
               {series.monitored ? "monitored" : "unmonitored"}
             </button>
-            <button
-              disabled={busy}
-              title={`Search indexers for this series' wanted ${unitName}s`}
-              onClick={searchWanted}
-            >
-              Search wanted
-            </button>
+            {mediaType !== "magazine" && (
+              <button
+                disabled={busy}
+                title={`Search indexers for this series' wanted ${unitName}s`}
+                onClick={searchWanted}
+              >
+                Search wanted
+              </button>
+            )}
             <button disabled={busy} title="Preview naming-template moves for this series' files" onClick={previewRenames}>
               Organize…
             </button>

@@ -237,9 +237,13 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch mediaType {
-	case "ebook", "audiobook", "manga", "comic", "magazine":
+	case "ebook", "audiobook", "manga", "comic":
+	case "magazine":
+		writeError(w, http.StatusBadRequest,
+			"magazine acquisition is disabled — the magazine library is organize-only for now")
+		return
 	default:
-		writeError(w, http.StatusBadRequest, "mediaType must be ebook, audiobook, manga, comic, or magazine")
+		writeError(w, http.StatusBadRequest, "mediaType must be ebook, audiobook, manga, or comic")
 		return
 	}
 

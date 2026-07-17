@@ -101,7 +101,9 @@ export default function SeriesLibraryView({
         </h2>
         <span className="row-actions">
           <button onClick={() => setShowAdd(!showAdd)}>{showAdd ? "Close" : "+ Add"}</button>
-          <button disabled={busy} onClick={searchWanted}>Search wanted</button>
+          {mediaType !== "magazine" && (
+            <button disabled={busy} onClick={searchWanted}>Search wanted</button>
+          )}
           <button disabled={busy} onClick={previewRenames} title="Preview naming-template moves">
             Organize…
           </button>
@@ -190,7 +192,9 @@ export default function SeriesLibraryView({
       )}
     </section>
 
-    <WantedCard key={`wanted-${mediaType}`} library={mediaType} onError={onError} />
+    {mediaType !== "magazine" && (
+      <WantedCard key={`wanted-${mediaType}`} library={mediaType} onError={onError} />
+    )}
     </>
   );
 }

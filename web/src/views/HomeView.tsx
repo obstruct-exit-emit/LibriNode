@@ -51,7 +51,7 @@ export default function HomeView({
             </h2>
             <span className="muted">
               {s.items} item{s.items === 1 ? "" : "s"}
-              {s.wantedCount > 0 && ` · ${s.wantedCount} wanted`}
+              {s.mediaType !== "magazine" && s.wantedCount > 0 && ` · ${s.wantedCount} wanted`}
             </span>
           </div>
           {s.recentlyAdded.length > 0 && (
@@ -61,7 +61,8 @@ export default function HomeView({
               onOpen={(it) => onOpenItem(s.mediaType, it)}
             />
           )}
-          {s.wanted.length > 0 && (
+          {/* Magazines are organize-only for now — no acquisition, so no Wanted. */}
+          {s.mediaType !== "magazine" && s.wanted.length > 0 && (
             <HomeRow
               title="Wanted"
               items={s.wanted}

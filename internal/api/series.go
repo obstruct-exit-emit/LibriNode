@@ -257,24 +257,12 @@ func (s *server) handleSeriesSearch(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	// Magazines have no per-issue books to sweep — issues are discovered and
-	// materialized from releases. Drive the magazine search directly.
+	// Magazines are organize-only for now — no searching, no grabbing. Issues
+	// still materialize from scans; acquisition returns in a later phase.
 	if series.MediaType == "magazine" {
-		found, err := s.search.SearchMagazineSeries(r.Context(), series)
-		if err != nil {
-			writeError(w, http.StatusBadGateway, err.Error())
-			return
-		}
-		outcomes := make([]any, 0, len(found))
-		grabbed := 0
-		for _, o := range found {
-			if o.Grabbed {
-				grabbed++
-			}
-			outcomes = append(outcomes, o)
-		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"searched": len(found), "grabbed": grabbed, "outcomes": outcomes,
+			"searched": 0, "grabbed": 0, "outcomes": []any{},
+			"message": "magazine acquisition is disabled — the magazine library is organize-only for now",
 		})
 		return
 	}
