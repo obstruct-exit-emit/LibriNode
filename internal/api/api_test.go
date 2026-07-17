@@ -1116,6 +1116,94 @@ func TestExistingFileImport(t *testing.T) {
 	}
 }
 
+// TestDuplicateUnmatchedFile: an unmatched file that confidently matches an
+// OWNED book is flagged as a duplicate with the current library file attached;
+// Replace swaps the library's copy for the new file (old one deleted from
+// disk), and dismiss?deleteFiles=true deletes the stray from disk instead.
+func TestDuplicateUnmatchedFile(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	rootDir := t.TempDir()
+	write := func(rel, content string) string {
+		path := filepath.Join(rootDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	owned := write("Terry Pratchett/The Colour of Magic.epub", "old-copy")
+	write("Terry Pratchett/The Colour of Magic - retail.epub", "better-copy")
+
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	// The exact-named file matched; the retail copy is an unmatched duplicate.
+	type option struct {
+		File      library.BookFile `json:"file"`
+		Duplicate *struct {
+			BookID     int64            `json:"bookId"`
+			Title      string           `json:"title"`
+			File       library.BookFile `json:"file"`
+			Confidence int              `json:"confidence"`
+		} `json:"duplicate"`
+	}
+	var options []option
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=ebook", nil, &options), http.StatusOK)
+	if len(options) != 1 {
+		t.Fatalf("options = %d, want 1", len(options))
+	}
+	dup := options[0]
+	if dup.Duplicate == nil || dup.Duplicate.Title != "The Colour of Magic" ||
+		dup.Duplicate.File.Path != owned || dup.Duplicate.Confidence == 0 {
+		t.Fatalf("duplicate = %+v", dup.Duplicate)
+	}
+
+	// Replace: the stray becomes the book's file; the old copy leaves disk.
+	var replaced struct {
+		File         library.BookFile `json:"file"`
+		DeletedFiles int              `json:"deletedFiles"`
+	}
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/bookfile/%d/replace", dup.File.ID),
+		map[string]int64{"bookId": dup.Duplicate.BookID}, &replaced), http.StatusOK)
+	if replaced.File.BookID != dup.Duplicate.BookID || replaced.DeletedFiles != 1 {
+		t.Fatalf("replace = %+v", replaced)
+	}
+	if _, err := os.Stat(owned); !os.IsNotExist(err) {
+		t.Error("old library copy still on disk after replace")
+	}
+	// The new file was organized into the template spot with its content.
+	var detail library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", dup.Duplicate.BookID), nil, &detail), http.StatusOK)
+	if len(detail.Files) != 1 {
+		t.Fatalf("book files after replace = %+v", detail.Files)
+	}
+	data, err := os.ReadFile(detail.Files[0].Path)
+	if err != nil || string(data) != "better-copy" {
+		t.Fatalf("replaced file content = %q (%v)", data, err)
+	}
+
+	// Second stray duplicate: resolve it the other way — delete from disk.
+	stray := write("Terry Pratchett/The Colour of Magic - another.epub", "junk-copy")
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=ebook", nil, &options), http.StatusOK)
+	if len(options) != 1 || options[0].Duplicate == nil {
+		t.Fatalf("second duplicate not detected: %+v", options)
+	}
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/bookfile/%d?deleteFiles=true", options[0].File.ID), nil, nil), http.StatusOK)
+	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+		t.Error("stray still on disk after delete")
+	}
+	// Library copy untouched.
+	if _, err := os.Stat(detail.Files[0].Path); err != nil {
+		t.Errorf("library copy vanished: %v", err)
+	}
+}
+
 func TestNamingSettingsAndRename(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

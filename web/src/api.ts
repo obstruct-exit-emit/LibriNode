@@ -398,6 +398,14 @@ export interface UnmatchedOption {
   confident: boolean;
   confidence: number; // 0–100
   candidates: { id: number; title: string; year?: string }[];
+  // Set when this file duplicates a book already owned in the library.
+  duplicate?: {
+    bookId: number;
+    title: string;
+    year?: string;
+    file: BookFile; // the library's current copy
+    confidence: number;
+  };
 }
 
 // FolderListing is one level of the server's filesystem for the folder picker.
@@ -610,8 +618,15 @@ export const api = {
       `/api/v1/bookfile/${fileId}/match`,
       json({ bookId }),
     ),
-  dismissFile: (fileId: number) =>
-    request<void>(`/api/v1/bookfile/${fileId}`, { method: "DELETE" }),
+  replaceFile: (fileId: number, bookId: number) =>
+    request<{ file: BookFile; skips: string[]; deletedFiles: number; errors: string[] }>(
+      `/api/v1/bookfile/${fileId}/replace`,
+      json({ bookId }),
+    ),
+  dismissFile: (fileId: number, deleteFiles = false) =>
+    request<void>(`/api/v1/bookfile/${fileId}${deleteFiles ? "?deleteFiles=true" : ""}`, {
+      method: "DELETE",
+    }),
 
   listDownloadClients: () =>
     request<DownloadClient[]>("/api/v1/downloadclient"),

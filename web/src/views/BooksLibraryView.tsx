@@ -367,7 +367,7 @@ function UnmatchedRow({
   onDone: () => void;
   onError: (message: string) => void;
 }) {
-  const { file, candidates } = option;
+  const { file, candidates, duplicate } = option;
   const suggested = candidates.find((c) => c.id === option.suggested);
   const [bookID, setBookID] = useState(option.suggested ?? 0);
   const [busy, setBusy] = useState(false);
@@ -379,6 +379,78 @@ function UnmatchedRow({
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusy(false));
   };
+
+  const fmtSize = (bytes: number) =>
+    bytes >= 1 << 20 ? `${(bytes / (1 << 20)).toFixed(1)} MiB` : `${(bytes / 1024).toFixed(0)} KiB`;
+
+  // Duplicate of an owned book: show both files and resolve — replace the
+  // library's copy with this one, or delete this one from disk.
+  if (duplicate) {
+    return (
+      <li>
+        <div className="row">
+          <span className="file-path">
+            ⚠️ Duplicate of <strong>{duplicate.title}</strong>
+            {duplicate.year && ` (${duplicate.year})`}
+            <span className="pill match-confidence" title="Match confidence">
+              {duplicate.confidence}%
+            </span>
+          </span>
+        </div>
+        <ul className="rows nested">
+          <li>
+            <div className="row">
+              <span className="file-path muted">in library: 📄 {duplicate.file.path}</span>
+              <span className="muted">
+                {duplicate.file.format} · {fmtSize(duplicate.file.size)}
+              </span>
+            </div>
+          </li>
+          <li>
+            <div className="row">
+              <span className="file-path">this file: 📄 {file.path}</span>
+              <span className="row-actions">
+                <span className="muted">
+                  {file.format} · {fmtSize(file.size)}
+                </span>
+                <button
+                  disabled={busy}
+                  title="Use this file instead — the library's current copy is deleted from disk"
+                  onClick={() => {
+                    if (confirm(`Replace the library's copy of "${duplicate.title}" with this file?\n\nThe current file is deleted from disk.`)) {
+                      run(() => api.replaceFile(file.id, duplicate.bookId));
+                    }
+                  }}
+                >
+                  {busy ? "Working…" : "Replace"}
+                </button>
+                <button
+                  className="danger"
+                  disabled={busy}
+                  title="Keep the library's copy — delete this file from disk"
+                  onClick={() => {
+                    if (confirm("Delete this file from disk? The library's copy is kept.")) {
+                      run(() => api.dismissFile(file.id, true));
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+                <button
+                  className="toggle"
+                  disabled={busy}
+                  title="Forget this file without touching disk (the next scan re-finds it)"
+                  onClick={() => run(() => api.dismissFile(file.id))}
+                >
+                  dismiss
+                </button>
+              </span>
+            </div>
+          </li>
+        </ul>
+      </li>
+    );
+  }
 
   return (
     <li>

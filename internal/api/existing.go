@@ -34,6 +34,20 @@ type unmatchedOption struct {
 	Confident  bool                 `json:"confident"`
 	Confidence int                  `json:"confidence"` // 0–100, how sure the suggestion is
 	Candidates []unmatchedCandidate `json:"candidates"`
+	// Duplicate is set when the file confidently matches a book already OWNED
+	// in this format — the user resolves it: replace the library's copy with
+	// this file, or delete this file from disk.
+	Duplicate *duplicateInfo `json:"duplicate,omitempty"`
+}
+
+// duplicateInfo names the owned book an unmatched file duplicates, and the
+// file currently holding that spot in the library.
+type duplicateInfo struct {
+	BookID     int64            `json:"bookId"`
+	Title      string           `json:"title"`
+	Year       string           `json:"year,omitempty"`
+	File       library.BookFile `json:"file"` // the book's current file in this format
+	Confidence int              `json:"confidence"`
 }
 
 // unmatchedOptions builds the import options for every unmatched file of one
@@ -110,9 +124,11 @@ func (s *server) unmatchedOptions(mediaType string) ([]unmatchedOption, error) {
 			}
 			return false, 0
 		}
-		bestLen, secondLen, bestCount := 0, 0, 0
-		bestCov := 0.0
-		exact := false
+		// Unowned books become candidates; owned books are tracked separately —
+		// a confident match against one means this file is a DUPLICATE of a
+		// book the library already has.
+		var want, dup matchTally
+		var dupBook *library.Book
 		for j := range books {
 			b := &books[j]
 			if b.MediaType != "book" {
@@ -122,14 +138,6 @@ func (s *server) unmatchedOptions(mediaType string) ([]unmatchedOption, error) {
 			if mediaType == "audiobook" {
 				owned = b.HasAudiobookFile
 			}
-			if owned {
-				continue // spec: never offer books already owned in this format
-			}
-			cand := unmatchedCandidate{ID: b.ID, Title: b.Title}
-			if len(b.ReleaseDate) >= 4 {
-				cand.Year = b.ReleaseDate[:4]
-			}
-			opt.Candidates = append(opt.Candidates, cand)
 			// This book's longest matching key and its coverage.
 			hit := 0
 			cov := 0.0
@@ -143,45 +151,95 @@ func (s *server) unmatchedOptions(mediaType string) ([]unmatchedOption, error) {
 					isExact = key == normTitle || key == normAlt
 				}
 			}
-			switch {
-			case hit == 0:
-			case hit > bestLen:
-				secondLen = bestLen
-				bestLen, bestCov, bestCount, exact = hit, cov, 1, isExact
-				opt.Suggested = b.ID
-			case hit == bestLen:
-				bestCount++
-			default:
-				if hit > secondLen {
-					secondLen = hit
+			if owned {
+				if dup.consider(hit, cov, isExact) {
+					dupBook = b
 				}
+				continue
+			}
+			cand := unmatchedCandidate{ID: b.ID, Title: b.Title}
+			if len(b.ReleaseDate) >= 4 {
+				cand.Year = b.ReleaseDate[:4]
+			}
+			opt.Candidates = append(opt.Candidates, cand)
+			if want.consider(hit, cov, isExact) {
+				opt.Suggested = b.ID
 			}
 		}
-		opt.Confident = bestLen > 0 && bestCount == 1
-		opt.Confidence = matchConfidence(bestLen, secondLen, bestCount, bestCov, exact)
+		opt.Confident = want.unique()
+		opt.Confidence = want.confidence()
 		if !opt.Confident {
 			opt.Suggested = 0 // ambiguous (or nothing) — the user picks
+		}
+		// Duplicate flag: a unique confident match against an owned book, with
+		// the file currently holding that spot so the user can compare.
+		if dup.unique() && dupBook != nil {
+			if bookFiles, err := s.store.ListBookFiles(dupBook.ID); err == nil {
+				for k := range bookFiles {
+					if bookFiles[k].MediaType == mediaType {
+						info := &duplicateInfo{
+							BookID: dupBook.ID, Title: dupBook.Title,
+							File: bookFiles[k], Confidence: dup.confidence(),
+						}
+						if len(dupBook.ReleaseDate) >= 4 {
+							info.Year = dupBook.ReleaseDate[:4]
+						}
+						opt.Duplicate = info
+						break
+					}
+				}
+			}
 		}
 		out = append(out, opt)
 	}
 	return out, nil
 }
 
-// matchConfidence turns the match signals into a 0–100 rating: an exact title
-// is certain; a unique longest match scores by how much of the filename the
-// title explains (coverage) plus how far ahead of the runner-up it is (gap);
-// a tie can't be trusted regardless of length.
-func matchConfidence(bestLen, secondLen, bestCount int, coverage float64, exact bool) int {
+// matchTally accumulates one match race: the longest hit wins, ties are
+// remembered (they kill confidence), and the runner-up length feeds the gap
+// half of the rating.
+type matchTally struct {
+	bestLen, secondLen, bestCount int
+	bestCov                       float64
+	exact                         bool
+}
+
+// consider feeds one book's longest hit; true when it takes the lead.
+func (t *matchTally) consider(hit int, cov float64, isExact bool) bool {
 	switch {
-	case bestLen == 0:
+	case hit == 0:
+	case hit > t.bestLen:
+		t.secondLen = t.bestLen
+		t.bestLen, t.bestCov, t.bestCount, t.exact = hit, cov, 1, isExact
+		return true
+	case hit == t.bestLen:
+		t.bestCount++
+	default:
+		if hit > t.secondLen {
+			t.secondLen = hit
+		}
+	}
+	return false
+}
+
+// unique reports a single undisputed winner.
+func (t *matchTally) unique() bool { return t.bestLen > 0 && t.bestCount == 1 }
+
+// confidence turns the tally into a 0–100 rating: an exact title is certain;
+// a unique longest match scores by how much of the filename the title
+// explains (coverage) plus how far ahead of the runner-up it is (gap); a tie
+// can't be trusted regardless of length.
+func (t *matchTally) confidence() int {
+	switch {
+	case t.bestLen == 0:
 		return 0
-	case bestCount > 1:
+	case t.bestCount > 1:
 		return 40 // something matched, but it's a coin toss
-	case exact:
+	case t.exact:
 		return 100
 	default:
-		gap := float64(bestLen-secondLen) / float64(bestLen)
-		return 55 + int(25*coverage+0.5) + int(20*gap+0.5)
+		gap := float64(t.bestLen-t.secondLen) / float64(t.bestLen)
+		return 55 + int(25*t.bestCov+0.5) + int(20*gap+0.5)
 	}
 }
 

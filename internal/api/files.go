@@ -190,19 +190,93 @@ func (s *server) handleMatchBookFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"file": file, "skips": skips})
 }
 
-// handleDeleteBookFile removes a file record (disk is never touched) —
-// the "dismiss" action for junk in the unmatched list.
+// handleReplaceBookFile resolves a duplicate: the book's current file(s) of
+// the unmatched file's format are deleted — records and disk — and the
+// unmatched file takes their place (adopted and organized into the template
+// spot). POST /bookfile/{id}/replace {"bookId": N}.
+func (s *server) handleReplaceBookFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		BookID int64 `json:"bookId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BookID <= 0 {
+		writeError(w, http.StatusBadRequest, "bookId is required")
+		return
+	}
+	file, err := s.store.GetBookFile(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if file.BookID != 0 {
+		writeError(w, http.StatusBadRequest, "file is already matched to a book")
+		return
+	}
+	old, err := s.store.ListBookFiles(req.BookID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+
+	// Out with the old (same format only — the other format's file stays)…
+	paths := []string{}
+	for i := range old {
+		if old[i].MediaType != file.MediaType {
+			continue
+		}
+		paths = append(paths, old[i].Path)
+		if err := s.store.DeleteBookFile(old[i].ID); err != nil && err != library.ErrNotFound {
+			writeStoreError(w, err)
+			return
+		}
+	}
+	deleted, errs := s.removeFilesFromDisk(paths)
+
+	// …in with the new: adopt + organize into the (now free) template spot.
+	skips, err := s.adoptFile(id, req.BookID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	updated, err := s.store.GetBookFile(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"file": updated, "skips": skips, "deletedFiles": deleted, "errors": errs,
+	})
+}
+
+// handleDeleteBookFile removes a file record — the "dismiss" action for junk
+// in the unmatched list. With ?deleteFiles=true the file itself is deleted
+// from disk too (duplicate resolution: keep the library's copy, drop this
+// one); only paths inside a root folder are ever touched.
 func (s *server) handleDeleteBookFile(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	deleteFiles := wantsFileDeletion(r)
+	var paths []string
+	if deleteFiles {
+		file, err := s.store.GetBookFile(id)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		paths = []string{file.Path}
+	}
 	if err := s.store.DeleteBookFile(id); err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	s.finishDelete(w, deleteFiles, paths)
 }
 
 // handleListBookFiles lists scanned files: ?bookId=N for one book's files,
