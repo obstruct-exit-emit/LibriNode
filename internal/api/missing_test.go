@@ -56,6 +56,69 @@ func TestAuthorMissing(t *testing.T) {
 	}
 }
 
+// TestAddIsolation: adding an author or book into ONE format library must
+// never enroll the other — the libraries are linked only by ownership.
+func TestAddIsolation(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author",
+		map[string]string{"foreignAuthorId": "100", "library": "ebook"}, &author), http.StatusCreated)
+	if !author.InEbookLibrary || author.InAudiobookLibrary {
+		t.Fatalf("ebook author add: memberships = ebook %v audio %v, want true/false",
+			author.InEbookLibrary, author.InAudiobookLibrary)
+	}
+	var audioAuthors []library.Author
+	a.want(a.call("GET", "/api/v1/author?library=audiobook", nil, &audioAuthors), http.StatusOK)
+	if len(audioAuthors) != 0 {
+		t.Fatalf("audiobook library lists %d author(s) after an ebook-only add", len(audioAuthors))
+	}
+
+	// Adding one BOOK as an ebook: the book and its author stay out of
+	// Audiobooks.
+	var books []library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book?authorId=%d", author.ID), nil, &books), http.StatusOK)
+	var added library.Book
+	a.want(a.call("POST", "/api/v1/book",
+		map[string]string{"foreignBookId": books[0].ForeignID, "library": "ebook"}, &added), http.StatusCreated)
+	if !added.InEbookLibrary || added.InAudiobookLibrary || added.AudiobookMonitored {
+		t.Fatalf("ebook book add: flags ebook %v / audio %v / audioMon %v, want ebook-only",
+			added.InEbookLibrary, added.InAudiobookLibrary, added.AudiobookMonitored)
+	}
+	a.want(a.call("GET", "/api/v1/author?library=audiobook", nil, &audioAuthors), http.StatusOK)
+	if len(audioAuthors) != 0 {
+		t.Fatalf("audiobook library gained an author from an ebook book-add")
+	}
+}
+
+// TestRefreshPreservesMembership: metadata refresh must never enroll,
+// un-enroll, or re-monitor — a deliberately added ebook stays an ebook
+// library member across an author refresh.
+func TestRefreshPreservesMembership(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author",
+		map[string]string{"foreignAuthorId": "100", "library": "ebook"}, &author), http.StatusCreated)
+	var books []library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book?authorId=%d", author.ID), nil, &books), http.StatusOK)
+	var added library.Book
+	a.want(a.call("POST", "/api/v1/book",
+		map[string]string{"foreignBookId": books[0].ForeignID, "library": "ebook"}, &added), http.StatusCreated)
+
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/author/%d/refresh", author.ID), nil, nil), http.StatusOK)
+
+	var after library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", added.ID), nil, &after), http.StatusOK)
+	if !after.InEbookLibrary || !after.EbookMonitored {
+		t.Fatalf("after refresh: inEbook %v ebookMonitored %v — refresh un-enrolled the book",
+			after.InEbookLibrary, after.EbookMonitored)
+	}
+	if after.InAudiobookLibrary {
+		t.Fatal("after refresh: book gained audiobook membership")
+	}
+}
+
 // TestLibraryRefresh: the library-wide metadata refresh counts the library's
 // records, refuses provider-less magazines, and answers 202 for a real run.
 func TestLibraryRefresh(t *testing.T) {

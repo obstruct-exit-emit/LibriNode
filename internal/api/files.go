@@ -55,16 +55,28 @@ func renameIDParam(r *http.Request, name string) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-// planRename picks the organize scope: one book, one series, one author, or
-// everything.
-func (s *server) planRename(bookID, authorID, seriesID int64) ([]organizeMove, []string, error) {
+// planRename picks the organize scope: one book, one series, one author, one
+// library, or everything.
+func (s *server) planRename(bookID, authorID, seriesID int64, mediaType string) ([]organizeMove, []string, error) {
 	if seriesID > 0 {
 		return s.organize.PlanSeries(seriesID)
 	}
 	if authorID > 0 {
 		return s.organize.PlanAuthor(authorID)
 	}
+	if mediaType != "" && bookID == 0 {
+		return s.organize.PlanLibrary(mediaType)
+	}
 	return s.organize.Plan(bookID)
+}
+
+// renameMediaType validates the optional ?mediaType= library scope.
+func renameMediaType(v string) (string, bool) {
+	switch v {
+	case "", "ebook", "audiobook", "manga", "comic", "magazine":
+		return v, true
+	}
+	return "", false
 }
 
 // handleRenamePreview computes what organizing would move, without touching
@@ -86,7 +98,12 @@ func (s *server) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid seriesId")
 		return
 	}
-	moves, skips, err := s.planRename(bookID, authorID, seriesID)
+	mediaType, ok := renameMediaType(r.URL.Query().Get("mediaType"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid mediaType")
+		return
+	}
+	moves, skips, err := s.planRename(bookID, authorID, seriesID, mediaType)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -95,17 +112,24 @@ func (s *server) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleRenameApply plans and executes the moves. The body may scope with
-// {"bookId": N}, {"authorId": N}, or {"seriesId": N}; empty organizes all.
+// {"bookId": N}, {"authorId": N}, {"seriesId": N}, or {"mediaType": "…"}
+// (one library); empty organizes all.
 func (s *server) handleRenameApply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BookID   int64 `json:"bookId"`
-		AuthorID int64 `json:"authorId"`
-		SeriesID int64 `json:"seriesId"`
+		BookID    int64  `json:"bookId"`
+		AuthorID  int64  `json:"authorId"`
+		SeriesID  int64  `json:"seriesId"`
+		MediaType string `json:"mediaType"`
 	}
 	// Body is optional.
 	_ = json.NewDecoder(r.Body).Decode(&req)
+	mediaType, ok := renameMediaType(req.MediaType)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid mediaType")
+		return
+	}
 
-	moves, skips, err := s.planRename(req.BookID, req.AuthorID, req.SeriesID)
+	moves, skips, err := s.planRename(req.BookID, req.AuthorID, req.SeriesID, mediaType)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -3,6 +3,7 @@ import {
   api,
   type Book,
   type SearchAuthor,
+  type Series,
   type SeriesResult,
   type UnmatchedOption,
 } from "../api";
@@ -20,12 +21,16 @@ import { useUi } from "../ui";
 export default function UnmatchedCard({
   mediaType,
   books,
+  seriesList,
   onChanged,
   onError,
 }: {
   mediaType: string;
   // Prose only: every library book, the last-resort manual match list.
   books?: Book[];
+  // Series libraries only: this library's series, the manual series→volume
+  // fallback when no series was auto-matched.
+  seriesList?: Series[];
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
@@ -100,6 +105,7 @@ export default function UnmatchedCard({
             mediaType={mediaType}
             option={o}
             books={books ?? []}
+            seriesList={seriesList ?? []}
             onDone={done}
             onError={onError}
           />
@@ -113,12 +119,14 @@ function UnmatchedRow({
   mediaType,
   option,
   books,
+  seriesList,
   onDone,
   onError,
 }: {
   mediaType: string;
   option: UnmatchedOption;
   books: Book[];
+  seriesList: Series[];
   onDone: () => void;
   onError: (message: string) => void;
 }) {
@@ -132,6 +140,22 @@ function UnmatchedRow({
   const [finding, setFinding] = useState(false);
   const [authorResults, setAuthorResults] = useState<SearchAuthor[] | null>(null);
   const [seriesResults, setSeriesResults] = useState<SeriesResult[] | null>(null);
+  // Manual series→volume fallback (series libraries): pick any series in the
+  // library, then one of its volumes.
+  const [manualSeriesID, setManualSeriesID] = useState(0);
+  const [manualVolumes, setManualVolumes] = useState<Book[] | null>(null);
+  const [manualVolumeID, setManualVolumeID] = useState(0);
+
+  const pickManualSeries = (id: number) => {
+    setManualSeriesID(id);
+    setManualVolumes(null);
+    setManualVolumeID(0);
+    if (id === 0) return;
+    api
+      .getSeries(id)
+      .then((s) => setManualVolumes(s.volumes ?? []))
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  };
 
   const run = (action: () => Promise<unknown>) => {
     setBusy(true);
@@ -353,6 +377,50 @@ function UnmatchedRow({
                   <button disabled={busy || bookID === 0} onClick={() => run(() => api.matchFile(file.id, bookID))}>
                     Import
                   </button>
+                </>
+              )}
+              {isVolume && candidates.length === 0 && seriesList.length > 0 && (
+                <>
+                  <select
+                    value={manualSeriesID}
+                    title="Match this file to any series in the library"
+                    onChange={(e) => pickManualSeries(Number(e.target.value))}
+                  >
+                    <option value={0}>Match to series…</option>
+                    {seriesList.map((sr) => (
+                      <option key={sr.id} value={sr.id}>
+                        {sr.title}
+                      </option>
+                    ))}
+                  </select>
+                  {manualSeriesID > 0 && manualVolumes === null && (
+                    <span className="muted">loading volumes…</span>
+                  )}
+                  {manualVolumes !== null && manualVolumes.length === 0 && (
+                    <span className="muted">this series has no volumes yet</span>
+                  )}
+                  {manualVolumes !== null && manualVolumes.length > 0 && (
+                    <>
+                      <select
+                        value={manualVolumeID}
+                        onChange={(e) => setManualVolumeID(Number(e.target.value))}
+                      >
+                        <option value={0}>Volume…</option>
+                        {manualVolumes.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.title}
+                            {v.hasFile ? " (owned)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        disabled={busy || manualVolumeID === 0}
+                        onClick={() => run(() => api.matchFile(file.id, manualVolumeID))}
+                      >
+                        Import
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </>

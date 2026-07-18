@@ -81,7 +81,7 @@ export default function SeriesLibraryView({
     setBusy(true);
     setNotice("");
     api
-      .renamePreview()
+      .renamePreview(undefined, undefined, mediaType)
       .then((r) => {
         setRenamePlan(r.moves);
         if (r.moves.length === 0) setNotice("All files already match the naming templates.");
@@ -93,7 +93,7 @@ export default function SeriesLibraryView({
   const applyRenames = () => {
     setBusy(true);
     api
-      .renameApply()
+      .renameApply(undefined, undefined, mediaType)
       .then((r) => {
         setNotice(`Moved ${r.moves.length} file(s)${r.skips.length ? `, ${r.skips.length} skipped` : ""}.`);
         setRenamePlan(null);
@@ -234,6 +234,7 @@ export default function SeriesLibraryView({
     <UnmatchedCard
       key={`unmatched-${mediaType}`}
       mediaType={mediaType}
+      seriesList={series}
       onChanged={reload}
       onError={onError}
     />

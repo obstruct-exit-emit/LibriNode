@@ -72,6 +72,22 @@ func (s *Service) PlanSeries(seriesID int64) ([]Move, []string, error) {
 	return s.planFiles(files)
 }
 
+// PlanLibrary is Plan scoped to ONE library's files (a library page's
+// Organize button) — the other media types' files never move.
+func (s *Service) PlanLibrary(mediaType string) ([]Move, []string, error) {
+	files, err := s.store.ListMatchedBookFiles()
+	if err != nil {
+		return nil, nil, err
+	}
+	mine := files[:0]
+	for _, f := range files {
+		if f.MediaType == mediaType {
+			mine = append(mine, f)
+		}
+	}
+	return s.planFiles(mine)
+}
+
 func (s *Service) planFiles(files []library.BookFile) ([]Move, []string, error) {
 	roots, err := s.store.ListRootFolders()
 	if err != nil {

@@ -107,6 +107,13 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- A library page's Organize… now moves only that library's files (it used to
+  organize every library at once); the rename API gained a mediaType scope.
+- Manga/comic unmatched files without an auto-matched series can now be
+  matched by hand: pick any series in the library, then one of its volumes.
+- Verified with new regression tests that adding an author or book into one
+  format library never enrolls the other (a title appearing in both means
+  you own both formats — ownership enrolls by design).
 - Scanner matches survive organizing: template-named files re-match their
   books on every scan (template-aware keys), manual matches stick, and a
   re-found file no longer duplicates its record.

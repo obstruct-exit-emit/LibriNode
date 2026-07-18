@@ -1442,6 +1442,20 @@ func TestNamingSettingsAndRename(t *testing.T) {
 	if len(preview.Moves) != 1 {
 		t.Fatalf("preview after template change = %+v", preview.Moves)
 	}
+
+	// A library page's Organize is scoped: its own library sees the move,
+	// another library sees none — other media types' files never move.
+	a.want(a.call("GET", "/api/v1/library/rename?mediaType=ebook", nil, &preview), http.StatusOK)
+	if len(preview.Moves) != 1 {
+		t.Fatalf("ebook-scoped preview = %d moves, want 1", len(preview.Moves))
+	}
+	a.want(a.call("GET", "/api/v1/library/rename?mediaType=manga", nil, &preview), http.StatusOK)
+	if len(preview.Moves) != 0 {
+		t.Fatalf("manga-scoped preview sees the ebook move: %+v", preview.Moves)
+	}
+	a.want(a.call("GET", "/api/v1/library/rename?mediaType=bogus", nil, nil), http.StatusBadRequest)
+	a.want(a.call("GET", "/api/v1/library/rename", nil, &preview), http.StatusOK) // re-plan unscoped
+
 	var applied struct {
 		Moves []map[string]any `json:"moves"`
 		Skips []string         `json:"skips"`

@@ -86,7 +86,7 @@ export default function BooksLibraryView({
   const previewRenames = () => {
     setBusyHeader(true);
     api
-      .renamePreview()
+      .renamePreview(undefined, undefined, library)
       .then((r) => {
         setRenamePlan(r.moves);
         if (r.moves.length === 0) setNotice("All files already match the naming templates.");
@@ -98,7 +98,7 @@ export default function BooksLibraryView({
   const applyRenames = () => {
     setBusyHeader(true);
     api
-      .renameApply()
+      .renameApply(undefined, undefined, library)
       .then((r) => {
         setNotice(`Moved ${r.moves.length} file(s)${r.skips.length ? `, ${r.skips.length} skipped` : ""}.`);
         setRenamePlan(null);

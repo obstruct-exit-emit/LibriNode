@@ -620,15 +620,21 @@ export const api = {
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
   listUnmatchedFiles: () =>
     request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
-  renamePreview: (authorId?: number, seriesId?: number) =>
+  renamePreview: (authorId?: number, seriesId?: number, mediaType?: string) =>
     request<RenameResult>(
       `/api/v1/library/rename${
-        seriesId ? `?seriesId=${seriesId}` : authorId ? `?authorId=${authorId}` : ""
+        seriesId
+          ? `?seriesId=${seriesId}`
+          : authorId
+            ? `?authorId=${authorId}`
+            : mediaType
+              ? `?mediaType=${mediaType}`
+              : ""
       }`,
     ),
-  renameApply: (authorId?: number, seriesId?: number) =>
+  renameApply: (authorId?: number, seriesId?: number, mediaType?: string) =>
     request<RenameResult>("/api/v1/library/rename", {
-      ...json(seriesId ? { seriesId } : authorId ? { authorId } : {}),
+      ...json(seriesId ? { seriesId } : authorId ? { authorId } : mediaType ? { mediaType } : {}),
       method: "POST",
     }),
   unmatchedOptions: (mediaType: string) =>
