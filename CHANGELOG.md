@@ -107,6 +107,17 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- Log/token-leak sweep: Newznab/Torznab, SABnzbd, and ComicVine all carry
+  their API key directly in the request URL's query string, so a connection
+  failure (or an indexer error page echoing the query back) used to leak
+  the raw key into the health banner, search-error notices, and the log
+  file the in-app log viewer exposes. A new `internal/redact` package
+  strips known credential-shaped query params — and scrubs their literal
+  values out of response bodies too — from every error at the point it's
+  raised, wired into the indexer client, both download clients, and
+  ComicVine. Hardcover (header-based auth) and AniList (keyless) were never
+  exposed to this. Regression tests assert the exact secret string never
+  survives into the resulting error.
 - Failure-mode polish across the four scenarios that used to degrade into a
   silent log line: a metadata provider that's down or unreachable now reads
   as a self-healing warning in the health banner, distinct from a genuinely

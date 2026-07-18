@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/librinode/librinode/internal/redact"
 )
 
 // Client speaks the Newznab/Torznab API. One instance serves all indexers;
@@ -37,6 +39,12 @@ func apiURL(ind *Indexer, fn string, params url.Values) string {
 }
 
 func (c *Client) get(ctx context.Context, rawURL string) ([]byte, error) {
+	// The indexer's own API key rides in the query string (apiURL above) —
+	// captured up front so it can be scrubbed from anything that echoes the
+	// request back (a failed-connection error embeds the URL verbatim; some
+	// indexers' error pages restate the query string in the body).
+	secrets := redact.Values(rawURL)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
@@ -44,7 +52,7 @@ func (c *Client) get(ctx context.Context, rawURL string) ([]byte, error) {
 	req.Header.Set("User-Agent", "LibriNode")
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, redact.URLError(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
@@ -52,7 +60,7 @@ func (c *Client) get(ctx context.Context, rawURL string) ([]byte, error) {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %.150s", resp.StatusCode, body)
+		return nil, fmt.Errorf("HTTP %d: %.150s", resp.StatusCode, redact.Text(string(body), secrets))
 	}
 	return body, nil
 }

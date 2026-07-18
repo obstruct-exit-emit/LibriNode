@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/librinode/librinode/internal/redact"
 )
 
 // SABnzbd's API is a single endpoint: GET /api?mode=...&apikey=...&output=json.
@@ -29,6 +31,9 @@ func (s *sabnzbd) api(ctx context.Context, params url.Values, out any) error {
 	params.Set("apikey", s.cfg.APIKey)
 	params.Set("output", "json")
 	endpoint := strings.TrimRight(s.cfg.Host, "/") + "/api?" + params.Encode()
+	// Captured before the request so a failure (which embeds the URL
+	// verbatim) or an echoing error body can be scrubbed of the API key.
+	secrets := redact.Values(endpoint)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -36,7 +41,7 @@ func (s *sabnzbd) api(ctx context.Context, params url.Values, out any) error {
 	}
 	resp, err := s.httpc.Do(req)
 	if err != nil {
-		return fmt.Errorf("sabnzbd: %w", err)
+		return fmt.Errorf("sabnzbd: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -45,7 +50,7 @@ func (s *sabnzbd) api(ctx context.Context, params url.Values, out any) error {
 		return fmt.Errorf("sabnzbd: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("sabnzbd: HTTP %d: %.100s", resp.StatusCode, body)
+		return fmt.Errorf("sabnzbd: HTTP %d: %.100s", resp.StatusCode, redact.Text(string(body), secrets))
 	}
 	// Errors arrive as {"status": false, "error": "..."} regardless of mode.
 	var apiErr struct {
@@ -128,7 +133,10 @@ func (s *sabnzbd) fetchNZB(ctx context.Context, dlURL string) ([]byte, error) {
 	}
 	resp, err := s.httpc.Do(req)
 	if err != nil {
-		return nil, err
+		// dlURL is the release's download URL — Newznab convention embeds the
+		// indexer's own apikey in it, so a failure here must not carry that
+		// key into logs or the UI.
+		return nil, redact.URLError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

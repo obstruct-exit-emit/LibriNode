@@ -278,13 +278,19 @@ func (s *Service) refreshAllSeries(ctx context.Context) {
 		if err != nil {
 			continue
 		}
+		var unreachable unreachableStreak
 		for _, sr := range seriesList {
 			if ctx.Err() != nil {
 				return
 			}
-			if err := s.RefreshSeries(ctx, sr.ID); err != nil {
-				continue // one dead record can't stall the rest
+			err := s.RefreshSeries(ctx, sr.ID)
+			if unreachable.hit(err) {
+				// The manga/comic provider stopped responding partway
+				// through — move to the next media type rather than timing
+				// out on every remaining series.
+				break
 			}
+			// one dead record (err != nil, not a streak) can't stall the rest
 		}
 	}
 }

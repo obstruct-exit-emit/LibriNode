@@ -20,6 +20,28 @@ type Service struct {
 	providers *metadata.Manager
 }
 
+// unreachableStreak aborts a refresh sweep after several consecutive
+// "provider didn't respond" outcomes in a row, instead of letting a mid-sweep
+// outage turn into every remaining record timing out one at a time — a
+// library of a few hundred authors could otherwise turn a brief Hardcover
+// outage into an hours-long stuck refresh. Any other outcome (success, or an
+// error that isn't about connectivity) resets the streak, since that means
+// the provider IS answering.
+type unreachableStreak struct{ n int }
+
+const unreachableAbortThreshold = 3
+
+// hit records one call's outcome and reports whether the streak just crossed
+// the abort threshold — the caller should stop the sweep.
+func (u *unreachableStreak) hit(err error) bool {
+	if err != nil && errors.Is(err, metadata.ErrUnreachable) {
+		u.n++
+		return u.n >= unreachableAbortThreshold
+	}
+	u.n = 0
+	return false
+}
+
 func New(store *library.Store, providers *metadata.Manager) *Service {
 	return &Service{store: store, providers: providers}
 }
@@ -243,6 +265,7 @@ func (s *Service) RefreshLibrary(ctx context.Context, mediaType string) (int, er
 		if err != nil {
 			return 0, err
 		}
+		var unreachable unreachableStreak
 		for i := range authors {
 			a := &authors[i]
 			if mediaType == "ebook" && !a.InEbookLibrary {
@@ -254,26 +277,41 @@ func (s *Service) RefreshLibrary(ctx context.Context, mediaType string) (int, er
 			if ctx.Err() != nil {
 				return done, ctx.Err()
 			}
-			if err := s.RefreshAuthor(ctx, a.ID); err != nil {
+			err := s.RefreshAuthor(ctx, a.ID)
+			if err != nil {
 				slog.Warn("library refresh: author failed", "author", a.Name, "error", err)
-				continue
 			}
-			done++
+			if unreachable.hit(err) {
+				slog.Warn("library refresh: provider unreachable, aborting the rest of this sweep",
+					"mediaType", mediaType)
+				return done, nil
+			}
+			if err == nil {
+				done++
+			}
 		}
 	case "manga", "comic":
 		seriesList, err := s.store.ListSeries(mediaType)
 		if err != nil {
 			return 0, err
 		}
+		var unreachable unreachableStreak
 		for i := range seriesList {
 			if ctx.Err() != nil {
 				return done, ctx.Err()
 			}
-			if err := s.RefreshSeries(ctx, seriesList[i].ID); err != nil {
+			err := s.RefreshSeries(ctx, seriesList[i].ID)
+			if err != nil {
 				slog.Warn("library refresh: series failed", "series", seriesList[i].Title, "error", err)
-				continue
 			}
-			done++
+			if unreachable.hit(err) {
+				slog.Warn("library refresh: provider unreachable, aborting the rest of this sweep",
+					"mediaType", mediaType)
+				return done, nil
+			}
+			if err == nil {
+				done++
+			}
 		}
 	default:
 		return 0, fmt.Errorf("metadata refresh is not available for %s", mediaType)
@@ -293,6 +331,7 @@ func (s *Service) RefreshAll(ctx context.Context) {
 		return
 	}
 	bookProvider, _ := s.provider()
+	var unreachable unreachableStreak
 	for _, a := range authors {
 		if ctx.Err() != nil {
 			return
@@ -302,9 +341,14 @@ func (s *Service) RefreshAll(ctx context.Context) {
 		if a.Source != bookProvider.Name() {
 			continue
 		}
-		if _, err := s.SyncAuthor(ctx, a.ForeignID, a.Monitored); err != nil {
+		_, err := s.SyncAuthor(ctx, a.ForeignID, a.Monitored)
+		if err != nil {
 			slog.Warn("metadata refresh failed", "author", a.Name, "error", err)
-			continue
+		}
+		if unreachable.hit(err) {
+			slog.Warn("metadata refresh: provider unreachable, aborting the rest of this sweep",
+				"provider", bookProvider.Name())
+			return
 		}
 	}
 	if len(authors) > 0 {

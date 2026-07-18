@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/librinode/librinode/internal/redact"
 )
 
 // qBittorrent Web API v2: cookie-session auth via /api/v2/auth/login, then
@@ -223,7 +225,10 @@ func (q *qbittorrent) resolve(ctx context.Context, dlURL string) (string, []byte
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return "", nil, err
+			// cur is the release's download URL — Newznab/Torznab convention
+			// embeds the indexer's own apikey in it, so a failure here must
+			// not surface (or later be logged) with that key intact.
+			return "", nil, redact.URLError(err)
 		}
 		if loc := resp.Header.Get("Location"); resp.StatusCode >= 300 && resp.StatusCode < 400 && loc != "" {
 			resp.Body.Close()

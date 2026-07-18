@@ -286,6 +286,24 @@ func TestSABnzbd(t *testing.T) {
 	}
 }
 
+// TestSABnzbdNeverLeaksAPIKey: SABnzbd's apikey rides in every request's
+// query string — a connection failure must not carry it into the returned
+// error, since that string can end up in the Activity page and, for
+// background polls, the health check and logs.
+func TestSABnzbdNeverLeaksAPIKey(t *testing.T) {
+	cfg := sabConfig("http://127.0.0.1:1")
+	cfg.APIKey = "sk-live-9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c"
+	c, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Test(context.Background()); err == nil {
+		t.Fatal("expected Test to fail against an unreachable host")
+	} else if strings.Contains(err.Error(), cfg.APIKey) {
+		t.Fatalf("API key leaked into error: %q", err)
+	}
+}
+
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))

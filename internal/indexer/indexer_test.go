@@ -264,6 +264,39 @@ func TestSearchAllMergesAndReportsFailures(t *testing.T) {
 	}
 }
 
+// TestSearchAllNeverLeaksAPIKey: an indexer's apikey rides in the request
+// URL's query string (Newznab/Torznab convention) — a connection failure to
+// it must not carry that key into the error string SearchAll returns, since
+// that string ends up in the UI's search-error notice and, for automatic
+// sweeps, the health/log output. A real-looking secret is used so a passing
+// test can't hide a redaction bug behind a value too short to notice.
+func TestSearchAllNeverLeaksAPIKey(t *testing.T) {
+	store := newTestStore(t)
+	svc := NewService(store)
+
+	secret := "sk-live-9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c"
+	if err := store.Add(&Indexer{
+		Name: "dead", Type: TypeNewznab, BaseURL: "http://127.0.0.1:1",
+		APIKey: secret, Categories: "7000,7020", Enabled: true, Priority: 25,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
+	if err != nil {
+		t.Fatalf("SearchAll: %v", err)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("errs = %v, want exactly one", errs)
+	}
+	if strings.Contains(errs[0], secret) {
+		t.Fatalf("API key leaked into search error: %q", errs[0])
+	}
+	if !strings.Contains(errs[0], "REDACTED") {
+		t.Errorf("expected a REDACTED marker in %q", errs[0])
+	}
+}
+
 func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 	store := newTestStore(t)
 	svc := NewService(store)

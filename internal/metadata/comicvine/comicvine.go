@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/redact"
 )
 
 const DefaultEndpoint = "https://comicvine.gamespot.com/api"
@@ -66,6 +67,9 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 	params.Set("api_key", c.apiKey)
 	params.Set("format", "json")
 	endpoint := strings.TrimRight(c.endpoint, "/") + path + "?" + params.Encode()
+	// Captured before the request so a failure (which embeds the URL
+	// verbatim) or an echoing error body can be scrubbed of the API key.
+	secrets := redact.Values(endpoint)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -76,7 +80,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return fmt.Errorf("comicvine: %w: %w", metadata.ErrUnreachable, err)
+		return fmt.Errorf("comicvine: %w: %w", metadata.ErrUnreachable, redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -85,10 +89,11 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 		return fmt.Errorf("comicvine: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		body := redact.Text(string(raw), secrets)
 		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
-			return fmt.Errorf("comicvine: %w: HTTP %d: %.150s", metadata.ErrUnreachable, resp.StatusCode, raw)
+			return fmt.Errorf("comicvine: %w: HTTP %d: %.150s", metadata.ErrUnreachable, resp.StatusCode, body)
 		}
-		return fmt.Errorf("comicvine: HTTP %d: %.150s", resp.StatusCode, raw)
+		return fmt.Errorf("comicvine: HTTP %d: %.150s", resp.StatusCode, body)
 	}
 	var envelope struct {
 		StatusCode int             `json:"status_code"` // 1 = OK

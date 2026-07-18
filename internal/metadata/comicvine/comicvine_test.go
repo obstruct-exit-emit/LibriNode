@@ -124,6 +124,22 @@ func TestValidateUnreachableVsRejected(t *testing.T) {
 	}
 }
 
+// TestValidateNeverLeaksAPIKey: ComicVine's api_key rides in every request's
+// query string — a connection failure must not carry it into the returned
+// error, since that string can reach the health banner and, for background
+// checks, the log output.
+func TestValidateNeverLeaksAPIKey(t *testing.T) {
+	secret := "sk-live-9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c"
+	c := New(secret, WithEndpoint("http://127.0.0.1:1"))
+	err := c.Validate(context.Background())
+	if err == nil {
+		t.Fatal("expected Validate to fail against an unreachable host")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("API key leaked into error: %q", err)
+	}
+}
+
 func TestBadKey(t *testing.T) {
 	c := mockComicVine(t)
 	c.apiKey = "wrong"

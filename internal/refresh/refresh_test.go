@@ -3,6 +3,7 @@ package refresh
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -11,12 +12,25 @@ import (
 	"github.com/librinode/librinode/internal/metadata"
 )
 
-// mutableProvider serves in-memory metadata that tests can change between
-// calls to simulate the provider gaining books or updating fields.
-type mutableProvider struct {
+// providerState is mutableProvider's actual data, held behind a pointer so
+// every copy of mutableProvider (the manager keeps its own) shares one
+// mutable store — tests can reach in and change it after the provider is
+// already registered.
+type providerState struct {
 	authors map[string]*metadata.Author
 	books   map[string]*metadata.Book
+	// forceUnreachable makes GetAuthor/GetBook report metadata.ErrUnreachable
+	// for these foreign ids, simulating a provider outage.
+	forceUnreachable map[string]bool
+	// calls records every foreign id looked up via GetAuthor, in call order —
+	// so a test can confirm the circuit breaker actually stopped early.
+	calls []string
 }
+
+// mutableProvider serves in-memory metadata that tests can change between
+// calls to simulate the provider gaining books, updating fields, or going
+// unreachable.
+type mutableProvider struct{ *providerState }
 
 func (mutableProvider) Name() string { return "fake" }
 
@@ -29,6 +43,10 @@ func (p mutableProvider) SearchBooks(context.Context, string) ([]metadata.Book, 
 }
 
 func (p mutableProvider) GetAuthor(_ context.Context, id string) (*metadata.Author, error) {
+	p.calls = append(p.calls, id)
+	if p.forceUnreachable[id] {
+		return nil, fmt.Errorf("test provider down: %w", metadata.ErrUnreachable)
+	}
 	a, ok := p.authors[id]
 	if !ok {
 		return nil, metadata.ErrNotFound
@@ -37,6 +55,9 @@ func (p mutableProvider) GetAuthor(_ context.Context, id string) (*metadata.Auth
 }
 
 func (p mutableProvider) GetBook(_ context.Context, id string) (*metadata.Book, error) {
+	if p.forceUnreachable[id] {
+		return nil, fmt.Errorf("test provider down: %w", metadata.ErrUnreachable)
+	}
 	b, ok := p.books[id]
 	if !ok {
 		return nil, metadata.ErrNotFound
@@ -53,7 +74,7 @@ func newFixture(t *testing.T) (*Service, *library.Store, mutableProvider) {
 	t.Cleanup(func() { db.Close() })
 
 	store := library.NewStore(db)
-	provider := mutableProvider{
+	provider := mutableProvider{&providerState{
 		authors: map[string]*metadata.Author{
 			"100": {
 				ForeignID: "100", Name: "Terry Pratchett", Description: "Sir Terry.",
@@ -72,7 +93,8 @@ func newFixture(t *testing.T) (*Service, *library.Store, mutableProvider) {
 				},
 			},
 		},
-	}
+		forceUnreachable: map[string]bool{},
+	}}
 	mgr := metadata.NewManager()
 	mgr.Set(provider)
 	return New(store, mgr), store, provider
@@ -206,6 +228,67 @@ func TestRefreshAllSkipsFailures(t *testing.T) {
 	got, _ := store.GetAuthor(author.ID)
 	if got.Description != "Refreshed." {
 		t.Error("healthy author was not refreshed after a failing one")
+	}
+}
+
+// TestRefreshAllAbortsOnUnreachableStreak: when the provider stops
+// responding partway through a sweep, RefreshAll gives up after a few
+// consecutive unreachable results instead of timing out on every remaining
+// author — a real outage in a library of hundreds would otherwise turn one
+// background sweep into an hours-long stall.
+func TestRefreshAllAbortsOnUnreachableStreak(t *testing.T) {
+	svc, store, provider := newFixture(t)
+	ctx := context.Background()
+
+	for i := 1; i <= 5; i++ {
+		id := fmt.Sprintf("bad%d", i)
+		if err := store.UpsertAuthor(&library.Author{
+			// Explicit SortName pins ListAuthors' iteration order (it sorts
+			// by sort_name), independent of name-derivation rules.
+			Source: "fake", ForeignID: id, Name: "Bad " + id, SortName: fmt.Sprintf("%04d", i), Monitored: true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		provider.forceUnreachable[id] = true
+	}
+
+	svc.RefreshAll(ctx)
+
+	if len(provider.calls) != unreachableAbortThreshold {
+		t.Fatalf("GetAuthor calls = %v (%d), want exactly %d — the breaker should have stopped the sweep",
+			provider.calls, len(provider.calls), unreachableAbortThreshold)
+	}
+}
+
+// TestRefreshAllUnreachableStreakResetsOnSuccess: an unreachable result that
+// never strings together three IN A ROW must not abort the sweep — every
+// record here alternates unreachable/not-found (an unrelated failure, which
+// also resets the streak), so all five must be attempted.
+func TestRefreshAllUnreachableStreakResetsOnSuccess(t *testing.T) {
+	svc, store, provider := newFixture(t)
+	ctx := context.Background()
+
+	// Explicit SortName controls ListAuthors' iteration order (it sorts by
+	// sort_name), independent of name-derivation rules.
+	for i, unreachable := range []bool{true, false, true, false, true} {
+		id := fmt.Sprintf("alt%d", i)
+		if err := store.UpsertAuthor(&library.Author{
+			Source: "fake", ForeignID: id, Name: id, SortName: fmt.Sprintf("%04d", i), Monitored: true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if unreachable {
+			provider.forceUnreachable[id] = true
+		}
+		// The "false" entries are simply absent from provider.authors, so
+		// they fail with ErrNotFound — a different, streak-resetting error.
+	}
+
+	svc.RefreshAll(ctx)
+
+	if len(provider.calls) != 5 {
+		t.Fatalf("GetAuthor calls = %v (%d), want all 5 attempted — no streak ever reached the threshold",
+			provider.calls, len(provider.calls))
 	}
 }
 
