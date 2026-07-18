@@ -107,15 +107,15 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
       collapse breakpoint; usable, not lovely.
 - [ ] **Per-file actions inline on detail pages** (delete/re-organize one
       file from the file list without leaving the page).
-- [ ] **Remote Path Mapping UI** — still relies on mounting at an exact
-      path; a real Settings feature (map client prefix → local path) is
-      open (also tracked in the README's hardening list).
+- [x] **Remote Path Mapping UI** — done: Settings → Download Clients →
+      Remote path mappings (remote prefix → local prefix, longest match,
+      boundary-aware, separator-converting); the importer translates every
+      client-reported path before touching disk.
+- [x] **Session ↔ user binding** — done: sessions are bound to their
+      account; removing a user or changing a password revokes their
+      sessions immediately, disabling login revokes all.
 - [ ] **Light theme / UI preferences** — dark-only today; README defers a
       theme/language/dates prefs page to post-1.0.
-- [ ] **Session ↔ user binding** — sessions are anonymous tokens, so
-      removing a user doesn't end their open session until the next
-      restart. Fine for a trusted instance; revisit if accounts ever gate
-      different access.
 
 ---
 The backlog's P1/P2/P3 passes, the Power list, and the foundation sweeps

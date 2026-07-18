@@ -10,6 +10,15 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Remote path mappings (Settings → Download Clients): map a download
+  client's reported path prefix to the local path where this server sees
+  the same files — longest prefix wins, boundary-aware, case-insensitive,
+  separator-converting. Ends the "mount the share at the exact same path"
+  requirement for remote/containerized clients.
+- Security hardening: login sessions are bound to their account (user
+  removal and password changes revoke them immediately; disabling login
+  revokes all), the API-key check is constant-time, and the image proxy
+  refuses to reflect non-http(s) URLs.
 - Series pack grab: manga/comic series pages get "🎁 Search packs" — release
   parsing understands volume ranges ("v01-v41", "#1-60") and completeness
   words, pack candidates are ranked (full range > partial > bare series

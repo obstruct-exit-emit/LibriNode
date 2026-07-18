@@ -40,11 +40,37 @@ import:                          # Completed Download Handling (Settings →
                                  #   imported (torrents too, else they seed)
   delete_completed_files: true   # also delete the downloaded files after
                                  #   import (implies remove_completed)
+timings:                         # background cadences — omit for defaults
+  search_interval_hours: 6       # wanted sweep (1–168)
+  refresh_interval_hours: 24     # metadata re-sync (6–720)
+  health_interval_minutes: 15    # health checks (5–1440)
+  import_interval_seconds: 60    # download-client poll (30–3600)
+path_mappings:                   # remote client paths → local paths
+  - remote: /storage_1           # as the download client reports them
+    local: /mnt/media            # where this server sees the same files
 ```
 
 Environment variables override the file: `LIBRINODE_HOST`, `LIBRINODE_PORT`,
 `LIBRINODE_API_KEY`, `LIBRINODE_LOG_LEVEL`, `LIBRINODE_HARDCOVER_TOKEN`.
 The data directory itself is chosen with `--data <dir>`.
+
+## Remote path mappings
+
+When a download client runs on another machine or in a container, it reports
+paths from *its* filesystem. Without a mapping, LibriNode can only import
+those downloads if the share is mounted at the identical path. **Settings →
+Download Clients → Remote path mappings** maps a remote prefix to a local
+one — the longest matching prefix wins, matching is boundary-aware and
+case-insensitive (Windows clients), and separators convert automatically, so
+`C:\downloads\Book` maps cleanly onto `/mnt/dl/Book`. Applied to every
+client-reported path before import touches disk.
+
+## Background timings
+
+**Settings → General → Advanced: background timings** tunes the four loops
+(wanted search, metadata refresh, health checks, import polling). Blank
+fields use the defaults; entered values are clamped to the ranges above so a
+typo can't hammer your indexers. Changes apply on the next server start.
 
 ## Naming templates
 
