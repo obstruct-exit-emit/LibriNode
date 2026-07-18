@@ -300,7 +300,7 @@ function TimingsPanel({ onError }: { onError: (message: string) => void }) {
       </p>
       <div className="settings-form">
         {field("Wanted search (hours)", "searchIntervalHours", "default 6", "1–168")}
-        {field("Metadata refresh (hours)", "refreshIntervalHours", "default 24", "6–720")}
+        {field("Metadata refresh (hours)", "refreshIntervalHours", "default 720 (30 days)", "6–2160")}
         {field("Health checks (minutes)", "healthIntervalMinutes", "default 15", "5–1440")}
         {field("Import poll (seconds)", "importIntervalSeconds", "default 60", "30–3600")}
       </div>

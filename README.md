@@ -181,7 +181,8 @@ series pulls metadata only**: every volume/issue starts unmonitored in the
 series' Missing section (and a fresh magazine doesn't auto-grab), until you
 monitor items selectively or flip the series' monitor toggle — which
 monitors every volume at once and doubles as "monitor future volumes", so
-refreshes (manual or the daily sweep) monitor newly discovered ones too. Provider quirks: *ongoing* manga on
+refreshes (manual or the periodic sweep — every 30 days by default, tunable
+in Settings) monitor newly discovered ones too. Provider quirks: *ongoing* manga on
 AniList often report no volume count yet (they add with zero volumes and fill
 in on later refresh) and synthesize volumes without per-volume descriptions
 (left blank rather than repeating the series blurb); Hardcover carries real

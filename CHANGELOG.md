@@ -115,6 +115,10 @@ in progress. Highlights from the hardening period, newest first:
   covering clients that ignore the delete-files flag.
 
 ### Changed
+- The metadata refresh sweep defaults to every **30 days** (was 24 hours) —
+  metadata rarely changes and a monthly re-sync is kinder to providers.
+  Per-item and manual refreshes are unaffected; tune it under Settings →
+  General → Background timings (6–2160 hours).
 - Magazines are organize-only for now: searching and downloading are disabled
   everywhere (wanted sweep, series search, release search, grab), while
   add-by-name, scanning, issue materialization, import, and organizing all

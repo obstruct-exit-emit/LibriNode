@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestTranslatePath(t *testing.T) {
 	mappings := []PathMapping{
@@ -33,5 +36,21 @@ func TestTranslatePath(t *testing.T) {
 
 	if got := TranslatePath(nil, "/storage_1/x"); got != "/storage_1/x" {
 		t.Errorf("no mappings: got %q", got)
+	}
+}
+
+func TestTimingDefaults(t *testing.T) {
+	var ts TimingSettings // all zero = all defaults
+	if got := ts.SearchInterval(); got != 6*time.Hour {
+		t.Errorf("search default = %v, want 6h", got)
+	}
+	if got := ts.RefreshInterval(); got != 720*time.Hour {
+		t.Errorf("refresh default = %v, want 720h (30 days)", got)
+	}
+	if got := ts.HealthInterval(); got != 15*time.Minute {
+		t.Errorf("health default = %v, want 15m", got)
+	}
+	if got := ts.ImportInterval(); got != time.Minute {
+		t.Errorf("import default = %v, want 1m", got)
 	}
 }

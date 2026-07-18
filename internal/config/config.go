@@ -303,7 +303,10 @@ func TranslatePath(mappings []PathMapping, p string) string {
 type TimingSettings struct {
 	// SearchIntervalHours: automatic wanted-list sweep cadence (default 6).
 	SearchIntervalHours int `yaml:"search_interval_hours,omitempty" json:"searchIntervalHours"`
-	// RefreshIntervalHours: library metadata re-sync cadence (default 24).
+	// RefreshIntervalHours: library metadata re-sync cadence (default 720 —
+	// 30 days; metadata rarely changes, and a monthly sweep is kinder to
+	// providers. New volumes for monitored series still arrive via per-item
+	// refreshes and manual Refresh.)
 	RefreshIntervalHours int `yaml:"refresh_interval_hours,omitempty" json:"refreshIntervalHours"`
 	// HealthIntervalMinutes: background health check cadence (default 15).
 	HealthIntervalMinutes int `yaml:"health_interval_minutes,omitempty" json:"healthIntervalMinutes"`
@@ -325,7 +328,7 @@ func (t TimingSettings) RefreshInterval() time.Duration {
 	if t.RefreshIntervalHours > 0 {
 		return time.Duration(t.RefreshIntervalHours) * time.Hour
 	}
-	return 24 * time.Hour
+	return 720 * time.Hour // 30 days
 }
 
 func (t TimingSettings) HealthInterval() time.Duration {
@@ -619,7 +622,7 @@ func (c *Config) SetTimings(t TimingSettings) error {
 		return v
 	}
 	t.SearchIntervalHours = clamp(t.SearchIntervalHours, 1, 168)
-	t.RefreshIntervalHours = clamp(t.RefreshIntervalHours, 6, 720)
+	t.RefreshIntervalHours = clamp(t.RefreshIntervalHours, 6, 2160)
 	t.HealthIntervalMinutes = clamp(t.HealthIntervalMinutes, 5, 1440)
 	t.ImportIntervalSeconds = clamp(t.ImportIntervalSeconds, 30, 3600)
 	c.mu.Lock()

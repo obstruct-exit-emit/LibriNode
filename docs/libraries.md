@@ -74,7 +74,8 @@ the settings. Like adding an author, **adding a series pulls metadata only**:
 every volume/issue starts unmonitored in the series' Missing section (and a
 fresh magazine doesn't auto-grab) until you monitor items selectively or
 flip the series' monitor toggle — which monitors every volume at once and
-doubles as "monitor future volumes", so refreshes (manual or daily) monitor
+doubles as "monitor future volumes", so refreshes (manual, or the periodic
+sweep — every 30 days by default, tunable under Settings → General) monitor
 newly discovered ones too. Imports write
 `ComicInfo.xml` into CBZ archives and use Kavita/Komga-friendly
 `Series/Series Vol. N.cbz` layouts.

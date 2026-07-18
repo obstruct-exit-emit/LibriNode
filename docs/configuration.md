@@ -42,7 +42,7 @@ import:                          # Completed Download Handling (Settings →
                                  #   import (implies remove_completed)
 timings:                         # background cadences — omit for defaults
   search_interval_hours: 6       # wanted sweep (1–168)
-  refresh_interval_hours: 24     # metadata re-sync (6–720)
+  refresh_interval_hours: 720    # metadata re-sync (6–2160; default 30 days)
   health_interval_minutes: 15    # health checks (5–1440)
   import_interval_seconds: 60    # download-client poll (30–3600)
 path_mappings:                   # remote client paths → local paths
