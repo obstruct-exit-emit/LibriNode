@@ -4,8 +4,9 @@ name: Release
 #   git tag v0.9.0 && git push origin v0.9.0
 # Builds version-stamped binaries (linux amd64/arm64, windows amd64), zips
 # them with the packaging scripts, and attaches everything to a GitHub
-# release. The Docker image is built to validate the Dockerfile; pushing to a
-# registry is enabled once registry secrets exist.
+# release. The Docker image is built and pushed to GHCR
+# (ghcr.io/<owner>/librinode) using the built-in GITHUB_TOKEN — no extra
+# secret required; :latest tracks stable tags only, never a prerelease.
 
 on:
   push:
@@ -67,14 +68,26 @@ jobs:
   docker:
     name: Docker image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          docker build --build-arg VERSION="${VERSION}" -t librinode:${VERSION} .
-      # Push once a registry is configured:
-      # - run: |
-      #     echo "${{ secrets.REGISTRY_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-      #     docker tag librinode:${VERSION} ghcr.io/${{ github.repository }}:${VERSION}
-      #     docker push ghcr.io/${{ github.repository }}:${VERSION}
+          # GHCR image names must be lowercase; the repo name may not be.
+          IMAGE="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')/librinode"
+          docker build --build-arg VERSION="${VERSION}" -t "${IMAGE}:${VERSION}" .
+          docker push "${IMAGE}:${VERSION}"
+          # Move :latest only for a stable tag (no pre-release suffix like -rc.1).
+          if [[ "${GITHUB_REF_NAME}" != *-* ]]; then
+            docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          fi
