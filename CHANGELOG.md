@@ -10,6 +10,13 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Automated upgrade-path (migration) testing: a database seeded at an older
+  pre-rebuild schema is driven through the full remaining migration chain,
+  asserting that the table rebuilds keep every row and the membership/variant
+  backfills compute the values an upgrading user expects — migration bugs are
+  data-loss bugs, so they now fail a test instead of a real library. A
+  companion test confirms a fresh database applies every migration and that
+  re-opening it is a clean no-op.
 - Metadata fallback providers: **Open Library** and **Google Books** ship as
   keyless book providers (a Google Books API key is optional, only to lift
   rate limits). Configure them, in order, under Settings → Metadata →
