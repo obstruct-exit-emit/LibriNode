@@ -305,6 +305,8 @@ function MissingCard({
   const [missing, setMissing] = useState<Book[] | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [busyID, setBusyID] = useState<number | null>(null);
+  const [busyAll, setBusyAll] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     api
@@ -324,6 +326,29 @@ function MissingCard({
       .finally(() => setBusyID(null));
   };
 
+  // Bulk monitor: a whole series group, or the checked rows.
+  const monitorMany = (books: Book[]) => {
+    setBusyAll(true);
+    Promise.allSettled(books.map((b) => api.setBookLibrary(b.id, library, true, true)))
+      .then((results) => {
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) onError(`${failed} of ${books.length} could not be monitored`);
+        setSelected(new Set());
+        onMonitored();
+      })
+      .finally(() => setBusyAll(false));
+  };
+
+  const toggleSelect = (id: number) => {
+    const next = new Set(selected);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelected(next);
+  };
+
   // Grouping: the backend orders series (alphabetical, by position), then
   // standalones by release date — preserve that order while grouping.
   const groups: { title: string; books: Book[] }[] = [];
@@ -340,7 +365,18 @@ function MissingCard({
 
   return (
     <section className="card">
-      <h2>Missing ({missing.length})</h2>
+      <div className="card-head">
+        <h2>Missing ({missing.length})</h2>
+        {selected.size > 0 && (
+          <button
+            disabled={busyAll}
+            title={`Monitor the ${selected.size} checked book(s)`}
+            onClick={() => monitorMany(missing.filter((b) => selected.has(b.id)))}
+          >
+            {busyAll ? "Monitoring…" : `+ Monitor selected (${selected.size})`}
+          </button>
+        )}
+      </div>
       {missing.length === 0 ? (
         <p className="muted">
           No gaps — every book in the bibliography is in this library or owned.
@@ -349,31 +385,56 @@ function MissingCard({
         <>
           <p className="muted">
             In the provider's bibliography but not in {label}. Monitor adds the
-            book to this library and searches for it automatically.
+            book to this library and searches for it automatically — check
+            several rows to monitor them in one go.
           </p>
           {groups.map((g, gi) => (
             <div key={g.title || `standalone-${gi}`}>
               {hasSeries && (
-                <h3 className="group-heading">{g.title || "Standalone"}</h3>
+                <h3 className="group-heading">
+                  {g.title || "Standalone"}
+                  {g.books.length > 1 && (
+                    <button
+                      className="toggle group-monitor"
+                      disabled={busyAll}
+                      title={
+                        g.title
+                          ? `Monitor all ${g.books.length} missing ${g.title} books`
+                          : `Monitor all ${g.books.length} standalones`
+                      }
+                      onClick={() => monitorMany(g.books)}
+                    >
+                      + Monitor all ({g.books.length})
+                    </button>
+                  )}
+                </h3>
               )}
               <ul className="rows">
                 {g.books.map((b) => (
                   <li key={b.id}>
                     <div className="row">
-                      <button
-                        className="link"
-                        onClick={() => setOpen(open === b.id ? null : b.id)}
-                      >
-                        {open === b.id ? "▾" : "▸"} {b.title}
-                        <span className="muted">
-                          {b.series?.[0] ? ` #${b.series[0].position}` : ""}
-                          {b.releaseDate ? ` (${b.releaseDate.slice(0, 4)})` : ""}
-                        </span>
-                      </button>
+                      <span className="row-select">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${b.title}`}
+                          checked={selected.has(b.id)}
+                          onChange={() => toggleSelect(b.id)}
+                        />
+                        <button
+                          className="link"
+                          onClick={() => setOpen(open === b.id ? null : b.id)}
+                        >
+                          {open === b.id ? "▾" : "▸"} {b.title}
+                          <span className="muted">
+                            {b.series?.[0] ? ` #${b.series[0].position}` : ""}
+                            {b.releaseDate ? ` (${b.releaseDate.slice(0, 4)})` : ""}
+                          </span>
+                        </button>
+                      </span>
                       <span className="row-actions">
                         {b.rating > 0 && <span className="muted">★ {b.rating.toFixed(1)}</span>}
                         <button
-                          disabled={busyID !== null}
+                          disabled={busyID !== null || busyAll}
                           title={`Add to ${label} and search for it automatically`}
                           onClick={() => monitor(b)}
                         >

@@ -36,6 +36,8 @@ export default function SeriesDetailView({
   const [series, setSeries] = useState<Series | null>(null);
   const [busy, setBusy] = useState(false);
   const [showPacks, setShowPacks] = useState(false);
+  const [missingSelected, setMissingSelected] = useState<Set<number>>(new Set());
+  const [busyMissing, setBusyMissing] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [notice, setNotice] = useState("");
@@ -92,6 +94,19 @@ export default function SeriesDetailView({
       .then(onBack)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusy(false));
+  };
+
+  // Bulk monitor from Missing: a checked subset, or the whole section.
+  const monitorMissing = (volumes: Book[]) => {
+    setBusyMissing(true);
+    Promise.allSettled(volumes.map((v) => api.monitorBook(v.id, true)))
+      .then((results) => {
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) onError(`${failed} of ${volumes.length} could not be monitored`);
+        setMissingSelected(new Set());
+        reload();
+      })
+      .finally(() => setBusyMissing(false));
   };
 
   // Series-scoped header actions — like the author page, but only this
@@ -333,15 +348,54 @@ export default function SeriesDetailView({
 
       {expandable && missing.length > 0 && (
         <section className="card">
-          <h2>Missing ({missing.length})</h2>
+          <div className="card-head">
+            <h2>Missing ({missing.length})</h2>
+            <span className="row-actions">
+              {missingSelected.size > 0 && (
+                <button
+                  disabled={busyMissing}
+                  title={`Monitor the ${missingSelected.size} checked ${unitName}(s)`}
+                  onClick={() => monitorMissing(missing.filter((v) => missingSelected.has(v.id)))}
+                >
+                  {busyMissing ? "Monitoring…" : `+ Monitor selected (${missingSelected.size})`}
+                </button>
+              )}
+              {missing.length > 1 && (
+                <button
+                  className="toggle"
+                  disabled={busyMissing}
+                  title={`Monitor all ${missing.length} missing ${unitName}s`}
+                  onClick={() => monitorMissing(missing)}
+                >
+                  + Monitor all ({missing.length})
+                </button>
+              )}
+            </span>
+          </div>
           <p className="muted">
             {unitName === "volume" ? "Volumes" : "Issues"} in the series you're
             not tracking — neither monitored nor owned. Monitor adds one back
-            to the library and searches for it.
+            to the library and searches for it — check several to monitor them
+            in one go.
           </p>
           <ul className="rows">
             {missing.map((v) => (
-              <MissingRow key={v.id} volume={v} onChanged={reload} onError={onError} />
+              <MissingRow
+                key={v.id}
+                volume={v}
+                selected={missingSelected.has(v.id)}
+                onToggleSelect={() => {
+                  const next = new Set(missingSelected);
+                  if (next.has(v.id)) {
+                    next.delete(v.id);
+                  } else {
+                    next.add(v.id);
+                  }
+                  setMissingSelected(next);
+                }}
+                onChanged={reload}
+                onError={onError}
+              />
             ))}
           </ul>
         </section>
@@ -575,10 +629,14 @@ function VolumeRow({
 // cover and blurb, mirroring the per-author Missing view.
 function MissingRow({
   volume,
+  selected,
+  onToggleSelect,
   onChanged,
   onError,
 }: {
   volume: Book;
+  selected: boolean;
+  onToggleSelect: () => void;
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
@@ -597,9 +655,17 @@ function MissingRow({
   return (
     <li>
       <div className="row">
-        <button className="link" onClick={() => setOpen(!open)}>
-          {open ? "▾" : "▸"} {volume.title}
-        </button>
+        <span className="row-select">
+          <input
+            type="checkbox"
+            aria-label={`Select ${volume.title}`}
+            checked={selected}
+            onChange={onToggleSelect}
+          />
+          <button className="link" onClick={() => setOpen(!open)}>
+            {open ? "▾" : "▸"} {volume.title}
+          </button>
+        </span>
         <span className="row-actions">
           <button disabled={busy} title="Add to the library and search for it" onClick={monitor}>
             {busy ? "Adding…" : "+ Monitor"}

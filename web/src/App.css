@@ -1511,3 +1511,22 @@ button.link.back:hover {
   max-width: 260px;
   margin: 0.15rem 0 0.6rem;
 }
+
+/* ---- Bulk select on Missing rows ---- */
+
+.row-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.row-select input[type=checkbox] {
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.group-heading .group-monitor {
+  margin-left: 0.75rem;
+  font-size: 0.78rem;
+}
