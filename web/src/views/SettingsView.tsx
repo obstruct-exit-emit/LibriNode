@@ -10,6 +10,7 @@ import {
   type Indexer,
   type MetadataSettings,
   type NamingSettings,
+  type PathMapping,
   type ProviderSettings,
   type QualityProfile,
   type RootFolder,
@@ -800,6 +801,112 @@ function DownloadClientsCard({
       </div>
 
       <ImportOptions onError={onError} />
+
+      <PathMappingsPanel onError={onError} />
+    </section>
+  );
+}
+
+// PathMappingsPanel: remote→local path mappings for clients that run on
+// another machine or in a container and report their own filesystem. The
+// importer translates every client-reported path through these before it
+// touches disk. Longest matching prefix wins.
+function PathMappingsPanel({ onError }: { onError: (message: string) => void }) {
+  const [mappings, setMappings] = useState<PathMapping[] | null>(null);
+  const [remote, setRemote] = useState("");
+  const [local, setLocal] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    api
+      .getPathMappings()
+      .then(setMappings)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  if (!mappings) return null;
+
+  const save = (next: PathMapping[], done: string) => {
+    setBusy(true);
+    setNotice("");
+    api
+      .savePathMappings(next)
+      .then((saved) => {
+        setMappings(saved);
+        setNotice(done);
+        setRemote("");
+        setLocal("");
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <section className="card">
+      <h2>Remote path mappings</h2>
+      <p className="muted">
+        For download clients on another machine or in a container: when the
+        client reports <code>/storage_1/…</code> but this server sees the same
+        files at <code>/mnt/media/…</code>, map the prefix here instead of
+        having to mount the share at the exact same path. Applied to every
+        completed download before import; the longest matching prefix wins.
+      </p>
+      {notice && <p className="notice ok">{notice}</p>}
+      {mappings.length > 0 && (
+        <ul className="rows">
+          {mappings.map((m, i) => (
+            <li key={`${m.remotePrefix}→${m.localPrefix}`}>
+              <div className="row">
+                <span className="file-path">
+                  <code>{m.remotePrefix}</code> → <code>{m.localPrefix}</code>
+                </span>
+                <span className="row-actions">
+                  <button
+                    className="toggle"
+                    disabled={busy}
+                    title="Remove this mapping"
+                    onClick={() => save(mappings.filter((_, j) => j !== i), "✓ Mapping removed")}
+                  >
+                    remove
+                  </button>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="settings-form">
+        <label>
+          Remote path (as the client reports it)
+          <input
+            placeholder="/storage_1"
+            value={remote}
+            onChange={(e) => setRemote(e.target.value)}
+          />
+        </label>
+        <label>
+          Local path (where this server sees those files)
+          <input
+            placeholder="/mnt/media"
+            value={local}
+            onChange={(e) => setLocal(e.target.value)}
+          />
+        </label>
+      </div>
+      <div className="settings-actions">
+        <button
+          disabled={busy || !remote.trim() || !local.trim()}
+          onClick={() =>
+            save(
+              [...mappings, { remotePrefix: remote.trim(), localPrefix: local.trim() }],
+              "✓ Mapping added — applies from the next import pass",
+            )
+          }
+        >
+          + Add mapping
+        </button>
+      </div>
     </section>
   );
 }

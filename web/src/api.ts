@@ -386,6 +386,14 @@ export interface ImportSettings {
   deleteCompletedFiles: boolean;
 }
 
+// PathMapping translates a download client's reported path prefix into the
+// path where LibriNode sees the same files (remote client / container
+// setups). Longest matching prefix wins.
+export interface PathMapping {
+  remotePrefix: string;
+  localPrefix: string;
+}
+
 // TimingSettings: background loop cadences; 0 = use the built-in default.
 // Changes apply on the next server start.
 export interface TimingSettings {
@@ -756,6 +764,13 @@ export const api = {
   saveImportSettings: (settings: ImportSettings) =>
     request<ImportSettings>("/api/v1/settings/import", {
       ...json(settings),
+      method: "PUT",
+    }),
+
+  getPathMappings: () => request<PathMapping[]>("/api/v1/settings/pathmappings"),
+  savePathMappings: (mappings: PathMapping[]) =>
+    request<PathMapping[]>("/api/v1/settings/pathmappings", {
+      ...json(mappings),
       method: "PUT",
     }),
 

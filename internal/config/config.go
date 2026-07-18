@@ -251,6 +251,52 @@ type ImportSettings struct {
 	DeleteCompletedFiles bool `yaml:"delete_completed_files" json:"deleteCompletedFiles"`
 }
 
+// PathMapping translates a download client's reported path prefix into the
+// path where LibriNode actually sees those files — for setups where the
+// client runs on another machine or in a container and reports its own
+// filesystem ("/storage_1/…") while the same share is mounted here somewhere
+// else ("/mnt/media/…"). The longest matching prefix wins.
+type PathMapping struct {
+	RemotePrefix string `yaml:"remote" json:"remotePrefix"`
+	LocalPrefix  string `yaml:"local" json:"localPrefix"`
+}
+
+// TranslatePath applies the longest matching path mapping to a
+// client-reported path; unmatched paths pass through unchanged. Matches are
+// boundary-aware ("/data" maps "/data/x" but never "/database/x"), and the
+// remainder's separators are converted to the local prefix's style so a
+// Windows client path maps cleanly onto a Unix mount (and vice versa).
+func TranslatePath(mappings []PathMapping, p string) string {
+	if p == "" {
+		return p
+	}
+	best := -1
+	bestLen := 0
+	for i, m := range mappings {
+		remote := strings.TrimRight(m.RemotePrefix, `/\`)
+		if remote == "" || len(p) < len(remote) || !strings.EqualFold(p[:len(remote)], remote) {
+			continue
+		}
+		if len(p) > len(remote) && p[len(remote)] != '/' && p[len(remote)] != '\\' {
+			continue // "/database" must not match a "/data" mapping
+		}
+		if len(remote) > bestLen {
+			best, bestLen = i, len(remote)
+		}
+	}
+	if best < 0 {
+		return p
+	}
+	local := strings.TrimRight(mappings[best].LocalPrefix, `/\`)
+	rest := p[bestLen:]
+	if strings.Contains(local, "/") || !strings.Contains(local, `\`) {
+		rest = strings.ReplaceAll(rest, `\`, "/")
+	} else {
+		rest = strings.ReplaceAll(rest, "/", `\`)
+	}
+	return local + rest
+}
+
 // TimingSettings tunes the background loops. Zero values mean "use the
 // default", so existing configs stay on defaults and the file only records
 // deliberate choices. Changes apply on the next server start.
@@ -309,6 +355,9 @@ type Config struct {
 	// written explicitly rather than dropped and re-defaulted on load.
 	Import  ImportSettings `yaml:"import"`
 	Timings TimingSettings `yaml:"timings,omitempty"`
+	// PathMappingList translates client-reported download paths onto this
+	// machine's filesystem (Completed Download Handling reads them).
+	PathMappingList []PathMapping `yaml:"path_mappings,omitempty"`
 
 	// Legacy flat field, migrated into Metadata.Providers on load and
 	// dropped from the file on the next save.
@@ -525,6 +574,32 @@ func (c *Config) TimingSettings() TimingSettings {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.Timings
+}
+
+// PathMappings returns a copy of the remote→local path mappings.
+func (c *Config) PathMappings() []PathMapping {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]PathMapping, len(c.PathMappingList))
+	copy(out, c.PathMappingList)
+	return out
+}
+
+// SetPathMappings validates, replaces, and persists the path mappings.
+func (c *Config) SetPathMappings(mappings []PathMapping) error {
+	clean := make([]PathMapping, 0, len(mappings))
+	for _, m := range mappings {
+		m.RemotePrefix = strings.TrimSpace(m.RemotePrefix)
+		m.LocalPrefix = strings.TrimSpace(m.LocalPrefix)
+		if m.RemotePrefix == "" || m.LocalPrefix == "" {
+			return fmt.Errorf("path mapping needs both a remote and a local prefix")
+		}
+		clean = append(clean, m)
+	}
+	c.mu.Lock()
+	c.PathMappingList = clean
+	c.mu.Unlock()
+	return c.save()
 }
 
 // SetTimings validates, replaces, and persists the background-loop cadences.

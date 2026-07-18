@@ -225,6 +225,27 @@ func (s *server) handlePutImportSettings(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, s.cfg.ImportSettings())
 }
 
+// --- Remote path mappings ---
+
+func (s *server) handleGetPathMappings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.cfg.PathMappings())
+}
+
+// handlePutPathMappings replaces the whole mapping list (the UI edits it as
+// one small table).
+func (s *server) handlePutPathMappings(w http.ResponseWriter, r *http.Request) {
+	var req []config.PathMapping
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := s.cfg.SetPathMappings(req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.cfg.PathMappings())
+}
+
 // --- Background timing settings ---
 
 func (s *server) handleGetTimingSettings(w http.ResponseWriter, r *http.Request) {

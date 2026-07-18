@@ -37,6 +37,9 @@ type Service struct {
 	// research (optional) starts a fresh search for a book whose download was
 	// blocklisted as junk, so acquisition moves straight to another release.
 	research func(bookID int64, mediaType string)
+	// pathMappings (optional) reports the remote→local path mappings applied
+	// to client-reported download paths before any disk access.
+	pathMappings func() []config.PathMapping
 }
 
 func New(store *library.Store, downloads *download.Service, org *organize.Service, settings func() config.ImportSettings) *Service {
@@ -48,6 +51,12 @@ func New(store *library.Store, downloads *download.Service, org *organize.Servic
 // immediately instead of waiting for the next periodic sweep. Optional.
 func (s *Service) OnJunkBlocklist(fn func(bookID int64, mediaType string)) {
 	s.research = fn
+}
+
+// SetPathMappings registers the remote→local path mapping provider
+// (Settings → Download Clients → Remote path mappings). Optional.
+func (s *Service) SetPathMappings(fn func() []config.PathMapping) {
+	s.pathMappings = fn
 }
 
 // opts returns the current import settings, tolerating a nil provider.
@@ -86,6 +95,17 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	result.Messages = append(result.Messages, clientErrs...)
+
+	// Clients on other machines/containers report their own filesystem;
+	// remote path mappings translate every reported path onto ours before
+	// anything touches disk.
+	if s.pathMappings != nil {
+		if mappings := s.pathMappings(); len(mappings) > 0 {
+			for i := range items {
+				items[i].Path = config.TranslatePath(mappings, items[i].Path)
+			}
+		}
+	}
 
 	pending, err := s.downloads.Store().ListGrabs(download.GrabStatusGrabbed)
 	if err != nil {
