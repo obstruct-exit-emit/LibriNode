@@ -107,6 +107,18 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- Performance: a scan used to write every file as its own autocommit SQLite
+  transaction, so a library scan of a few thousand files took 30+ seconds
+  (a no-op rescan barely faster). Ebook/audiobook/manga/comic scans now
+  batch a whole root's writes into one transaction — 31.8s → 2.5s on a
+  synthetic ~11,000-book/2,293-file library, 13.0s → 2.9s on a rescan.
+  Magazines keep the old per-file behavior (materializing a new issue needs
+  a second connection the batch would starve, given the database's
+  single-connection cap) — the smallest-volume scan path in practice.
+- `GET /book` unscoped was shipping every book of every media type to the
+  browser just to populate the Ebooks/Audiobooks page's manual-match
+  fallback list (5.7 MB of unused JSON at library scale). `GET
+  /book?library=ebook|audiobook` filters server-side now.
 - Log/token-leak sweep: Newznab/Torznab, SABnzbd, and ComicVine all carry
   their API key directly in the request URL's query string, so a connection
   failure (or an indexer error page echoing the query back) used to leak

@@ -17,6 +17,17 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// execer is satisfied by both *sql.DB and *sql.Tx. Write helpers that a scan
+// calls per-file (UpsertBookFile, EnsureBookLibrary, DeleteBookFile) take one
+// of these instead of assuming s.db directly, so BookFileBatch (files.go) can
+// run the very same logic inside one transaction — a scan touching thousands
+// of files turns from one WAL commit per file into one commit total.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
 // SortName derives a "Last, First Middle" sort key from a display name.
 func SortName(name string) string {
 	parts := strings.Fields(name)
@@ -156,11 +167,15 @@ func (s *Store) SetAuthorLibrary(id int64, mediaType string, member bool) error 
 // library — a book being deliberately added (or owned) there implies its
 // author belongs there too.
 func (s *Store) ensureAuthorLibrary(bookID int64, mediaType string) error {
+	return ensureAuthorLibrary(s.db, bookID, mediaType)
+}
+
+func ensureAuthorLibrary(db execer, bookID int64, mediaType string) error {
 	col, err := libraryColumn(mediaType)
 	if err != nil {
 		return nil // non-format media types have no author membership
 	}
-	_, err = s.db.Exec(
+	_, err = db.Exec(
 		`UPDATE authors SET `+col+` = 1 WHERE id = (SELECT author_id FROM books WHERE id = ?)`, bookID)
 	return err
 }
@@ -265,6 +280,10 @@ func (s *Store) SetBookLibrary(id int64, mediaType string, member, monitored boo
 // format's library without touching monitored flags (scan/import: owning it
 // puts it there).
 func (s *Store) EnsureBookLibrary(id int64, mediaType string) error {
+	return ensureBookLibrary(s.db, id, mediaType)
+}
+
+func ensureBookLibrary(db execer, id int64, mediaType string) error {
 	var query string
 	switch mediaType {
 	case "ebook":
@@ -274,10 +293,10 @@ func (s *Store) EnsureBookLibrary(id int64, mediaType string) error {
 	default:
 		return nil
 	}
-	if _, err := s.db.Exec(query, id); err != nil {
+	if _, err := db.Exec(query, id); err != nil {
 		return err
 	}
-	return s.ensureAuthorLibrary(id, mediaType)
+	return ensureAuthorLibrary(db, id, mediaType)
 }
 
 // RemoveAuthorBooksLibrary takes all of an author's prose books out of a
@@ -350,6 +369,34 @@ func (s *Store) ListBooks(authorID int64) ([]Book, error) {
 	query += ` ORDER BY sort_title`
 
 	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	books := []Book{}
+	for rows.Next() {
+		b, err := scanBook(rows)
+		if err != nil {
+			return nil, err
+		}
+		books = append(books, *b)
+	}
+	return books, rows.Err()
+}
+
+// ListBooksInLibrary returns a format library's member prose books —
+// filtered server-side, unlike ListBooks(0)'s whole-database fetch. The
+// library page's manual-match fallback (existing-file import) only ever
+// needs its own format's books, not every book of every media type; at a
+// few thousand books that difference is several megabytes of JSON the
+// browser never uses.
+func (s *Store) ListBooksInLibrary(mediaType string) ([]Book, error) {
+	col, err := libraryColumn(mediaType)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT `+bookCols+` FROM books WHERE media_type = 'book' AND `+col+` = 1 ORDER BY sort_title`)
 	if err != nil {
 		return nil, err
 	}

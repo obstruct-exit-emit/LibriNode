@@ -92,14 +92,22 @@ func walkEntryErr(rootPath, path string, d fs.DirEntry, err error, result *Resul
 	return nil
 }
 
+// bookFileDeleter is satisfied by both *library.Store and
+// *library.BookFileBatch — pruneMissing runs inside the walk's batch
+// transaction where one is in use (ebook/audiobook/comic), or directly
+// against the store where it isn't (magazines; see scanMagazineRoot).
+type bookFileDeleter interface {
+	DeleteBookFile(id int64) error
+}
+
 // pruneMissing deletes records whose files were not seen on disk. Only ever
 // called after a COMPLETE walk of the root.
-func (s *Service) pruneMissing(known map[string]int64, seen map[string]bool, result *Result) error {
+func (s *Service) pruneMissing(d bookFileDeleter, known map[string]int64, seen map[string]bool, result *Result) error {
 	for path, id := range known {
 		if seen[path] {
 			continue
 		}
-		if err := s.store.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
+		if err := d.DeleteBookFile(id); err != nil && err != library.ErrNotFound {
 			return err
 		}
 		result.Removed++
@@ -114,6 +122,17 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 	}
 	seen := map[string]bool{}
 	walkIncomplete := false
+
+	// One transaction for the whole walk (thousands of files, one commit
+	// instead of one per file — see BookFileBatch). The one trade-off: a
+	// hard-cancelled walk (ctx done mid-scan) now rolls back everything from
+	// this pass instead of keeping whatever was scanned before the cancel;
+	// nothing is lost permanently since the next scan re-finds every file.
+	batch, err := s.store.BeginBookFileBatch()
+	if err != nil {
+		return err
+	}
+	defer batch.Rollback()
 
 	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -151,7 +170,7 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 			file.Size = info.Size()
 			file.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
 		}
-		if err := s.store.UpsertBookFile(file); err != nil {
+		if err := batch.UpsertBookFile(file); err != nil {
 			return err
 		}
 
@@ -170,11 +189,16 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 		return err
 	}
 
-	// Prune records whose files are gone from disk.
-	if walkIncomplete {
-		return nil // partial walk — pruning would misread unvisited files as deleted
+	// Prune records whose files are gone from disk — skipped on an incomplete
+	// walk (pruning would misread unvisited files as deleted), but the files
+	// that WERE seen still commit; a permission error under one subtree must
+	// not discard everything the rest of the walk found.
+	if !walkIncomplete {
+		if err := s.pruneMissing(batch, known, seen, result); err != nil {
+			return err
+		}
 	}
-	return s.pruneMissing(known, seen, result)
+	return batch.Commit()
 }
 
 // scanAudiobookRoot walks an audiobook root where the unit is either a
@@ -188,6 +212,13 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 	}
 	seen := map[string]bool{}
 	walkIncomplete := false
+
+	// One transaction for the whole walk (see scanRoot).
+	batch, err := s.store.BeginBookFileBatch()
+	if err != nil {
+		return err
+	}
+	defer batch.Rollback()
 
 	record := func(path string, size int64, format string, modified time.Time) error {
 		rel, err := filepath.Rel(root.Path, path)
@@ -204,7 +235,7 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 			Format:       format,
 			ModifiedAt:   modified.UTC().Format(time.RFC3339),
 		}
-		if err := s.store.UpsertBookFile(file); err != nil {
+		if err := batch.UpsertBookFile(file); err != nil {
 			return err
 		}
 		seen[path] = true
@@ -295,10 +326,12 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 		return err
 	}
 
-	if walkIncomplete {
-		return nil // partial walk — pruning would misread unvisited files as deleted
+	if !walkIncomplete {
+		if err := s.pruneMissing(batch, known, seen, result); err != nil {
+			return err
+		}
 	}
-	return s.pruneMissing(known, seen, result)
+	return batch.Commit()
 }
 
 // audiobookDirInfo sums a book directory's audio content: total size, the
@@ -339,6 +372,13 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 	seen := map[string]bool{}
 	walkIncomplete := false
 
+	// One transaction for the whole walk (see scanRoot).
+	batch, err := s.store.BeginBookFileBatch()
+	if err != nil {
+		return err
+	}
+	defer batch.Rollback()
+
 	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return walkEntryErr(root.Path, path, d, err, result, &walkIncomplete)
@@ -376,7 +416,7 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 			file.Size = info.Size()
 			file.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
 		}
-		if err := s.store.UpsertBookFile(file); err != nil {
+		if err := batch.UpsertBookFile(file); err != nil {
 			return err
 		}
 		seen[path] = true
@@ -392,10 +432,12 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 		return err
 	}
 
-	if walkIncomplete {
-		return nil // partial walk — pruning would misread unvisited files as deleted
+	if !walkIncomplete {
+		if err := s.pruneMissing(batch, known, seen, result); err != nil {
+			return err
+		}
 	}
-	return s.pruneMissing(known, seen, result)
+	return batch.Commit()
 }
 
 // MagazineGuess extracts the magazine title and issue identifier from a
@@ -448,6 +490,13 @@ func (s *Service) scanMagazineRoot(ctx context.Context, root library.RootFolder,
 	seen := map[string]bool{}
 	walkIncomplete := false
 
+	// Not batched into one transaction like the other scan*Root functions:
+	// matchMagazineFile below does its own reads/writes (GetBookByForeignID,
+	// CreateMagazineIssue) against the store's own connection pool — which
+	// is capped at one connection (database.Open), so running those while a
+	// batch transaction already holds that single connection would deadlock
+	// the pass against itself. Magazine files are the smallest-volume scan
+	// path in practice, so the per-file commit cost here is a fine trade.
 	err = filepath.WalkDir(root.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return walkEntryErr(root.Path, path, d, err, result, &walkIncomplete)
@@ -503,7 +552,7 @@ func (s *Service) scanMagazineRoot(ctx context.Context, root library.RootFolder,
 	if walkIncomplete {
 		return nil // partial walk — pruning would misread unvisited files as deleted
 	}
-	return s.pruneMissing(known, seen, result)
+	return s.pruneMissing(s.store, known, seen, result)
 }
 
 // RematchUnmatched re-runs matching for unmatched file records against the

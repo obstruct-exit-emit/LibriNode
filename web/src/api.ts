@@ -607,8 +607,17 @@ export const api = {
       ...json({ library, member: false, deleteFiles }),
       method: "PUT",
     }),
-  listBooks: (authorId?: number) =>
-    request<Book[]>(authorId ? `/api/v1/book?authorId=${authorId}` : "/api/v1/book"),
+  // Scope with authorId (one author's books) or library (a format library's
+  // member books, filtered server-side); omit both only where the whole
+  // library's books are genuinely needed (e.g. global search).
+  listBooks: (authorId?: number, library?: "ebook" | "audiobook") =>
+    request<Book[]>(
+      authorId
+        ? `/api/v1/book?authorId=${authorId}`
+        : library
+          ? `/api/v1/book?library=${library}`
+          : "/api/v1/book",
+    ),
   getBook: (id: number) => request<Book>(`/api/v1/book/${id}`),
   addBook: (foreignBookId: string, library: string = "ebook") =>
     request<Book>("/api/v1/book", json({ foreignBookId, library })),

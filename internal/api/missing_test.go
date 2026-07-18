@@ -175,6 +175,40 @@ func TestRefreshPreservesMembership(t *testing.T) {
 	}
 }
 
+// TestListBooksScopedByLibrary: GET /book?library= filters server-side to
+// that format's member books — the Ebooks/Audiobooks page's manual-match
+// fallback list shouldn't have to ship every book of every media type (and
+// every author's whole database) just to populate it.
+func TestListBooksScopedByLibrary(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
+	var all []library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book?authorId=%d", author.ID), nil, &all), http.StatusOK)
+	if len(all) != 2 {
+		t.Fatalf("fixture author has %d books, want 2", len(all))
+	}
+	// Monitor one book into ebook, the other into audiobook.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", all[0].ID),
+		map[string]any{"library": "ebook", "member": true, "monitored": true}, nil), http.StatusOK)
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", all[1].ID),
+		map[string]any{"library": "audiobook", "member": true, "monitored": true}, nil), http.StatusOK)
+
+	var ebooks, audiobooks []library.Book
+	a.want(a.call("GET", "/api/v1/book?library=ebook", nil, &ebooks), http.StatusOK)
+	if len(ebooks) != 1 || ebooks[0].ID != all[0].ID {
+		t.Fatalf("ebook-scoped = %+v, want just %+v", ebooks, all[0])
+	}
+	a.want(a.call("GET", "/api/v1/book?library=audiobook", nil, &audiobooks), http.StatusOK)
+	if len(audiobooks) != 1 || audiobooks[0].ID != all[1].ID {
+		t.Fatalf("audiobook-scoped = %+v, want just %+v", audiobooks, all[1])
+	}
+
+	// An invalid library value is a 400, not a 500.
+	a.want(a.call("GET", "/api/v1/book?library=bogus", nil, nil), http.StatusBadRequest)
+}
+
 // TestLibraryRefresh: the library-wide metadata refresh counts the library's
 // records, refuses provider-less magazines, and answers 202 for a real run.
 func TestLibraryRefresh(t *testing.T) {

@@ -38,10 +38,13 @@ export default function BooksLibraryView({
   const [visible, setVisible] = useState(60);
 
   const reload = useCallback(() => {
-    Promise.all([api.listAuthors(library), api.listBooks()])
+    // listBooks scoped to this format library — filtered server-side, not
+    // the whole database's books shipped to the browser just to populate
+    // the manual-match fallback list below.
+    Promise.all([api.listAuthors(library), api.listBooks(undefined, library)])
       .then(([au, bk]) => {
         setAuthors(au);
-        setLibraryBooks(bk.filter((b) => (library === "ebook" ? b.inEbookLibrary : b.inAudiobookLibrary)));
+        setLibraryBooks(bk);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));

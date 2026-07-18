@@ -65,6 +65,10 @@ func (s *Store) ListRootFolders() ([]RootFolder, error) {
 // book match, so book_id is updated on re-scan (a file can gain a match after
 // its book is added to the library).
 func (s *Store) UpsertBookFile(f *BookFile) error {
+	return upsertBookFile(s.db, f)
+}
+
+func upsertBookFile(db execer, f *BookFile) error {
 	bookID := sql.NullInt64{Int64: f.BookID, Valid: f.BookID > 0}
 	if f.MediaType == "" {
 		f.MediaType = "ebook"
@@ -72,7 +76,7 @@ func (s *Store) UpsertBookFile(f *BookFile) error {
 	// book_id is COALESCEd so a re-scan that can't match a filename on its own
 	// never clears an existing match — manual imports stay imported. Explicit
 	// unmatching goes through SetBookFileBook.
-	err := s.db.QueryRow(`
+	err := db.QueryRow(`
 		INSERT INTO book_files (root_folder_id, book_id, media_type, variant, path, size, format, modified_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (path) DO UPDATE SET
@@ -92,10 +96,37 @@ func (s *Store) UpsertBookFile(f *BookFile) error {
 	// Owning a format puts the book in that format's library (Plex-style
 	// explicit membership; monitored flag untouched).
 	if f.BookID > 0 {
-		return s.EnsureBookLibrary(f.BookID, f.MediaType)
+		return ensureBookLibrary(db, f.BookID, f.MediaType)
 	}
 	return nil
 }
+
+// BookFileBatch accumulates book_file writes (from a scan pass) inside one
+// transaction instead of the usual one-commit-per-call — a scan can touch
+// thousands of files, and one WAL commit instead of thousands turns a
+// scan's dominant cost (fsync-per-write) into a non-issue. Call
+// UpsertBookFile/DeleteBookFile as many times as needed, then Commit();
+// Rollback is safe to call unconditionally afterward (a no-op post-Commit),
+// so callers can `defer batch.Rollback()` right after BeginBookFileBatch.
+type BookFileBatch struct {
+	tx *sql.Tx
+}
+
+// BeginBookFileBatch starts a batch. The caller must Commit or Rollback.
+func (s *Store) BeginBookFileBatch() (*BookFileBatch, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return &BookFileBatch{tx: tx}, nil
+}
+
+func (b *BookFileBatch) UpsertBookFile(f *BookFile) error { return upsertBookFile(b.tx, f) }
+func (b *BookFileBatch) DeleteBookFile(id int64) error    { return deleteBookFile(b.tx, id) }
+func (b *BookFileBatch) Commit() error                    { return b.tx.Commit() }
+
+// Rollback aborts the batch. Harmless to call after a successful Commit.
+func (b *BookFileBatch) Rollback() { _ = b.tx.Rollback() }
 
 const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), media_type, variant, path, size, format, modified_at, added_at`
 
@@ -309,7 +340,11 @@ func (s *Store) filePaths(query string, args ...any) ([]string, error) {
 }
 
 func (s *Store) DeleteBookFile(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM book_files WHERE id = ?`, id)
+	return deleteBookFile(s.db, id)
+}
+
+func deleteBookFile(db execer, id int64) error {
+	res, err := db.Exec(`DELETE FROM book_files WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}

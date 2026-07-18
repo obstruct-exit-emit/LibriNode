@@ -447,6 +447,10 @@ func (s *server) handleDeleteAuthor(w http.ResponseWriter, r *http.Request) {
 // --- Books ---
 
 func (s *server) handleListBooks(w http.ResponseWriter, r *http.Request) {
+	// ?library=ebook|audiobook scopes to that format's member books, filtered
+	// server-side (the Ebooks/Audiobooks page's manual-match fallback list —
+	// no reason to ship every book of every media type for that). Mutually
+	// exclusive with ?authorId=; authorId wins if both are somehow given.
 	var authorID int64
 	if v := r.URL.Query().Get("authorId"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
@@ -455,6 +459,21 @@ func (s *server) handleListBooks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		authorID = id
+	}
+	if authorID == 0 {
+		if lib := r.URL.Query().Get("library"); lib != "" {
+			if lib != "ebook" && lib != "audiobook" {
+				writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+				return
+			}
+			books, err := s.store.ListBooksInLibrary(lib)
+			if err != nil {
+				writeStoreError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, books)
+			return
+		}
 	}
 	books, err := s.store.ListBooks(authorID)
 	if err != nil {
