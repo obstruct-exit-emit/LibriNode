@@ -27,7 +27,9 @@ import (
 	"github.com/librinode/librinode/internal/metadata"
 	"github.com/librinode/librinode/internal/metadata/anilist"
 	"github.com/librinode/librinode/internal/metadata/comicvine"
+	"github.com/librinode/librinode/internal/metadata/googlebooks"
 	"github.com/librinode/librinode/internal/metadata/hardcover"
+	"github.com/librinode/librinode/internal/metadata/openlibrary"
 	"github.com/librinode/librinode/internal/organize"
 	"github.com/librinode/librinode/internal/refresh"
 )
@@ -147,6 +149,10 @@ func run(dataDir string) error {
 	// one. New providers are one Register call away; the settings UI and API
 	// pick them up automatically.
 	metadata.Register("hardcover", hardcover.Factory)
+	// Keyless book providers — usable as the primary, but their reason for
+	// being is the fallback chain (Settings → Metadata → Fallbacks).
+	metadata.Register("openlibrary", openlibrary.Factory)
+	metadata.Register("googlebooks", googlebooks.Factory)
 	metadata.RegisterSeries("anilist", anilist.Factory)
 	metadata.RegisterSeries("hardcover", hardcover.SeriesFactory)
 	// Hardcover serves comics too — a distinct registry key, but the provider
@@ -157,7 +163,7 @@ func run(dataDir string) error {
 	providers := metadata.NewManager()
 	// ProviderSettings carries the global metadata preferences (language,
 	// country, adult filter) into every provider build.
-	if err := providers.Configure(cfg.Metadata.Active, cfg.ProviderSettings()); err != nil {
+	if err := providers.ConfigureWithFallbacks(cfg.Metadata.Active, cfg.Metadata.Fallbacks, cfg.ProviderSettings()); err != nil {
 		logger.Warn("activating metadata provider failed", "provider", cfg.Metadata.Active, "error", err)
 	}
 	providers.ConfigureSeries(cfg.ProviderSettings(), cfg.SeriesSelection())

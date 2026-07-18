@@ -47,6 +47,12 @@ type Author struct {
 	ImageURL    string `json:"imageUrl"`
 	BookCount   int    `json:"bookCount,omitempty"`
 	Books       []Book `json:"books,omitempty"`
+	// Source names the provider this record actually came from. A single
+	// provider leaves it blank (the caller records its Name()); the fallback
+	// chain stamps it so a record found through a fallback is persisted under
+	// that fallback's name — so a later refresh routes back to the same
+	// provider instead of the primary that never had it. See FallbackProvider.
+	Source string `json:"metadataSource,omitempty"`
 }
 
 type Book struct {
@@ -60,6 +66,8 @@ type Book struct {
 	AuthorName      string       `json:"authorName"`
 	Series          []SeriesLink `json:"series,omitempty"`
 	Editions        []Edition    `json:"editions,omitempty"`
+	// Source names the origin provider; see Author.Source.
+	Source string `json:"metadataSource,omitempty"`
 }
 
 type SeriesLink struct {

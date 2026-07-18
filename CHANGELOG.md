@@ -10,6 +10,18 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Metadata fallback providers: **Open Library** and **Google Books** ship as
+  keyless book providers (a Google Books API key is optional, only to lift
+  rate limits). Configure them, in order, under Settings → Metadata →
+  Fallbacks: the active provider answers everything it can, and a fallback is
+  consulted only when the active one finds nothing for a search or an id
+  lookup — the "as fallbacks" contract, not a merge. A record found through a
+  fallback is stored under that fallback's name, so its later metadata refresh
+  routes back to the same source rather than the primary that never had it
+  (a new `metadataSource` field carries the origin through the add). Either
+  new provider can also be selected as the primary book provider. Implemented
+  as a `metadata.FallbackProvider` chain wrapping the registered providers, so
+  further sources are still one registration away.
 - Roles / permissions: every login account is now an **admin** or a
   **member**. Members get everyday use — browsing, monitoring, search, grab,
   scan, organize, and their own password — but not the server's own

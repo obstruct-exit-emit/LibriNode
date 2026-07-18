@@ -1846,6 +1846,7 @@ function MetadataCard({
   const { confirmDlg } = useUi();
   const [settings, setSettings] = useState<MetadataSettings | null>(null);
   const [active, setActive] = useState("");
+  const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [providers, setProviders] = useState<Record<string, ProviderSettings>>({});
   const [showToken, setShowToken] = useState(false);
   const [mangaProvider, setMangaProvider] = useState("");
@@ -1884,6 +1885,7 @@ function MetadataCard({
       .then((s) => {
         setSettings(s);
         setActive(s.active);
+        setFallbacks(s.fallbacks ?? []);
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
         setComicProvider(s.comicProvider);
@@ -1922,6 +1924,7 @@ function MetadataCard({
     setNotice("");
     api
       .saveMetadataSettings(active, providers, {
+        fallbacks: fallbacks.filter((f) => f !== active),
         mangaProvider,
         comicProvider,
         mangaCoverSource,
@@ -1933,6 +1936,7 @@ function MetadataCard({
       .then((s) => {
         setSettings(s);
         setActive(s.active);
+        setFallbacks(s.fallbacks ?? []);
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
         setComicProvider(s.comicProvider);
@@ -2000,12 +2004,22 @@ function MetadataCard({
               onChange={(e) => setProviderToken("comicvine", e.target.value)}
             />
           </label>
+          <label>
+            Google Books API key <span className="muted">(optional)</span>
+            <input
+              type="password"
+              placeholder="Optional — raises Google's anonymous rate limits"
+              value={providers["googlebooks"]?.token ?? ""}
+              onChange={(e) => setProviderToken("googlebooks", e.target.value)}
+            />
+          </label>
           <p className="muted">
             Hardcover tokens come from{" "}
             <a href="https://hardcover.app/account/api" target="_blank" rel="noreferrer">hardcover.app/account/api</a>;
             ComicVine keys from{" "}
             <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noreferrer">comicvine.gamespot.com/api</a>.
-            AniList needs no key.
+            AniList, Open Library, and Google Books need no key (a Google Books
+            key only lifts rate limits).
           </p>
         </div>
 
@@ -2085,6 +2099,48 @@ function MetadataCard({
               ))}
             </select>
           </label>
+          {active && settings.available.filter((n) => n !== active).length > 0 && (
+            <div className="opt" style={{ marginTop: "0.4rem" }}>
+              <span className="settings-subhead" style={{ display: "block" }}>
+                Fallbacks
+              </span>
+              <p className="muted opt-help" style={{ marginTop: 0 }}>
+                Consulted, in order, only when{" "}
+                <strong>{active[0].toUpperCase() + active.slice(1)}</strong> finds
+                nothing for a search or a lookup — never merged in. A book found
+                through a fallback is added under that provider, so its later
+                metadata refresh goes back to the same source. Open Library and
+                Google Books need no key.
+              </p>
+              {settings.available
+                .filter((n) => n !== active)
+                .map((name) => {
+                  const on = fallbacks.includes(name);
+                  return (
+                    <label className="check" key={name}>
+                      <span>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) => {
+                            setFallbacks(
+                              e.target.checked
+                                ? [...fallbacks.filter((f) => f !== name), name]
+                                : fallbacks.filter((f) => f !== name),
+                            );
+                            setNotice("");
+                          }}
+                        />{" "}
+                        {name[0].toUpperCase() + name.slice(1)}
+                        {on && fallbacks.length > 1 && (
+                          <span className="muted"> · #{fallbacks.indexOf(name) + 1}</span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+            </div>
+          )}
         </div>
 
         <div className="settings-section">

@@ -18,10 +18,13 @@ import (
 // metadataSettingsResponse is the settings UI's view of metadata config:
 // which providers exist, which one is active, and their stored settings.
 type metadataSettingsResponse struct {
-	Active          string                       `json:"active"`
-	Available       []string                     `json:"available"`
-	SeriesAvailable []string                     `json:"seriesAvailable"`
-	Providers       map[string]metadata.Settings `json:"providers"`
+	Active          string   `json:"active"`
+	Available       []string `json:"available"`
+	SeriesAvailable []string `json:"seriesAvailable"`
+	// Fallbacks is the ordered list of book providers consulted when Active
+	// finds nothing; a subset of Available, never including Active itself.
+	Fallbacks []string                     `json:"fallbacks"`
+	Providers map[string]metadata.Settings `json:"providers"`
 	// MangaProviders / ComicProviders list the providers that can serve each
 	// series media type (for the selectors); the singular fields are the
 	// chosen ones.
@@ -45,6 +48,7 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 		Active:           ms.Active,
 		Available:        metadata.Available(),
 		SeriesAvailable:  metadata.SeriesAvailable(),
+		Fallbacks:        ms.Fallbacks,
 		Providers:        ms.Providers,
 		MangaProviders:   metadata.AvailableSeriesProviders("manga"),
 		MangaProvider:    s.cfg.MangaSeriesProvider(),
@@ -55,6 +59,9 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 		Language:         s.cfg.MetadataLanguage(),
 		Country:          s.cfg.MetadataCountry(),
 		IncludeAdult:     s.cfg.IncludeAdult(),
+	}
+	if resp.Fallbacks == nil {
+		resp.Fallbacks = []string{}
 	}
 	// Every registered provider shows up in the form, configured or not.
 	for _, name := range append(append([]string{}, resp.Available...), resp.SeriesAvailable...) {
@@ -78,6 +85,7 @@ func (s *server) handleGetMetadataSettings(w http.ResponseWriter, r *http.Reques
 func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Active           string                       `json:"active"`
+		Fallbacks        []string                     `json:"fallbacks"`
 		Providers        map[string]metadata.Settings `json:"providers"`
 		MangaProvider    string                       `json:"mangaProvider"`
 		ComicProvider    string                       `json:"comicProvider"`
@@ -94,6 +102,21 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 	if req.Active != "" && !slices.Contains(metadata.Available(), req.Active) {
 		writeError(w, http.StatusBadRequest, "unknown provider: "+req.Active)
 		return
+	}
+	// Fallbacks must be known book providers, and never the active one (it is
+	// always tried first — listing it as a fallback too is meaningless).
+	fallbacks := make([]string, 0, len(req.Fallbacks))
+	seenFallback := map[string]bool{}
+	for _, fb := range req.Fallbacks {
+		if fb == "" || fb == req.Active || seenFallback[fb] {
+			continue
+		}
+		if !slices.Contains(metadata.Available(), fb) {
+			writeError(w, http.StatusBadRequest, "unknown fallback provider: "+fb)
+			return
+		}
+		seenFallback[fb] = true
+		fallbacks = append(fallbacks, fb)
 	}
 	if req.MangaProvider != "" && req.MangaProvider != "none" &&
 		!slices.Contains(metadata.AvailableSeriesProviders("manga"), req.MangaProvider) {
@@ -115,6 +138,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 
 	ms := config.MetadataSettings{
 		Active:           req.Active,
+		Fallbacks:        fallbacks,
 		Providers:        req.Providers,
 		MangaProvider:    req.MangaProvider,
 		ComicProvider:    req.ComicProvider,
@@ -138,7 +162,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		ps.Language, ps.Country, ps.IncludeAdult = lang, country, ms.IncludeAdult
 		injected[name] = ps
 	}
-	if err := s.metadata.Configure(ms.Active, injected); err != nil {
+	if err := s.metadata.ConfigureWithFallbacks(ms.Active, ms.Fallbacks, injected); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

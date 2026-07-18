@@ -162,11 +162,20 @@ func (m *Manager) Set(p Provider) {
 	m.mu.Unlock()
 }
 
-// Configure builds and activates the named provider from settings. An empty
-// name, or a factory reporting ErrNotConfigured, deactivates metadata
-// cleanly; other build errors leave the previous provider in place. The
-// settings map is retained (copied) for by-name builds (ProviderByName).
+// Configure builds and activates the named provider from settings, with no
+// fallbacks. See ConfigureWithFallbacks.
 func (m *Manager) Configure(name string, settings map[string]Settings) error {
+	return m.ConfigureWithFallbacks(name, nil, settings)
+}
+
+// ConfigureWithFallbacks builds and activates the named provider, wrapped in
+// the ordered fallbacks when any are usable (see NewFallback). An empty name,
+// or a factory reporting ErrNotConfigured, deactivates metadata cleanly;
+// other build errors on the primary leave the previous provider in place. A
+// fallback that fails to build or reports ErrNotConfigured is skipped, never
+// fatal — a bad fallback must not take metadata down. The settings map is
+// retained (copied) for by-name builds (ProviderByName).
+func (m *Manager) ConfigureWithFallbacks(name string, fallbacks []string, settings map[string]Settings) error {
 	retained := make(map[string]Settings, len(settings))
 	for k, v := range settings {
 		retained[k] = v
@@ -187,7 +196,18 @@ func (m *Manager) Configure(name string, settings map[string]Settings) error {
 		}
 		return err
 	}
-	m.Set(p)
+	var chain []Provider
+	for _, fb := range fallbacks {
+		if fb == "" || fb == name {
+			continue
+		}
+		fp, ferr := Build(fb, settings[fb])
+		if ferr != nil {
+			continue // a disabled or unbuildable fallback is simply skipped
+		}
+		chain = append(chain, fp)
+	}
+	m.Set(NewFallback(p, chain...))
 	return nil
 }
 

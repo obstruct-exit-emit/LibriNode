@@ -30,6 +30,13 @@ import (
 type MetadataSettings struct {
 	Active    string                       `yaml:"active"`
 	Providers map[string]metadata.Settings `yaml:"providers"`
+	// Fallbacks names book providers, in order, consulted only when Active
+	// draws a blank on a search or an id lookup — the "as fallbacks" contract.
+	// A record found through a fallback is stored under that fallback's name,
+	// so its later refresh routes back to it, not to Active. Open Library and
+	// Google Books are the keyless fallbacks that ship. See
+	// metadata.FallbackProvider.
+	Fallbacks []string `yaml:"fallbacks,omitempty"`
 	// MangaProvider chooses the manga series provider ("anilist",
 	// "hardcover", or "none" to disable); empty defaults to anilist.
 	// ComicProvider chooses the comic series provider ("hardcover",
@@ -679,6 +686,7 @@ func (c *Config) MetadataSettings() MetadataSettings {
 		Language:         c.Metadata.Language,
 		Country:          c.Metadata.Country,
 		IncludeAdult:     c.Metadata.IncludeAdult,
+		Fallbacks:        append([]string(nil), c.Metadata.Fallbacks...),
 		Providers:        make(map[string]metadata.Settings, len(c.Metadata.Providers)),
 	}
 	for name, s := range c.Metadata.Providers {

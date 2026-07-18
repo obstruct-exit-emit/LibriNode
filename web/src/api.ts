@@ -372,6 +372,9 @@ export interface ProviderSettings {
 export interface MetadataSettings {
   active: string;
   available: string[];
+  // Ordered book providers consulted only when `active` finds nothing —
+  // a subset of `available`, never including `active`.
+  fallbacks: string[];
   providers: Record<string, ProviderSettings>;
   mangaProviders: string[];
   mangaProvider: string;
@@ -861,6 +864,7 @@ export const api = {
     active: string,
     providers: Record<string, ProviderSettings>,
     extra?: {
+      fallbacks?: string[];
       mangaProvider?: string;
       comicProvider?: string;
       mangaCoverSource?: string;

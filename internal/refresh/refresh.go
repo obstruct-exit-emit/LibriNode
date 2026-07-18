@@ -78,8 +78,14 @@ func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, forei
 		return nil, err
 	}
 
+	// A fallback-sourced author stamps its origin; its books inherit it unless
+	// they carry their own. See metadata.FallbackProvider.
+	source := remote.Source
+	if source == "" {
+		source = p.Name()
+	}
 	author := &library.Author{
-		Source:      p.Name(),
+		Source:      source,
 		ForeignID:   remote.ForeignID,
 		Name:        remote.Name,
 		Description: remote.Description,
@@ -90,6 +96,9 @@ func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, forei
 		return nil, err
 	}
 	for i := range remote.Books {
+		if remote.Books[i].Source == "" {
+			remote.Books[i].Source = source
+		}
 		if err := s.persistBook(p, &remote.Books[i], author.ID, monitored); err != nil {
 			return nil, err
 		}
@@ -121,7 +130,12 @@ func (s *Service) syncBookWith(ctx context.Context, p metadata.Provider, foreign
 		return nil, fmt.Errorf("provider returned book %s without an author", foreignID)
 	}
 
-	source := p.Name()
+	// A fallback-sourced book stamps its origin; the author stub it creates
+	// and the read-back share that source. See metadata.FallbackProvider.
+	source := remote.Source
+	if source == "" {
+		source = p.Name()
+	}
 	author, err := s.store.GetAuthorByForeignID(source, remote.AuthorForeignID)
 	if errors.Is(err, library.ErrNotFound) {
 		author = &library.Author{
@@ -197,7 +211,12 @@ func (s *Service) RefreshBook(ctx context.Context, id int64) error {
 // an explicit user action. (New ebook editions still inherit the book's
 // monitored flag into the legacy editions.monitored column.)
 func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, authorID int64, monitored bool) error {
-	source := p.Name()
+	// A fallback-sourced record stamps its true origin; otherwise the provider
+	// that returned it is the source. See metadata.FallbackProvider.
+	source := remote.Source
+	if source == "" {
+		source = p.Name()
+	}
 	book := &library.Book{
 		AuthorID:    authorID,
 		Source:      source,
