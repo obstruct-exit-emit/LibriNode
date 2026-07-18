@@ -767,6 +767,12 @@ export const api = {
       method: "PUT",
     }),
 
+  refreshLibrary: (mediaType: string) =>
+    request<{ started: number; message: string }>(
+      "/api/v1/library/refresh",
+      json({ mediaType }),
+    ),
+
   getPathMappings: () => request<PathMapping[]>("/api/v1/settings/pathmappings"),
   savePathMappings: (mappings: PathMapping[]) =>
     request<PathMapping[]>("/api/v1/settings/pathmappings", {

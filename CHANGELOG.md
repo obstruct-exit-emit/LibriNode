@@ -10,6 +10,10 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Library-wide "Refresh metadata" on every library page (except organize-only
+  magazines) — the bulk twin of the per-author/per-series Refresh buttons,
+  honoring per-record provider overrides; runs in the background, one at a
+  time, and reports how many records it covers.
 - Remote path mappings (Settings → Download Clients): map a download
   client's reported path prefix to the local path where this server sees
   the same files — longest prefix wins, boundary-aware, case-insensitive,

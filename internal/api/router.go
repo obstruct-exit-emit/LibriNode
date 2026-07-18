@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/librinode/librinode/internal/autosearch"
@@ -35,6 +36,9 @@ type server struct {
 	store     *library.Store
 	metadata  *metadata.Manager // active provider is swappable at runtime
 	refresh   *refresh.Service
+	// libRefreshBusy guards the background library-wide metadata refresh —
+	// one at a time, across all libraries.
+	libRefreshBusy atomic.Bool
 	scanner   *scanner.Service
 	organize  *organize.Service
 	indexers  *indexer.Service
@@ -152,6 +156,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("POST /api/v1/series/{id}/search", s.auth(s.handleSeriesSearch))
 	mux.HandleFunc("DELETE /api/v1/series/{id}", s.auth(s.handleDeleteSeries))
 	mux.HandleFunc("POST /api/v1/library/scan", s.auth(s.handleScan))
+	mux.HandleFunc("POST /api/v1/library/refresh", s.auth(s.handleRefreshLibrary))
 	mux.HandleFunc("GET /api/v1/library/rename", s.auth(s.handleRenamePreview))
 	mux.HandleFunc("POST /api/v1/library/rename", s.auth(s.handleRenameApply))
 	mux.HandleFunc("GET /api/v1/bookfile", s.auth(s.handleListBookFiles))

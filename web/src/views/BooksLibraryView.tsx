@@ -126,6 +126,13 @@ export default function BooksLibraryView({
             <button disabled={busyHeader} onClick={scan} title="Scan root folders">
               Scan files
             </button>
+            <button
+              disabled={busyHeader}
+              onClick={() => headerAction(async () => (await api.refreshLibrary(library)).message)}
+              title="Re-sync every author in this library from the metadata provider (runs in the background)"
+            >
+              Refresh metadata
+            </button>
           </span>
         </div>
         {notice && <p className="muted">{notice}</p>}

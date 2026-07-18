@@ -262,6 +262,76 @@ func (s *server) rematchFiles() {
 	}
 }
 
+// handleRefreshLibrary starts a library-wide metadata refresh in the
+// background — the bulk twin of the per-author/per-series Refresh buttons,
+// honoring provider overrides the same way:
+// POST /api/v1/library/refresh {"mediaType":"ebook"}. One runs at a time; a
+// second request while one is running gets a 409.
+func (s *server) handleRefreshLibrary(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		MediaType string `json:"mediaType"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	// Count what the refresh will cover so the response can say so.
+	count := 0
+	switch req.MediaType {
+	case "ebook", "audiobook":
+		authors, err := s.store.ListAuthors()
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		for i := range authors {
+			if (req.MediaType == "ebook" && authors[i].InEbookLibrary) ||
+				(req.MediaType == "audiobook" && authors[i].InAudiobookLibrary) {
+				count++
+			}
+		}
+	case "manga", "comic":
+		seriesList, err := s.store.ListSeries(req.MediaType)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		count = len(seriesList)
+	default:
+		writeError(w, http.StatusBadRequest,
+			"mediaType must be ebook, audiobook, manga, or comic (magazines are provider-less)")
+		return
+	}
+	if count == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"started": 0, "message": "Nothing to refresh — the library is empty.",
+		})
+		return
+	}
+
+	if !s.libRefreshBusy.CompareAndSwap(false, true) {
+		writeError(w, http.StatusConflict, "a library metadata refresh is already running")
+		return
+	}
+	mediaType := req.MediaType
+	go func() {
+		defer s.libRefreshBusy.Store(false)
+		// Detached from the request: a big library takes a while, and closing
+		// the browser tab must not abort the sweep.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+		defer cancel()
+		if _, err := s.refresh.RefreshLibrary(ctx, mediaType); err != nil {
+			slog.Warn("library metadata refresh", "mediaType", mediaType, "error", err)
+		}
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"started": count,
+		"message": fmt.Sprintf(
+			"Refreshing metadata for %d record(s) in the background — changes appear as they complete.", count),
+	})
+}
+
 // handleRefreshAuthor re-syncs an existing author (and bibliography) from the
 // metadata provider.
 func (s *server) handleRefreshAuthor(w http.ResponseWriter, r *http.Request) {

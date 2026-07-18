@@ -67,6 +67,16 @@ export default function SeriesLibraryView({
       .finally(() => setBusy(false));
   };
 
+  const refreshAll = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .refreshLibrary(mediaType)
+      .then((r) => setNotice(r.message))
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
   const previewRenames = () => {
     setBusy(true);
     setNotice("");
@@ -111,6 +121,15 @@ export default function SeriesLibraryView({
             Organize…
           </button>
           <button disabled={busy} onClick={scan}>Scan files</button>
+          {mediaType !== "magazine" && (
+            <button
+              disabled={busy}
+              onClick={refreshAll}
+              title="Re-sync every series in this library from the metadata provider (runs in the background)"
+            >
+              Refresh metadata
+            </button>
+          )}
         </span>
       </div>
       {notice && <p className="muted">{notice}</p>}

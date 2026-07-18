@@ -55,3 +55,30 @@ func TestAuthorMissing(t *testing.T) {
 		t.Fatalf("after unmonitor, missing = %d, want 2", len(missing))
 	}
 }
+
+// TestLibraryRefresh: the library-wide metadata refresh counts the library's
+// records, refuses provider-less magazines, and answers 202 for a real run.
+func TestLibraryRefresh(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	a.want(a.call("POST", "/api/v1/library/refresh",
+		map[string]string{"mediaType": "magazine"}, nil), http.StatusBadRequest)
+
+	var res struct {
+		Started int    `json:"started"`
+		Message string `json:"message"`
+	}
+	a.want(a.call("POST", "/api/v1/library/refresh",
+		map[string]string{"mediaType": "ebook"}, &res), http.StatusOK)
+	if res.Started != 0 {
+		t.Fatalf("empty library started = %d, want 0", res.Started)
+	}
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/refresh",
+		map[string]string{"mediaType": "ebook"}, &res), http.StatusAccepted)
+	if res.Started != 1 || res.Message == "" {
+		t.Fatalf("refresh response = %+v, want started 1 with a message", res)
+	}
+}

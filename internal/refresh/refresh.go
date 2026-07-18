@@ -229,6 +229,59 @@ func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, author
 // RefreshAll re-syncs every author and manga/comic series in the library.
 // Individual failures are logged and skipped so one dead provider record
 // can't stall the rest.
+// RefreshLibrary re-syncs one library's records from their providers: a
+// format library's member authors (ebook/audiobook) or a series library's
+// series (manga/comic) — the library-wide twin of the per-author/per-series
+// Refresh buttons, honoring per-record provider overrides the same way.
+// Individual failures are logged and skipped; the count of successfully
+// refreshed records is returned.
+func (s *Service) RefreshLibrary(ctx context.Context, mediaType string) (int, error) {
+	done := 0
+	switch mediaType {
+	case "ebook", "audiobook":
+		authors, err := s.store.ListAuthors()
+		if err != nil {
+			return 0, err
+		}
+		for i := range authors {
+			a := &authors[i]
+			if mediaType == "ebook" && !a.InEbookLibrary {
+				continue
+			}
+			if mediaType == "audiobook" && !a.InAudiobookLibrary {
+				continue
+			}
+			if ctx.Err() != nil {
+				return done, ctx.Err()
+			}
+			if err := s.RefreshAuthor(ctx, a.ID); err != nil {
+				slog.Warn("library refresh: author failed", "author", a.Name, "error", err)
+				continue
+			}
+			done++
+		}
+	case "manga", "comic":
+		seriesList, err := s.store.ListSeries(mediaType)
+		if err != nil {
+			return 0, err
+		}
+		for i := range seriesList {
+			if ctx.Err() != nil {
+				return done, ctx.Err()
+			}
+			if err := s.RefreshSeries(ctx, seriesList[i].ID); err != nil {
+				slog.Warn("library refresh: series failed", "series", seriesList[i].Title, "error", err)
+				continue
+			}
+			done++
+		}
+	default:
+		return 0, fmt.Errorf("metadata refresh is not available for %s", mediaType)
+	}
+	slog.Info("library metadata refresh complete", "mediaType", mediaType, "refreshed", done)
+	return done, nil
+}
+
 func (s *Service) RefreshAll(ctx context.Context) {
 	s.refreshAllSeries(ctx)
 	if _, err := s.provider(); err != nil {
