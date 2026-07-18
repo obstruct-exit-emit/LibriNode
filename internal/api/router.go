@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"io/fs"
@@ -243,7 +244,8 @@ func (s *server) auth(next http.HandlerFunc) http.HandlerFunc {
 		if key == "" {
 			key = r.URL.Query().Get("apikey")
 		}
-		if key != "" && key == s.cfg.CurrentAPIKey() {
+		if key != "" &&
+			subtle.ConstantTimeCompare([]byte(key), []byte(s.cfg.CurrentAPIKey())) == 1 {
 			next(w, r)
 			return
 		}

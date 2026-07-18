@@ -106,3 +106,79 @@ func TestAuthSessionsAndAPIKeyRegen(t *testing.T) {
 	a.apiKey = regen.APIKey
 	a.want(a.call("GET", "/api/v1/author", nil, nil), http.StatusOK)
 }
+
+// Sessions are bound to their account: removing a user ends their open
+// sessions immediately, and a password change ends the account's OTHER
+// sessions while the browser making the change keeps its own.
+func TestSessionUserBinding(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	a.want(a.call("PUT", "/api/v1/auth/credentials",
+		map[string]string{"username": "dan", "password": "secret-pass-1"}, nil), http.StatusOK)
+	a.want(a.call("POST", "/api/v1/auth/users",
+		map[string]string{"username": "guest", "password": "guest-pass-1"}, nil), http.StatusCreated)
+
+	login := func(user, pass string) *http.Cookie {
+		resp, err := http.Post(a.srv.URL+"/api/v1/auth/login", "application/json",
+			strings.NewReader(`{"username":"`+user+`","password":"`+pass+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("login %s: status %d", user, resp.StatusCode)
+		}
+		for _, c := range resp.Cookies() {
+			if c.Name == sessionCookie {
+				return c
+			}
+		}
+		t.Fatalf("login %s: no session cookie", user)
+		return nil
+	}
+	status := func(c *http.Cookie) int {
+		req, _ := http.NewRequest("GET", a.srv.URL+"/api/v1/author", nil)
+		req.AddCookie(c)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+
+	guest1 := login("guest", "guest-pass-1")
+	guest2 := login("guest", "guest-pass-1")
+	dan := login("dan", "secret-pass-1")
+
+	// Changing guest's password (via API key, not a session) ends BOTH guest
+	// sessions; dan's is untouched.
+	a.want(a.call("PUT", "/api/v1/auth/users/guest/password",
+		map[string]string{"password": "new-guest-pass"}, nil), http.StatusOK)
+	if status(guest1) != http.StatusUnauthorized || status(guest2) != http.StatusUnauthorized {
+		t.Fatal("guest sessions should end on password change")
+	}
+	if status(dan) != http.StatusOK {
+		t.Fatal("dan's session should survive guest's password change")
+	}
+
+	// Removing guest ends their fresh session too.
+	guest3 := login("guest", "new-guest-pass")
+	a.want(a.call("DELETE", "/api/v1/auth/users/guest", nil, nil), http.StatusOK)
+	if status(guest3) != http.StatusUnauthorized {
+		t.Fatal("removed user's session should end immediately")
+	}
+	if status(dan) != http.StatusOK {
+		t.Fatal("dan's session should survive guest's removal")
+	}
+
+	// Disabling login ends every session.
+	a.want(a.call("PUT", "/api/v1/auth/credentials",
+		map[string]string{"username": "", "password": ""}, nil), http.StatusOK)
+	// With auth disabled the API key still works; the dead cookie is simply
+	// no longer a session. (A bare request without key now 401s only via
+	// missing key — cookie path must not authenticate.)
+	if got := status(dan); got != http.StatusUnauthorized {
+		t.Fatalf("session after disable-login: status %d, want 401", got)
+	}
+}

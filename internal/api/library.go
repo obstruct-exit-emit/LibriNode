@@ -759,6 +759,12 @@ func (s *server) handleImage(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	data, contentType, err := s.images.Fetch(ctx, url)
 	if err != nil {
+		// Fall back to the origin only for real web URLs — never reflect an
+		// arbitrary scheme into a Location header.
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			writeError(w, http.StatusBadRequest, "url must be http(s)")
+			return
+		}
 		slog.Debug("image proxy fetch failed, redirecting to origin", "url", url, "error", err)
 		http.Redirect(w, r, url, http.StatusFound)
 		return

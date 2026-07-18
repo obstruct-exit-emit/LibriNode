@@ -66,17 +66,24 @@ func verifyPassword(stored, password string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
-// sessionStore tracks login sessions in memory.
+// sessionStore tracks login sessions in memory. Each session is bound to
+// the account that created it, so removing a user (or changing a password)
+// ends their sessions immediately instead of at the next restart.
+type session struct {
+	user   string
+	expiry time.Time
+}
+
 type sessionStore struct {
 	mu     sync.Mutex
-	tokens map[string]time.Time // token -> expiry
+	tokens map[string]session
 }
 
 func newSessionStore() *sessionStore {
-	return &sessionStore{tokens: map[string]time.Time{}}
+	return &sessionStore{tokens: map[string]session{}}
 }
 
-func (st *sessionStore) create() string {
+func (st *sessionStore) create(user string) string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		panic(fmt.Sprintf("crypto/rand unavailable: %v", err))
@@ -86,12 +93,12 @@ func (st *sessionStore) create() string {
 	// Prune expired sessions here — logins are rare, and expired tokens are
 	// otherwise only deleted when presented again.
 	now := time.Now()
-	for t, expiry := range st.tokens {
-		if now.After(expiry) {
+	for t, sess := range st.tokens {
+		if now.After(sess.expiry) {
 			delete(st.tokens, t)
 		}
 	}
-	st.tokens[token] = now.Add(sessionTTL)
+	st.tokens[token] = session{user: user, expiry: now.Add(sessionTTL)}
 	st.mu.Unlock()
 	return token
 }
@@ -102,11 +109,11 @@ func (st *sessionStore) valid(token string) bool {
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	expiry, ok := st.tokens[token]
+	sess, ok := st.tokens[token]
 	if !ok {
 		return false
 	}
-	if time.Now().After(expiry) {
+	if time.Now().After(sess.expiry) {
 		delete(st.tokens, token)
 		return false
 	}
@@ -117,6 +124,33 @@ func (st *sessionStore) revoke(token string) {
 	st.mu.Lock()
 	delete(st.tokens, token)
 	st.mu.Unlock()
+}
+
+// revokeUser ends every session belonging to an account, keeping only the
+// `except` token (the browser performing the change; pass "" to keep none).
+func (st *sessionStore) revokeUser(user, except string) {
+	st.mu.Lock()
+	for t, sess := range st.tokens {
+		if sess.user == user && t != except {
+			delete(st.tokens, t)
+		}
+	}
+	st.mu.Unlock()
+}
+
+// revokeAll ends every session (login disabled).
+func (st *sessionStore) revokeAll() {
+	st.mu.Lock()
+	st.tokens = map[string]session{}
+	st.mu.Unlock()
+}
+
+// currentToken returns the request's session token, if any.
+func currentToken(r *http.Request) string {
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		return c.Value
+	}
+	return ""
 }
 
 // hasSession reports whether the request carries a valid session cookie.
@@ -161,22 +195,22 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "authentication is not enabled")
 		return
 	}
-	ok := false
+	matched := ""
 	for i := range auth.Users {
 		u := &auth.Users[i]
 		if subtle.ConstantTimeCompare([]byte(req.Username), []byte(u.Username)) == 1 &&
 			verifyPassword(u.PasswordHash, req.Password) {
-			ok = true
+			matched = u.Username
 			break
 		}
 	}
-	if !ok {
+	if matched == "" {
 		slog.Warn("failed login attempt", "username", req.Username, "remote", r.RemoteAddr)
 		time.Sleep(500 * time.Millisecond)
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
-	s.setSessionCookie(w, s.sessions.create(), int(sessionTTL.Seconds()))
+	s.setSessionCookie(w, s.sessions.create(matched), int(sessionTTL.Seconds()))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -209,6 +243,7 @@ func (s *server) handleSetCredentials(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 			return
 		}
+		s.sessions.revokeAll() // login disabled — no session stays valid
 		writeJSON(w, http.StatusOK, map[string]any{"authEnabled": false})
 		return
 	}
@@ -225,6 +260,8 @@ func (s *server) handleSetCredentials(w http.ResponseWriter, r *http.Request) {
 	// Upsert: change the existing user's password, or add a new account.
 	if s.cfg.AuthSettings().Find(req.Username) != nil {
 		err = s.cfg.SetUserPassword(req.Username, hash)
+		// A changed password ends the account's other sessions.
+		s.sessions.revokeUser(req.Username, currentToken(r))
 	} else {
 		err = s.cfg.AddUser(req.Username, hash)
 	}
@@ -232,7 +269,7 @@ func (s *server) handleSetCredentials(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}
-	s.setSessionCookie(w, s.sessions.create(), int(sessionTTL.Seconds()))
+	s.setSessionCookie(w, s.sessions.create(req.Username), int(sessionTTL.Seconds()))
 	writeJSON(w, http.StatusOK, map[string]any{"authEnabled": true})
 }
 
@@ -283,6 +320,8 @@ func (s *server) handleRemoveUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// A removed account's open sessions end now, not at the next restart.
+	s.sessions.revokeUser(username, "")
 	slog.Info("user removed", "username", username)
 	writeJSON(w, http.StatusOK, map[string]any{"users": s.cfg.AuthSettings().Users})
 }
@@ -310,6 +349,9 @@ func (s *server) handleSetUserPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// End the account's other sessions; the browser making the change (which
+	// may be the same account) keeps its session.
+	s.sessions.revokeUser(username, currentToken(r))
 	slog.Info("user password changed", "username", username)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -389,7 +431,7 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("instance claimed via first-run setup", "username", req.Username)
-	s.setSessionCookie(w, s.sessions.create(), int(sessionTTL.Seconds()))
+	s.setSessionCookie(w, s.sessions.create(req.Username), int(sessionTTL.Seconds()))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
