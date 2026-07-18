@@ -268,3 +268,30 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	release.Rank(candidates)
 	writeJSON(w, http.StatusOK, map[string]any{"releases": candidates, "errors": errs})
 }
+
+// handleSearchSeriesPacks serves the series-level pack search:
+// GET /api/v1/release/packs?seriesId=N. Candidates are whole-series /
+// multi-volume releases; the UI grabs one through the normal grab endpoint
+// using the returned grabBookId, and the pack importer files every matching
+// volume when the download lands.
+func (s *server) handleSearchSeriesPacks(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("seriesId"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "seriesId is required")
+		return
+	}
+
+	ctx, cancel := s.metadataCtx(r)
+	defer cancel()
+
+	result, err := s.search.SearchSeriesPacks(ctx, id)
+	if err != nil {
+		if errors.Is(err, library.ErrNotFound) {
+			writeStoreError(w, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}

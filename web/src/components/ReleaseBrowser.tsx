@@ -39,11 +39,17 @@ function leechers(c: ReleaseCandidate): number | null {
 export default function ReleaseBrowser({
   bookId,
   mediaType,
+  packSeriesId,
   onGrabbed,
   onClose,
 }: {
-  bookId: number;
+  // The wanted book/volume — or, in pack mode, unused (grabs bind to the
+  // grabBookId the pack search returns).
+  bookId?: number;
   mediaType: string;
+  // Series pack mode: search whole-series packs for this series instead of
+  // single releases for one book.
+  packSeriesId?: number;
   // Called after a release was sent to a client — refresh queue/badges.
   onGrabbed?: () => void;
   onClose?: () => void;
@@ -51,6 +57,7 @@ export default function ReleaseBrowser({
   const [releases, setReleases] = useState<ReleaseCandidate[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [loadError, setLoadError] = useState("");
+  const [grabBookId, setGrabBookId] = useState(0);
   const [showRejected, setShowRejected] = useState(false);
   const [proto, setProto] = useState<ProtoFilter>("all");
   const [sort, setSort] = useState<SortKey>("score");
@@ -61,8 +68,13 @@ export default function ReleaseBrowser({
     let stopped = false;
     setReleases(null);
     setLoadError("");
-    api
-      .searchReleasesForBook(bookId, mediaType)
+    const search = packSeriesId
+      ? api.searchSeriesPacks(packSeriesId).then((r) => {
+          if (!stopped) setGrabBookId(r.grabBookId);
+          return r;
+        })
+      : api.searchReleasesForBook(bookId ?? 0, mediaType);
+    search
       .then((r) => {
         if (stopped) return;
         setReleases(r.releases);
@@ -74,7 +86,7 @@ export default function ReleaseBrowser({
     return () => {
       stopped = true;
     };
-  }, [bookId, mediaType]);
+  }, [bookId, mediaType, packSeriesId]);
 
   const approved = useMemo(() => (releases ?? []).filter((c) => c.approved), [releases]);
 
@@ -105,7 +117,7 @@ export default function ReleaseBrowser({
     const key = c.guid + c.indexer;
     setGrabState((s) => ({ ...s, [key]: "sending" }));
     api
-      .grabRelease(c.title, c.downloadUrl, c.protocol, bookId, mediaType, c.guid)
+      .grabRelease(c.title, c.downloadUrl, c.protocol, packSeriesId ? grabBookId : (bookId ?? 0), mediaType, c.guid)
       .then((r) => {
         setGrabState((s) => ({ ...s, [key]: `✓ sent to ${r.client}` }));
         onGrabbed?.();
@@ -192,7 +204,9 @@ export default function ReleaseBrowser({
       {shown.length === 0 ? (
         <p className="muted">
           {releases.length === 0
-            ? "No releases found on your indexers."
+            ? packSeriesId
+              ? "No pack releases found on your indexers."
+              : "No releases found on your indexers."
             : showRejected
               ? "Nothing matches this filter."
               : "Nothing approved — switch to “all” to see what was rejected and why."}

@@ -299,6 +299,46 @@ func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, num
 	return c
 }
 
+// ScoreSeriesPack evaluates a release as a whole-series (or multi-volume)
+// pack: generic checks, the series title, and pack-ness — a volume range
+// ("v01-v12"), a completeness word ("Complete", "Collection"), or a bare
+// series-title release with no volume number at all (the common shape for
+// manga packs). Single-volume releases are rejected — they belong to the
+// per-volume flow. maxWanted is the highest missing position; a range that
+// reaches it earns a bonus, one that falls short is kept but penalized.
+func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string, maxWanted float64) Candidate {
+	// A pack is dozens of volumes in one release — the per-item size cap
+	// doesn't apply. 100 GiB still guards against nonsense.
+	prefs.MaxSize = 100 << 30
+	c := Score(rel, prefs, nil, nil)
+
+	relNorm := scanner.Normalize(rel.Title)
+	if !titleMatches(relNorm, scanner.TitleKeys(seriesTitle)) {
+		c.reject("does not contain the series title")
+	}
+
+	switch {
+	case c.Parsed.VolumeEnd > 0:
+		// An explicit span is the clearest pack signal.
+		c.Score += 30
+		if maxWanted > 0 && c.Parsed.VolumeEnd >= maxWanted {
+			c.Score += 20 // covers everything missing
+		} else if maxWanted > 0 {
+			c.Score -= 10 // partial pack: usable, ranked below full ones
+		}
+	case c.Parsed.Pack:
+		c.Score += 25
+	case c.Parsed.Volume == 0:
+		// A bare series-title release usually IS the series. Accepted, but
+		// outranked by anything that says so explicitly.
+	default:
+		c.reject(fmt.Sprintf("single volume %v — use the per-volume search", c.Parsed.Volume))
+	}
+
+	c.Approved = len(c.Rejections) == 0
+	return c
+}
+
 // ScoreMagazine evaluates a release for a magazine: generic checks, the
 // magazine's title, and an issue identifier (date or number) that isn't
 // already owned. The identifier is returned so the caller can materialize

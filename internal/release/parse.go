@@ -26,6 +26,12 @@ type Parsed struct {
 	// Manga/comic volume or issue number ("v05", "Vol. 5", "#12"); 0 when
 	// not stated.
 	Volume float64 `json:"volume,omitempty"`
+	// VolumeEnd is the range end when the release spans volumes
+	// ("v01-v12", "Vol. 1-12"); 0 when the release names a single volume.
+	VolumeEnd float64 `json:"volumeEnd,omitempty"`
+	// Pack marks releases that declare themselves complete runs
+	// ("Complete", "Collection") — series packs even without a range.
+	Pack bool `json:"pack,omitempty"`
 }
 
 var mediaFormats = map[string]bool{
@@ -60,6 +66,12 @@ var (
 	bitrateToken    = regexp.MustCompile(`^(\d{2,3})\s?(k|kbps)$`)
 	volumeWords     = regexp.MustCompile(`(?i)\b(?:vol|volume)\.?\s*(\d+(?:\.\d+)?)`)
 	volumeToken     = regexp.MustCompile(`^(?:v(\d{1,3}(?:\.\d+)?)|#(\d{1,4}(?:\.\d+)?))$`)
+	// Volume ranges: "v01-v12", "Vol. 1-12", "volumes 1~12", "#1-50",
+	// "c001-c180". A prefix (v/vol/#/c) is required on at least the first
+	// number so year spans ("2020-2021") never read as volumes. (# carries
+	// no leading \b — a word boundary never precedes a symbol.)
+	volumeRange = regexp.MustCompile(`(?i)(?:\b(?:vol(?:ume)?s?\.?\s*|[vc])|#)(\d{1,4}(?:\.\d+)?)\s*[-–~]\s*(?:[vc#]\s*)?(\d{1,4}(?:\.\d+)?)\b`)
+	packWords   = regexp.MustCompile(`(?i)\b(complete|collection|completa|full\s+set)\b`)
 )
 
 // Parse extracts structured info from one release title.
@@ -83,11 +95,26 @@ func Parse(title string) Parsed {
 		working = strings.Replace(working, m[0], " ", 1)
 	}
 
-	// Worded volume markers ("Vol. 5", "Volume 12"); single-token forms
-	// (v05, #12) are handled during token scanning.
+	// Volume ranges first ("v01-v12", "Vol. 1-12") — a pack's span, with the
+	// start doubling as the single-volume field. Then worded single volumes
+	// ("Vol. 5"); single-token forms (v05, #12) are handled during token
+	// scanning.
+	if m := volumeRange.FindStringSubmatch(working); m != nil {
+		start, _ := strconv.ParseFloat(m[1], 64)
+		end, _ := strconv.ParseFloat(m[2], 64)
+		if end > start {
+			p.Volume, p.VolumeEnd = start, end
+			working = strings.Replace(working, m[0], " ", 1)
+		}
+	}
 	if m := volumeWords.FindStringSubmatch(working); m != nil {
-		p.Volume, _ = strconv.ParseFloat(m[1], 64)
+		if p.Volume == 0 {
+			p.Volume, _ = strconv.ParseFloat(m[1], 64)
+		}
 		working = strings.Replace(working, m[0], " ", 1)
+	}
+	if packWords.MatchString(working) {
+		p.Pack = true
 	}
 
 	// Pull bracketed tags out: they hold formats, language, year, retail.

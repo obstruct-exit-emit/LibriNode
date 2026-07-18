@@ -343,3 +343,61 @@ func TestRank(t *testing.T) {
 		}
 	}
 }
+
+func TestParseVolumeRange(t *testing.T) {
+	cases := []struct {
+		title      string
+		start, end float64
+		pack       bool
+	}{
+		{"Berserk v01-v41 (Digital) (CBZ)", 1, 41, false},
+		{"Saga Vol. 1-10 (2023)", 1, 10, false},
+		{"Monster c001-c162 [Complete]", 1, 162, true},
+		{"Y The Last Man #1-60", 1, 60, false},
+		{"One Piece Complete Collection", 0, 0, true},
+		{"Berserk v05 (Digital)", 5, 0, false},
+		{"World History 2020-2021 EPUB", 0, 0, false}, // year span, not volumes
+	}
+	for _, c := range cases {
+		p := Parse(c.title)
+		if p.Volume != c.start || p.VolumeEnd != c.end || p.Pack != c.pack {
+			t.Errorf("%q = vol %v end %v pack %v, want %v %v %v",
+				c.title, p.Volume, p.VolumeEnd, p.Pack, c.start, c.end, c.pack)
+		}
+	}
+}
+
+func TestScoreSeriesPack(t *testing.T) {
+	prefs := DefaultMangaPreferences()
+
+	full := ScoreSeriesPack(rel("Berserk v01-v41 (Digital) (CBZ)", indexer.ProtocolTorrent, 10<<30, 12), prefs, "Berserk", 41)
+	if !full.Approved {
+		t.Fatalf("full range pack rejected: %v", full.Rejections)
+	}
+
+	partial := ScoreSeriesPack(rel("Berserk v01-v20 CBZ", indexer.ProtocolTorrent, 5<<30, 8), prefs, "Berserk", 41)
+	if !partial.Approved {
+		t.Fatalf("partial pack rejected: %v", partial.Rejections)
+	}
+	if partial.Score >= full.Score {
+		t.Errorf("partial (%d) should rank below full (%d)", partial.Score, full.Score)
+	}
+
+	bare := ScoreSeriesPack(rel("Berserk (Digital) (CBZ)", indexer.ProtocolTorrent, 12<<30, 20), prefs, "Berserk", 41)
+	if !bare.Approved {
+		t.Fatalf("bare series release rejected: %v", bare.Rejections)
+	}
+	if bare.Score >= full.Score {
+		t.Errorf("bare (%d) should rank below explicit range (%d)", bare.Score, full.Score)
+	}
+
+	single := ScoreSeriesPack(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolTorrent, 300<<20, 30), prefs, "Berserk", 41)
+	if single.Approved {
+		t.Error("single-volume release should be rejected from pack search")
+	}
+
+	wrong := ScoreSeriesPack(rel("Vagabond v01-v37 CBZ", indexer.ProtocolTorrent, 9<<30, 15), prefs, "Berserk", 41)
+	if wrong.Approved {
+		t.Error("wrong series should be rejected")
+	}
+}

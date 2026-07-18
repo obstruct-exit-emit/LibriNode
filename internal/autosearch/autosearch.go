@@ -229,6 +229,74 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 	return outcome, nil
 }
 
+// PackSearchResult is a series-level pack search: candidates that look like
+// whole-series (or multi-volume) releases, plus the wanted volume the grab
+// should bind to — the pack importer fills every other matching volume when
+// the download completes.
+type PackSearchResult struct {
+	Candidates []release.Candidate `json:"releases"`
+	Errors     []string            `json:"errors"`
+	// GrabBookID is the representative missing volume a pack grab is recorded
+	// against (the UI passes it to the normal grab endpoint).
+	GrabBookID int64 `json:"grabBookId"`
+	// Missing is how many of the series' volumes have no file yet.
+	Missing int `json:"missing"`
+}
+
+// SearchSeriesPacks searches indexers for whole-series packs of a manga or
+// comic series — the deliberate answer to the "series torrents are packs"
+// content gap. It never auto-grabs: the user picks from the returned list.
+func (s *Service) SearchSeriesPacks(ctx context.Context, seriesID int64) (*PackSearchResult, error) {
+	series, err := s.store.GetSeries(seriesID)
+	if err != nil {
+		return nil, err
+	}
+	if series.MediaType != "manga" && series.MediaType != "comic" {
+		return nil, fmt.Errorf("pack search is for manga/comic series (this is %s)", series.MediaType)
+	}
+
+	volumes, err := s.store.ListVolumes(seriesID)
+	if err != nil {
+		return nil, err
+	}
+	positions, err := s.store.SeriesBookPositions(seriesID)
+	if err != nil {
+		return nil, err
+	}
+	result := &PackSearchResult{Candidates: []release.Candidate{}, Errors: []string{}}
+	var maxWanted float64
+	for i := range volumes {
+		v := &volumes[i]
+		if v.HasFile {
+			continue
+		}
+		result.Missing++
+		if result.GrabBookID == 0 {
+			result.GrabBookID = v.ID
+		}
+		if p := positions[v.ID]; p > maxWanted {
+			maxWanted = p
+		}
+	}
+	if result.Missing == 0 {
+		return nil, fmt.Errorf("every volume of %s already has a file", series.Title)
+	}
+
+	prefs := release.PreferencesFor(s.store, series.MediaType)
+	found, indexerErrs, err := s.indexers.SearchAll(ctx, series.Title, series.MediaType)
+	if err != nil {
+		return nil, err
+	}
+	result.Errors = indexerErrs
+
+	for _, rel := range found {
+		result.Candidates = append(result.Candidates, release.ScoreSeriesPack(rel, prefs, series.Title, maxWanted))
+	}
+	s.markBlocked(result.Candidates)
+	release.Rank(result.Candidates)
+	return result, nil
+}
+
 // markBlocked rejects candidates on the failed-release blocklist.
 func (s *Service) markBlocked(candidates []release.Candidate) {
 	blocked, err := s.downloads.Store().BlockedKeys()

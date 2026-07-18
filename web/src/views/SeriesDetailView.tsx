@@ -35,6 +35,7 @@ export default function SeriesDetailView({
   const label = libraryLabels[mediaType] ?? mediaType;
   const [series, setSeries] = useState<Series | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPacks, setShowPacks] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [notice, setNotice] = useState("");
@@ -204,6 +205,15 @@ export default function SeriesDetailView({
                 Search wanted
               </button>
             )}
+            {mediaType !== "magazine" && (
+              <button
+                disabled={busy}
+                title="Search for whole-series packs (v01-vNN, Complete) — importing one fills every matching volume"
+                onClick={() => setShowPacks(!showPacks)}
+              >
+                {showPacks ? "Close packs" : "🎁 Search packs"}
+              </button>
+            )}
             <button disabled={busy} title="Preview naming-template moves for this series' files" onClick={previewRenames}>
               Organize…
             </button>
@@ -249,6 +259,14 @@ export default function SeriesDetailView({
               busy={busy}
               onConfirm={remove}
               onCancel={() => setConfirmRemove(false)}
+            />
+          )}
+          {showPacks && (
+            <ReleaseBrowser
+              packSeriesId={series.id}
+              mediaType={mediaType}
+              onGrabbed={reload}
+              onClose={() => setShowPacks(false)}
             />
           )}
           {renamePlan && renamePlan.length > 0 && (

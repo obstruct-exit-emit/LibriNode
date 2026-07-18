@@ -677,6 +677,13 @@ export const api = {
     request<{ releases: ReleaseCandidate[]; errors: string[] }>(
       `/api/v1/release?bookId=${bookId}&mediaType=${mediaType}`,
     ),
+  searchSeriesPacks: (seriesId: number) =>
+    request<{
+      releases: ReleaseCandidate[];
+      errors: string[];
+      grabBookId: number;
+      missing: number;
+    }>(`/api/v1/release/packs?seriesId=${seriesId}`),
   autoSearchBook: (bookId: number, mediaType: string = "ebook") =>
     request<SearchOutcome>(
       `/api/v1/book/${bookId}/search?mediaType=${mediaType}`,

@@ -186,6 +186,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	// Readarr-only capability Prowlarr reads during app sync (see handler).
 	mux.HandleFunc("GET /api/v1/metadataprofile", s.auth(s.handleListMetadataProfiles))
 	mux.HandleFunc("GET /api/v1/release", s.auth(s.handleSearchReleases))
+	mux.HandleFunc("GET /api/v1/release/packs", s.auth(s.handleSearchSeriesPacks))
 	mux.HandleFunc("POST /api/v1/release/grab", s.auth(s.handleGrabRelease))
 
 	mux.HandleFunc("GET /api/v1/downloadclient", s.auth(s.handleListDownloadClients))
