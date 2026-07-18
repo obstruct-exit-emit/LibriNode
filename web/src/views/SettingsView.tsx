@@ -22,16 +22,17 @@ import { formatBytes } from "../format";
 import { useUi } from "../ui";
 
 // Settings groups, *arr-style: pages organized by concern instead of one
-// long scroll. Order matches the README spec.
+// long scroll. Each carries an icon and a one-line blurb so the section a
+// user lands on always explains itself. Order matches the README spec.
 const settingsGroups = [
-  "Media Management",
-  "Quality Profiles",
-  "Metadata",
-  "Indexers",
-  "Download Clients",
-  "General",
+  { name: "Media Management", icon: "📁", blurb: "Where your libraries live on disk, and how organized files are named." },
+  { name: "Quality Profiles", icon: "⭐", blurb: "Which release formats are acceptable and preferred, per media type." },
+  { name: "Metadata", icon: "🔖", blurb: "Where authors, series, covers, and descriptions come from." },
+  { name: "Indexers", icon: "🔎", blurb: "Newznab and Torznab search sources — added by hand or synced from Prowlarr." },
+  { name: "Download Clients", icon: "⬇️", blurb: "Where grabbed releases are sent, and how finished downloads are handled." },
+  { name: "General", icon: "⚙️", blurb: "Login accounts, the API key, and this instance's details." },
 ] as const;
-type SettingsGroup = (typeof settingsGroups)[number];
+type SettingsGroup = (typeof settingsGroups)[number]["name"];
 
 // --- Shared layout primitives (visual polish; no behavior of their own) ---
 
@@ -106,19 +107,35 @@ export default function SettingsView({
   // backing endpoints are admin-only and would just 403) — only the
   // self-service password change inside Security.
   if (!isAdmin) {
-    return <SecurityCard onError={onError} isAdmin={false} />;
+    return (
+      <>
+        <header className="settings-header">
+          <h1>Settings</h1>
+          <p className="muted">Manage your account.</p>
+        </header>
+        <SecurityCard onError={onError} isAdmin={false} />
+      </>
+    );
   }
+
+  const current = settingsGroups.find((g) => g.name === group) ?? settingsGroups[0];
 
   return (
     <>
-      <nav className="subnav">
+      <header className="settings-header">
+        <h1>Settings</h1>
+        <p className="muted">{current.blurb}</p>
+      </header>
+
+      <nav className="subnav" aria-label="Settings sections">
         {settingsGroups.map((g) => (
           <button
-            key={g}
-            className={g === group ? "tab active" : "tab"}
-            onClick={() => setGroup(g)}
+            key={g.name}
+            className={g.name === group ? "tab active" : "tab"}
+            aria-current={g.name === group ? "page" : undefined}
+            onClick={() => setGroup(g.name)}
           >
-            {g}
+            <span className="tab-icon" aria-hidden="true">{g.icon}</span> {g.name}
           </button>
         ))}
       </nav>
@@ -134,7 +151,13 @@ export default function SettingsView({
       )}
       {group === "Metadata" && <MetadataCard onError={onError} />}
       {group === "Indexers" && <IndexersCard onError={onError} />}
-      {group === "Download Clients" && <DownloadClientsCard onError={onError} />}
+      {group === "Download Clients" && (
+        <>
+          <DownloadClientsCard onError={onError} />
+          <ImportOptions onError={onError} />
+          <PathMappingsPanel onError={onError} />
+        </>
+      )}
       {group === "General" && <GeneralCard onError={onError} />}
     </>
   );
@@ -826,7 +849,7 @@ function DownloadClientsCard({
               onChange={(e) => set({ category: e.target.value })}
             />
           </label>
-          <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
+          <p className="muted field-note">
             Downloads are tagged with this category so LibriNode only tracks its
             own — change it only if it collides with another app on the same
             client.
@@ -874,10 +897,6 @@ function DownloadClientsCard({
           )}
         </div>
       </div>
-
-      <ImportOptions onError={onError} />
-
-      <PathMappingsPanel onError={onError} />
     </section>
   );
 }
@@ -1030,11 +1049,13 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
   };
 
   return (
-    <div style={{ marginTop: "1.25rem" }}>
-      <Section
-        title="Import handling"
-        help="How LibriNode imports finished downloads and tidies up afterwards. All on by default — changes save immediately."
-      >
+    <section className="card">
+      <h2>Import Handling</h2>
+      <p className="muted">
+        How LibriNode imports finished downloads and tidies up afterwards. All
+        on by default — changes save immediately.
+      </p>
+      <div className="settings-form">
         <div className="opt">
           <label className="check">
             <span>
@@ -1097,8 +1118,8 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
             {notice}
           </span>
         )}
-      </Section>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -1635,7 +1656,7 @@ function IndexersCard({
           <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
         </label>
         <Disclosure summary="Advanced — per-type categories">
-          <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
+          <p className="muted field-note">
             Newznab/Torznab category IDs searched per media type. Defaults cover
             the standard book categories; change only for an unusual indexer.
           </p>
@@ -1776,7 +1797,7 @@ function NamingCard({
           <Section title="Ebooks">
             {field("Folder template", "ebookFolder")}
             {field("File template", "ebookFile")}
-            <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
+            <p className="muted field-note">
               Example: <code>{settings.example}</code>
             </p>
           </Section>
@@ -1789,7 +1810,7 @@ function NamingCard({
               "audiobookFile",
               "Names the per-book folder (Audiobookshelf layout); multi-file books keep their track names inside it",
             )}
-            <p className="muted" style={{ margin: 0, fontSize: "0.82rem" }}>
+            <p className="muted field-note">
               Example: <code>{settings.audiobookExample}</code>
             </p>
           </Section>
@@ -2227,9 +2248,9 @@ function MetadataCard({
         </div>
       </div>
 
-      <div style={{ marginTop: "1.25rem" }}>
+      <div className="settings-form">
         <Disclosure summary="Cache maintenance">
-        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        <p className="muted field-note">
           Cached metadata rebuilds on demand. <strong>Provider art</strong>
           {" "}(author portraits, cover images) and <strong>extracted
           covers</strong> (the first page of your owned manga/comic archives)

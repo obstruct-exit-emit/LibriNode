@@ -9,19 +9,6 @@ export function formatBytes(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KiB`;
 }
 
-// formatDate renders an ISO timestamp as a readable local date
-// ("Jul 17, 2026"); unparseable input renders as "".
-export function formatDate(iso?: string): string {
-  if (!iso) return "";
-  const t = new Date(iso);
-  if (isNaN(t.getTime())) return "";
-  return t.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 // relativeTime renders how long ago an ISO timestamp was ("3h ago",
 // "2d ago"); future or unparseable input renders as "".
 export function relativeTime(iso?: string): string {

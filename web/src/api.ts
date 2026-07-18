@@ -640,8 +640,6 @@ export const api = {
       method: "PUT",
     }),
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
-  listUnmatchedFiles: () =>
-    request<BookFile[]>("/api/v1/bookfile?unmatched=true"),
   renamePreview: (authorId?: number, seriesId?: number, mediaType?: string) =>
     request<RenameResult>(
       `/api/v1/library/rename${
