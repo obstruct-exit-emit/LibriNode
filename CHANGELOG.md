@@ -10,6 +10,12 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Automated clean-machine backup/restore drill: a backup taken on a populated
+  data dir is staged into a brand-new empty one and swapped in through the real
+  startup path, asserting the library comes back whole (author/book rows intact,
+  config verbatim) and that a fresh machine — with no live files to protect —
+  is left with no `.restore`/`.pre-restore` leftovers. Closes the clean-machine
+  half of the restore drill that the staged-restore test didn't cover.
 - Automated upgrade-path (migration) testing: a database seeded at an older
   pre-rebuild schema is driven through the full remaining migration chain,
   asserting that the table rebuilds keep every row and the membership/variant
