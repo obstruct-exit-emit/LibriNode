@@ -107,6 +107,20 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- Failure-mode polish across the four scenarios that used to degrade into a
+  silent log line: a metadata provider that's down or unreachable now reads
+  as a self-healing warning in the health banner, distinct from a genuinely
+  rejected token/key (a new `ErrUnreachable` sentinel, wired through
+  Hardcover/AniList/ComicVine); manga/comic series providers are health-
+  checked too, scoped to libraries actually in use; a background refresh
+  sweep aborts after three consecutive unreachable results instead of timing
+  out on every remaining author/series one at a time; an indexer already
+  resting in backoff is no longer re-probed by the health check (which would
+  add load to something already known to be 429ing) and reports its
+  resting-until time instead; and the importer's orphan sweep — which
+  resolves a grab whose download vanished from its client — is now per-
+  client, so one download client being briefly unreachable can't freeze
+  orphan resolution for grabs sitting in a different, healthy client.
 - The scan no longer silently attaches a file to a book that belongs only to
   the OTHER format library (the "added an ebook, it showed up in Audiobooks"
   linkage): the file lands in Unmatched with a confident suggestion, and the

@@ -55,6 +55,13 @@ func New(apiKey string, opts ...Option) *Client {
 func (c *Client) Name() string      { return "comicvine" }
 func (c *Client) MediaType() string { return "comic" }
 
+// Validate checks the API key against the live API with the cheapest
+// authenticated call available — a 1-result volume listing.
+func (c *Client) Validate(ctx context.Context) error {
+	var out json.RawMessage
+	return c.get(ctx, "/volumes/", url.Values{"limit": {"1"}, "field_list": {"id"}}, &out)
+}
+
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
 	params.Set("api_key", c.apiKey)
 	params.Set("format", "json")
@@ -69,7 +76,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return fmt.Errorf("comicvine: %w", err)
+		return fmt.Errorf("comicvine: %w: %w", metadata.ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
 
@@ -78,6 +85,9 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 		return fmt.Errorf("comicvine: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("comicvine: %w: HTTP %d: %.150s", metadata.ErrUnreachable, resp.StatusCode, raw)
+		}
 		return fmt.Errorf("comicvine: HTTP %d: %.150s", resp.StatusCode, raw)
 	}
 	var envelope struct {
@@ -88,10 +98,13 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return fmt.Errorf("comicvine: decoding response: %w", err)
 	}
-	if envelope.StatusCode != 1 {
-		if envelope.StatusCode == 101 { // object not found
-			return metadata.ErrNotFound
-		}
+	switch envelope.StatusCode {
+	case 1: // OK
+	case 101: // object not found
+		return metadata.ErrNotFound
+	case 102: // API rate limit exceeded
+		return fmt.Errorf("comicvine: %w: %s (code %d)", metadata.ErrUnreachable, envelope.Error, envelope.StatusCode)
+	default:
 		return fmt.Errorf("comicvine: %s (code %d)", envelope.Error, envelope.StatusCode)
 	}
 	return json.Unmarshal(envelope.Results, out)

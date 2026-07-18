@@ -49,6 +49,14 @@ func (s *Service) resting(id int64) (time.Time, bool) {
 	return st.until, true
 }
 
+// Resting reports whether an indexer is currently in failure backoff (see
+// resting) — exported so the health check can skip probing an indexer that
+// searches are already avoiding, instead of adding load to something already
+// known to be failing.
+func (s *Service) Resting(id int64) (time.Time, bool) {
+	return s.resting(id)
+}
+
 // recordResult updates the backoff state after a search attempt.
 func (s *Service) recordResult(id int64, err error) {
 	s.mu.Lock()

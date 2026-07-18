@@ -183,11 +183,12 @@ const queueCacheTTL = 15 * time.Second
 type Service struct {
 	store *Store
 
-	mu        sync.Mutex
-	cachedAt  time.Time
-	cached    []Item
-	cachedErr []string
-	clients   map[int64]clientEntry
+	mu           sync.Mutex
+	cachedAt     time.Time
+	cached       []Item
+	cachedErr    []string
+	cachedFailed map[int64]bool // client config id -> failed to answer, this snapshot
+	clients      map[int64]clientEntry
 	// sweepMu serializes cold queue sweeps: concurrent callers wait for the
 	// one in flight and then read its snapshot instead of re-hitting clients.
 	sweepMu sync.Mutex
@@ -348,10 +349,11 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 	}
 
 	var (
-		mu    sync.Mutex
-		wg    sync.WaitGroup
-		items = []Item{}
-		errs  = []string{}
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		items  = []Item{}
+		errs   = []string{}
+		failed = map[int64]bool{}
 	)
 	for i := range configs {
 		cfg := configs[i]
@@ -363,6 +365,10 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 			defer wg.Done()
 			client, err := s.client(&cfg)
 			if err != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Sprintf("%s: %v", cfg.Name, err))
+				failed[cfg.ID] = true
+				mu.Unlock()
 				return
 			}
 			found, err := client.List(ctx)
@@ -370,6 +376,7 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 			defer mu.Unlock()
 			if err != nil {
 				errs = append(errs, fmt.Sprintf("%s: %v", cfg.Name, err))
+				failed[cfg.ID] = true
 				return
 			}
 			items = append(items, found...)
@@ -386,7 +393,22 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 	sort.Strings(errs)
 
 	s.mu.Lock()
-	s.cached, s.cachedErr, s.cachedAt = items, errs, time.Now()
+	s.cached, s.cachedErr, s.cachedFailed, s.cachedAt = items, errs, failed, time.Now()
 	s.mu.Unlock()
 	return items, errs, nil
+}
+
+// FailedClients reports which download clients failed to answer during the
+// last Queue() sweep (build error or List() error), keyed by config id. A
+// pending grab whose client is in this set is not a true orphan — its client
+// just didn't answer this pass — so the importer's orphan sweep exempts it
+// instead of treating a client outage as every one of its grabs vanishing.
+func (s *Service) FailedClients() map[int64]bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[int64]bool, len(s.cachedFailed))
+	for id := range s.cachedFailed {
+		out[id] = true
+	}
+	return out
 }

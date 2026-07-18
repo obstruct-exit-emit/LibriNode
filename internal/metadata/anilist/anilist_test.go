@@ -47,6 +47,36 @@ func mockAniList(t *testing.T) *Client {
 	return New(WithEndpoint(srv.URL))
 }
 
+// TestValidateUnreachable: AniList needs no key, so Validate only ever
+// reports connectivity — confirm a dead endpoint and a 5xx both wrap
+// metadata.ErrUnreachable (used by the health check to phrase the banner as
+// "unreachable" rather than a token problem that doesn't exist here).
+func TestValidateUnreachable(t *testing.T) {
+	down := New(WithEndpoint("http://127.0.0.1:1"))
+	if err := down.Validate(context.Background()); !errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("transport failure: err = %v, want ErrUnreachable", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	unavailable := New(WithEndpoint(srv.URL))
+	if err := unavailable.Validate(context.Background()); !errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("503 response: err = %v, want ErrUnreachable", err)
+	}
+
+	okSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data": {"__typename": "Query"}}`))
+	}))
+	t.Cleanup(okSrv.Close)
+	ok := New(WithEndpoint(okSrv.URL))
+	if err := ok.Validate(context.Background()); err != nil {
+		t.Errorf("Validate against a healthy mock: %v, want nil", err)
+	}
+}
+
 func TestSearchSeries(t *testing.T) {
 	c := mockAniList(t)
 	results, err := c.SearchSeries(context.Background(), "berserk")

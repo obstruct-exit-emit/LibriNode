@@ -62,6 +62,13 @@ func New(opts ...Option) *Client {
 func (c *Client) Name() string      { return "anilist" }
 func (c *Client) MediaType() string { return "manga" }
 
+// Validate checks connectivity to AniList — there's no key to reject (the
+// API is public), so this only ever reports the endpoint being unreachable.
+func (c *Client) Validate(ctx context.Context) error {
+	var out json.RawMessage
+	return c.do(ctx, `query { __typename }`, nil, &out)
+}
+
 func (c *Client) do(ctx context.Context, query string, vars map[string]any, out any) error {
 	body, err := json.Marshal(map[string]any{"query": query, "variables": vars})
 	if err != nil {
@@ -76,7 +83,7 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return fmt.Errorf("anilist: %w", err)
+		return fmt.Errorf("anilist: %w: %w", metadata.ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
 
@@ -85,6 +92,9 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 		return fmt.Errorf("anilist: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("anilist: %w: HTTP %d: %.150s", metadata.ErrUnreachable, resp.StatusCode, raw)
+		}
 		return fmt.Errorf("anilist: HTTP %d: %.150s", resp.StatusCode, raw)
 	}
 	var envelope struct {

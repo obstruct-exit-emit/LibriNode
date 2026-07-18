@@ -202,6 +202,37 @@ func TestGetBook(t *testing.T) {
 	}
 }
 
+// TestValidateUnreachableVsRejected: a connection that never reaches
+// Hardcover reports metadata.ErrUnreachable (so the health banner can say
+// "unreachable" rather than "your token is wrong"); a 401 response does not.
+func TestValidateUnreachableVsRejected(t *testing.T) {
+	// No server listening at this port — the request fails at the transport
+	// level, before any HTTP response.
+	down := New("test-token", WithEndpoint("http://127.0.0.1:1"))
+	if err := down.Validate(context.Background()); !errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("transport failure: err = %v, want ErrUnreachable", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"message":"invalid token"}`))
+	}))
+	t.Cleanup(srv.Close)
+	rejected := New("bad-token", WithEndpoint(srv.URL))
+	if err := rejected.Validate(context.Background()); err == nil || errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("401 response: err = %v, want a non-ErrUnreachable error", err)
+	}
+
+	srv5xx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	t.Cleanup(srv5xx.Close)
+	gatewayDown := New("test-token", WithEndpoint(srv5xx.URL))
+	if err := gatewayDown.Validate(context.Background()); !errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("502 response: err = %v, want ErrUnreachable (server-side outage, not a bad token)", err)
+	}
+}
+
 func TestGraphQLErrorSurfaces(t *testing.T) {
 	c := mockAPI(t, map[string]string{
 		"Book": `{"errors": [{"message": "field 'bogus' not found in type: 'books'"}]}`,

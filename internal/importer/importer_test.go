@@ -400,9 +400,11 @@ func TestImportAdoptsExistingTarget(t *testing.T) {
 }
 
 // TestImportSweepsOrphanedGrabs: a pending grab whose download no longer
-// appears in any client is resolved as failed (not blocklisted) once past the
-// grace period and re-searched; fresh grabs are left alone, and the sweep is
-// skipped while any client is unreachable.
+// appears in its client is resolved as failed (not blocklisted) once past the
+// grace period and re-searched; fresh grabs are left alone. The exemption for
+// an unreachable client is per-client: a grab sitting in a client that failed
+// to answer this pass is left alone, but that must not freeze orphan
+// resolution for grabs in a different, perfectly healthy client.
 func TestImportSweepsOrphanedGrabs(t *testing.T) {
 	f := fixture(t)
 	ctx := context.Background()
@@ -470,7 +472,17 @@ func TestImportSweepsOrphanedGrabs(t *testing.T) {
 		t.Error("replacement search was not triggered")
 	}
 
-	// With a client down, nothing is swept (everything would look orphaned).
+	// A second client goes down. An orphan sitting in the still-healthy "sab"
+	// client (id 1) must still be swept; one sitting in the DEAD client must
+	// not be — its client simply didn't answer this pass, so it isn't a true
+	// orphan yet.
+	dead := &download.ClientConfig{
+		Name: "dead", Type: download.TypeSABnzbd, Host: "http://127.0.0.1:1",
+		Category: "librinode", Enabled: true, Priority: 9,
+	}
+	if err := f.grabs.Add(dead); err != nil {
+		t.Fatal(err)
+	}
 	if err := f.grabs.AddGrab(&download.GrabRecord{
 		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_gone2",
 		Title: "Terry Pratchett - Mort Again EPUB", GUID: "guid-gone2",
@@ -478,20 +490,21 @@ func TestImportSweepsOrphanedGrabs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: dead.ID, ClientItemID: "nzo_on_dead",
+		Title: "Terry Pratchett - Mort Yet Again EPUB", GUID: "guid-on-dead",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	grabs, _ = f.grabs.ListGrabs("")
 	for _, g := range grabs {
-		if g.ClientItemID == "nzo_gone2" {
+		if g.ClientItemID == "nzo_gone2" || g.ClientItemID == "nzo_on_dead" {
 			if _, err := f.db.Exec("UPDATE grabs SET grabbed_at = ? WHERE id = ?",
 				"2020-01-01 00:00:00", g.ID); err != nil {
 				t.Fatal(err)
 			}
 		}
-	}
-	if err := f.grabs.Add(&download.ClientConfig{
-		Name: "dead", Type: download.TypeSABnzbd, Host: "http://127.0.0.1:1",
-		Category: "librinode", Enabled: true, Priority: 9,
-	}); err != nil {
-		t.Fatal(err)
 	}
 	f.downloads.InvalidateQueue() // the API layer does this on client changes
 	if _, err := f.svc.Run(ctx); err != nil {
@@ -499,8 +512,15 @@ func TestImportSweepsOrphanedGrabs(t *testing.T) {
 	}
 	grabs, _ = f.grabs.ListGrabs("")
 	for _, g := range grabs {
-		if g.ClientItemID == "nzo_gone2" && g.Status != download.GrabStatusGrabbed {
-			t.Errorf("swept while a client was down: %s", g.Status)
+		switch g.ClientItemID {
+		case "nzo_gone2":
+			if g.Status != download.GrabStatusFailed {
+				t.Errorf("orphan in the healthy client should still sweep: %s", g.Status)
+			}
+		case "nzo_on_dead":
+			if g.Status != download.GrabStatusGrabbed {
+				t.Errorf("grab in the down client should NOT sweep: %s", g.Status)
+			}
 		}
 	}
 }

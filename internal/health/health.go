@@ -6,6 +6,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -128,28 +129,82 @@ func (s *Service) checkRootFolders() []Issue {
 }
 
 func (s *Service) checkMetadata(ctx context.Context) []Issue {
+	issues := []Issue{}
+
 	p := s.metadata.Current()
 	if p == nil {
-		return []Issue{{
+		issues = append(issues, Issue{
 			Source:  "metadata",
 			Level:   LevelWarning,
 			Message: "No metadata provider configured — search, add, and refresh are disabled. Add a token under Settings → Metadata.",
-		}}
+		})
+	} else {
+		issues = append(issues, s.validateProvider(ctx, "metadata", p.Name(), p)...)
 	}
+
+	// Manga/comic series providers, checked only for libraries actually set
+	// up — a user who never touches manga shouldn't see banners about
+	// AniList. "None" (deliberately disabled) reports nil here, same as an
+	// unconfigured book provider would, but that's a valid choice, not a
+	// problem, so it's silent rather than a warning.
+	statuses, err := s.store.LibraryStatuses()
+	if err != nil {
+		return issues
+	}
+	for _, st := range statuses {
+		if !st.Active {
+			continue
+		}
+		var sp metadata.SeriesProvider
+		switch st.MediaType {
+		case "manga":
+			sp = s.metadata.SeriesFor("manga")
+		case "comic":
+			sp = s.metadata.SeriesFor("comic")
+		default:
+			continue
+		}
+		if sp == nil {
+			continue
+		}
+		issues = append(issues, s.validateProvider(ctx, "metadata-"+st.MediaType, sp.Name(), sp)...)
+	}
+	return issues
+}
+
+// providerNamer is the sliver of metadata.Provider/SeriesProvider that
+// validateProvider needs — satisfied by both.
+type providerNamer interface {
+	Name() string
+}
+
+// validateProvider runs a provider's cheap Validate() call, if it has one,
+// and turns a failure into an Issue — worded as "unreachable" (warning,
+// self-healing) when the provider never responded, or "rejected its
+// token/key" (error, needs a fix) otherwise.
+func (s *Service) validateProvider(ctx context.Context, source, name string, p providerNamer) []Issue {
 	v, ok := p.(metadata.Validator)
 	if !ok {
 		return nil // no cheap validation call; don't burn quota on searches
 	}
 	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	if err := v.Validate(cctx); err != nil {
+	err := v.Validate(cctx)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, metadata.ErrUnreachable) {
 		return []Issue{{
-			Source:  "metadata",
-			Level:   LevelError,
-			Message: fmt.Sprintf("Metadata provider %s rejected its token: %v", p.Name(), err),
+			Source:  source,
+			Level:   LevelWarning,
+			Message: fmt.Sprintf("Metadata provider %s is unreachable: %v", name, err),
 		}}
 	}
-	return nil
+	return []Issue{{
+		Source:  source,
+		Level:   LevelError,
+		Message: fmt.Sprintf("Metadata provider %s rejected its token: %v", name, err),
+	}}
 }
 
 func (s *Service) checkIndexers(ctx context.Context) []Issue {
@@ -167,6 +222,20 @@ func (s *Service) checkIndexers(ctx context.Context) []Issue {
 	issues := []Issue{}
 	for i := range enabled {
 		ind := &enabled[i]
+		// An indexer already resting after repeated search failures (e.g.
+		// stuck 429ing) is skipped here — probing it again every health cycle
+		// would only add load to something searches are already avoiding.
+		// Report the resting state itself instead, so the banner explains
+		// *why* it's currently unusable and when it'll be tried again.
+		if until, resting := s.indexers.Resting(ind.ID); resting {
+			issues = append(issues, Issue{
+				Source: "indexer",
+				Level:  LevelWarning,
+				Message: fmt.Sprintf("Indexer %q is resting after repeated failures — next retry at %s",
+					ind.Name, until.Local().Format("15:04 MST")),
+			})
+			continue
+		}
 		cctx, cancel := context.WithTimeout(ctx, checkTimeout)
 		err := s.indexers.Client().Test(cctx, ind)
 		cancel()

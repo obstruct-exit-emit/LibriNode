@@ -162,26 +162,26 @@ func (s *Service) Run(ctx context.Context) (*Result, error) {
 		}
 	}
 
-	// Orphan sweep: a pending grab whose download no longer appears in any
+	// Orphan sweep: a pending grab whose download no longer appears in its
 	// client (removed via the client's own UI, purged by a bridge) would stay
 	// "grabbed" forever. Past the grace period it's resolved as failed — no
-	// blocklist, the release itself may be fine — and re-searched. Skipped
-	// entirely when any client failed to answer: an unreachable client makes
-	// every grab look orphaned.
-	if len(clientErrs) == 0 {
-		for i := range pending {
-			g := &pending[i]
-			if matched[g.ID] || grabAge(g) < stalePendingGrace {
-				continue
-			}
-			_ = s.downloads.Store().ResolveGrab(g.ID, download.GrabStatusFailed,
-				"download disappeared from the download client")
-			result.note("%s: disappeared from the download client", g.Title)
-			if s.research != nil && g.BookID > 0 {
-				go s.research(g.BookID, g.MediaType)
-			}
-			result.Failed++
+	// blocklist, the release itself may be fine — and re-searched. Exempted
+	// per client, not globally: a grab is only skipped when ITS client failed
+	// to answer this pass, so one down torrent client can't freeze orphan
+	// resolution for grabs sitting in a perfectly healthy usenet client.
+	failedClients := s.downloads.FailedClients()
+	for i := range pending {
+		g := &pending[i]
+		if matched[g.ID] || grabAge(g) < stalePendingGrace || failedClients[g.ClientConfigID] {
+			continue
 		}
+		_ = s.downloads.Store().ResolveGrab(g.ID, download.GrabStatusFailed,
+			"download disappeared from the download client")
+		result.note("%s: disappeared from the download client", g.Title)
+		if s.research != nil && g.BookID > 0 {
+			go s.research(g.BookID, g.MediaType)
+		}
+		result.Failed++
 	}
 
 	if result.Imported > 0 || result.Failed > 0 {

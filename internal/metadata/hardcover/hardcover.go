@@ -90,7 +90,9 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {
-		return fmt.Errorf("hardcover: %w", err)
+		// The request never got a response — Hardcover (or the network path
+		// to it) is down, not the token being wrong.
+		return fmt.Errorf("hardcover: %w: %w", metadata.ErrUnreachable, err)
 	}
 	defer resp.Body.Close()
 
@@ -99,6 +101,10 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 		return fmt.Errorf("hardcover: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		// 5xx/429 are Hardcover's side acting up, not the token being wrong.
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("hardcover: %w: HTTP %d: %s", metadata.ErrUnreachable, resp.StatusCode, truncate(raw, 200))
+		}
 		return fmt.Errorf("hardcover: HTTP %d: %s", resp.StatusCode, truncate(raw, 200))
 	}
 

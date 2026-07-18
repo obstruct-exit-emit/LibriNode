@@ -86,6 +86,44 @@ func TestGetSeries(t *testing.T) {
 	}
 }
 
+// TestValidateUnreachableVsRejected: a transport failure or 5xx/429 response
+// wraps metadata.ErrUnreachable (the key may be fine — ComicVine just isn't
+// answering); an invalid-key response (status_code 100) does not, since
+// that's a real "go fix your key" problem.
+func TestValidateUnreachableVsRejected(t *testing.T) {
+	down := New("cv-key", WithEndpoint("http://127.0.0.1:1"))
+	if err := down.Validate(context.Background()); !errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("transport failure: err = %v, want ErrUnreachable", err)
+	}
+
+	rateLimited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status_code": 102, "error": "Rate limit exceeded"}`))
+	}))
+	t.Cleanup(rateLimited.Close)
+	rl := New("cv-key", WithEndpoint(rateLimited.URL))
+	if err := rl.Validate(context.Background()); !errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("rate-limited response: err = %v, want ErrUnreachable", err)
+	}
+
+	badKey := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status_code": 100, "error": "Invalid API Key"}`))
+	}))
+	t.Cleanup(badKey.Close)
+	bk := New("wrong-key", WithEndpoint(badKey.URL))
+	if err := bk.Validate(context.Background()); err == nil || errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("invalid-key response: err = %v, want a non-ErrUnreachable error", err)
+	}
+
+	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status_code": 1, "error": "OK", "results": []}`))
+	}))
+	t.Cleanup(ok.Close)
+	good := New("cv-key", WithEndpoint(ok.URL))
+	if err := good.Validate(context.Background()); err != nil {
+		t.Errorf("Validate against a healthy mock: %v, want nil", err)
+	}
+}
+
 func TestBadKey(t *testing.T) {
 	c := mockComicVine(t)
 	c.apiKey = "wrong"

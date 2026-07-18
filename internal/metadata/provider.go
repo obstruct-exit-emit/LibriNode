@@ -16,6 +16,14 @@ var ErrNotFound = errors.New("metadata: not found")
 // (e.g. no Hardcover API token yet).
 var ErrNotConfigured = errors.New("metadata: no provider configured")
 
+// ErrUnreachable marks a Validate (or other call) failure as a connection
+// problem — the provider didn't respond at all — rather than the request
+// reaching it and being rejected (bad token, revoked key). Callers that want
+// to tell "Hardcover is down" apart from "your token is wrong" check
+// errors.Is(err, ErrUnreachable); providers wrap the transport-level error
+// with it (see hardcover.Client.do).
+var ErrUnreachable = errors.New("metadata: provider unreachable")
+
 // Provider is a remote metadata source. Foreign ids are provider-scoped
 // strings; Name() is stored alongside them as metadata_source.
 type Provider interface {
