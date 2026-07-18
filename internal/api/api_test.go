@@ -1342,6 +1342,21 @@ func TestExistingFileImportSeries(t *testing.T) {
 func TestNamingSettingsAndRename(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 
+	// Background timing settings: zero = default, set values clamp to range.
+	var ts struct {
+		SearchIntervalHours   int `json:"searchIntervalHours"`
+		ImportIntervalSeconds int `json:"importIntervalSeconds"`
+	}
+	a.want(a.call("GET", "/api/v1/settings/timings", nil, &ts), http.StatusOK)
+	if ts.SearchIntervalHours != 0 {
+		t.Fatalf("timings default = %+v, want zeros (use-default)", ts)
+	}
+	a.want(a.call("PUT", "/api/v1/settings/timings",
+		map[string]int{"searchIntervalHours": 2, "importIntervalSeconds": 5}, &ts), http.StatusOK)
+	if ts.SearchIntervalHours != 2 || ts.ImportIntervalSeconds != 30 {
+		t.Fatalf("timings after put = %+v (import should clamp 5 -> 30)", ts)
+	}
+
 	// Defaults come with tokens and a rendered example.
 	var ns struct {
 		EbookFolder string   `json:"ebookFolder"`

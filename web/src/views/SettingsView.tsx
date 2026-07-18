@@ -14,6 +14,7 @@ import {
   type QualityProfile,
   type RootFolder,
   type SystemStatus,
+  type TimingSettings,
   type UserAccount,
 } from "../api";
 import { formatBytes } from "../format";
@@ -231,7 +232,83 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
           restart. For HTTPS, run LibriNode behind a reverse proxy — see the
           README. Health checks, logs, and backups live on the System page.
         </p>
+        <Disclosure summary="Advanced: background timings">
+          <TimingsPanel onError={onError} />
+        </Disclosure>
       </section>
+    </>
+  );
+}
+
+// TimingsPanel tunes the background loop cadences. Blank/0 = the built-in
+// default; entered values are clamped server-side. Applied at startup.
+function TimingsPanel({ onError }: { onError: (message: string) => void }) {
+  const [timings, setTimings] = useState<TimingSettings | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    api
+      .getTimingSettings()
+      .then(setTimings)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  if (!timings) return <p className="muted">Loading…</p>;
+
+  const field = (
+    label: string,
+    key: keyof TimingSettings,
+    hint: string,
+    range: string,
+  ) => (
+    <label>
+      {label}
+      <input
+        type="number"
+        placeholder={hint}
+        title={`${hint}; allowed ${range}. Blank = default.`}
+        value={timings[key] === 0 ? "" : timings[key]}
+        onChange={(e) =>
+          setTimings({ ...timings, [key]: Number(e.target.value) || 0 })
+        }
+      />
+    </label>
+  );
+
+  const save = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .saveTimingSettings(timings)
+      .then((saved) => {
+        setTimings(saved);
+        setNotice("✓ Saved — cadences apply after the next restart");
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <>
+      <p className="muted">
+        How often the background loops run. Blank fields use the defaults;
+        out-of-range values are clamped. Changes apply on the next server
+        start. Keep the search sweep conservative — your indexers will thank
+        you.
+      </p>
+      <div className="settings-form">
+        {field("Wanted search (hours)", "searchIntervalHours", "default 6", "1–168")}
+        {field("Metadata refresh (hours)", "refreshIntervalHours", "default 24", "6–720")}
+        {field("Health checks (minutes)", "healthIntervalMinutes", "default 15", "5–1440")}
+        {field("Import poll (seconds)", "importIntervalSeconds", "default 60", "30–3600")}
+      </div>
+      <div className="settings-actions">
+        <button disabled={busy} onClick={save}>
+          {busy ? "Saving…" : "Save timings"}
+        </button>
+        {notice && <span className="notice ok">{notice}</span>}
+      </div>
     </>
   );
 }

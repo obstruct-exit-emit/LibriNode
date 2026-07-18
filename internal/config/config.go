@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -250,6 +251,51 @@ type ImportSettings struct {
 	DeleteCompletedFiles bool `yaml:"delete_completed_files" json:"deleteCompletedFiles"`
 }
 
+// TimingSettings tunes the background loops. Zero values mean "use the
+// default", so existing configs stay on defaults and the file only records
+// deliberate choices. Changes apply on the next server start.
+type TimingSettings struct {
+	// SearchIntervalHours: automatic wanted-list sweep cadence (default 6).
+	SearchIntervalHours int `yaml:"search_interval_hours,omitempty" json:"searchIntervalHours"`
+	// RefreshIntervalHours: library metadata re-sync cadence (default 24).
+	RefreshIntervalHours int `yaml:"refresh_interval_hours,omitempty" json:"refreshIntervalHours"`
+	// HealthIntervalMinutes: background health check cadence (default 15).
+	HealthIntervalMinutes int `yaml:"health_interval_minutes,omitempty" json:"healthIntervalMinutes"`
+	// ImportIntervalSeconds: Completed Download Handling poll cadence
+	// (default 60).
+	ImportIntervalSeconds int `yaml:"import_interval_seconds,omitempty" json:"importIntervalSeconds"`
+}
+
+// Resolved intervals, defaults applied.
+
+func (t TimingSettings) SearchInterval() time.Duration {
+	if t.SearchIntervalHours > 0 {
+		return time.Duration(t.SearchIntervalHours) * time.Hour
+	}
+	return 6 * time.Hour
+}
+
+func (t TimingSettings) RefreshInterval() time.Duration {
+	if t.RefreshIntervalHours > 0 {
+		return time.Duration(t.RefreshIntervalHours) * time.Hour
+	}
+	return 24 * time.Hour
+}
+
+func (t TimingSettings) HealthInterval() time.Duration {
+	if t.HealthIntervalMinutes > 0 {
+		return time.Duration(t.HealthIntervalMinutes) * time.Minute
+	}
+	return 15 * time.Minute
+}
+
+func (t TimingSettings) ImportInterval() time.Duration {
+	if t.ImportIntervalSeconds > 0 {
+		return time.Duration(t.ImportIntervalSeconds) * time.Second
+	}
+	return time.Minute
+}
+
 type Config struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -261,7 +307,8 @@ type Config struct {
 	Naming   NamingSettings   `yaml:"naming"`
 	// No omitempty: Import defaults to all-on, so an all-off choice must be
 	// written explicitly rather than dropped and re-defaulted on load.
-	Import ImportSettings `yaml:"import"`
+	Import  ImportSettings `yaml:"import"`
+	Timings TimingSettings `yaml:"timings,omitempty"`
 
 	// Legacy flat field, migrated into Metadata.Providers on load and
 	// dropped from the file on the next save.
@@ -471,6 +518,39 @@ func (c *Config) PackImportAll() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.Import.PackImportAll
+}
+
+// TimingSettings returns the background-loop cadences (zero = default).
+func (c *Config) TimingSettings() TimingSettings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Timings
+}
+
+// SetTimings validates, replaces, and persists the background-loop cadences.
+// Zero fields mean "default"; set fields are clamped to sane ranges so a typo
+// can't hammer indexers or stall the importer.
+func (c *Config) SetTimings(t TimingSettings) error {
+	clamp := func(v, min, max int) int {
+		if v <= 0 {
+			return 0 // default
+		}
+		if v < min {
+			return min
+		}
+		if v > max {
+			return max
+		}
+		return v
+	}
+	t.SearchIntervalHours = clamp(t.SearchIntervalHours, 1, 168)
+	t.RefreshIntervalHours = clamp(t.RefreshIntervalHours, 6, 720)
+	t.HealthIntervalMinutes = clamp(t.HealthIntervalMinutes, 5, 1440)
+	t.ImportIntervalSeconds = clamp(t.ImportIntervalSeconds, 30, 3600)
+	c.mu.Lock()
+	c.Timings = t
+	c.mu.Unlock()
+	return c.save()
 }
 
 // MetadataSettings returns a deep copy so callers can't mutate shared state.

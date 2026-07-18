@@ -168,6 +168,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("PUT /api/v1/settings/naming", s.auth(s.handlePutNamingSettings))
 	mux.HandleFunc("GET /api/v1/settings/import", s.auth(s.handleGetImportSettings))
 	mux.HandleFunc("PUT /api/v1/settings/import", s.auth(s.handlePutImportSettings))
+	mux.HandleFunc("GET /api/v1/settings/timings", s.auth(s.handleGetTimingSettings))
+	mux.HandleFunc("PUT /api/v1/settings/timings", s.auth(s.handlePutTimingSettings))
 
 	mux.HandleFunc("GET /api/v1/qualityprofile", s.auth(s.handleListProfiles))
 	mux.HandleFunc("POST /api/v1/qualityprofile", s.auth(s.handleAddProfile))

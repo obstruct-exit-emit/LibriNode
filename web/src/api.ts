@@ -386,6 +386,15 @@ export interface ImportSettings {
   deleteCompletedFiles: boolean;
 }
 
+// TimingSettings: background loop cadences; 0 = use the built-in default.
+// Changes apply on the next server start.
+export interface TimingSettings {
+  searchIntervalHours: number;
+  refreshIntervalHours: number;
+  healthIntervalMinutes: number;
+  importIntervalSeconds: number;
+}
+
 // UserAccount is one login; the default user is protected from removal.
 export interface UserAccount {
   username: string;
@@ -743,6 +752,13 @@ export const api = {
   getImportSettings: () => request<ImportSettings>("/api/v1/settings/import"),
   saveImportSettings: (settings: ImportSettings) =>
     request<ImportSettings>("/api/v1/settings/import", {
+      ...json(settings),
+      method: "PUT",
+    }),
+
+  getTimingSettings: () => request<TimingSettings>("/api/v1/settings/timings"),
+  saveTimingSettings: (settings: TimingSettings) =>
+    request<TimingSettings>("/api/v1/settings/timings", {
       ...json(settings),
       method: "PUT",
     }),

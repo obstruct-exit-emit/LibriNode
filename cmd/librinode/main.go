@@ -32,23 +32,9 @@ import (
 	"github.com/librinode/librinode/internal/refresh"
 )
 
-// metadataRefreshInterval is how often the whole library is re-synced with
-// the metadata provider (not yet configurable).
-const metadataRefreshInterval = 24 * time.Hour
-
-// importInterval is how often Completed Download Handling checks the
-// download clients for finished grabs.
-const importInterval = time.Minute
-
-// wantedSearchInterval is how often the automatic search sweeps the wanted
-// list. Kept conservative to be polite to indexers; per-book and search-all
-// endpoints cover "right now".
-const wantedSearchInterval = 6 * time.Hour
-
-// healthCheckInterval is how often background health checks re-run (root
-// folders, indexers, download clients, metadata token). The System page can
-// re-run them on demand.
-const healthCheckInterval = 15 * time.Minute
+// Background cadences (wanted search, metadata refresh, health checks,
+// import polling) live in config.TimingSettings — defaults there, tunable
+// under Settings → General → Background timings, applied at startup.
 
 // version is overridden at build time via -ldflags "-X main.version=x.y.z"
 // (the release workflow stamps tags). Unstamped builds fall back to the git
@@ -188,7 +174,10 @@ func run(dataDir string) error {
 	defer cancelBg()
 	store := library.NewStore(db)
 	downloads := download.NewService(download.NewStore(db))
-	go refresh.New(store, providers).RunPeriodic(bgCtx, metadataRefreshInterval)
+	// Cadences: built-in defaults unless tuned under Settings → General →
+	// Background timings (applied at startup — a change needs a restart).
+	timings := cfg.TimingSettings()
+	go refresh.New(store, providers).RunPeriodic(bgCtx, timings.RefreshInterval())
 	imp := importer.New(store, downloads, organize.New(store, cfg), cfg.ImportSettings)
 	search := autosearch.New(store, indexer.NewService(indexer.NewStore(db)), downloads)
 	// After the importer blocklists a junk/spam download, search for a
@@ -198,11 +187,11 @@ func run(dataDir string) error {
 		defer cancel()
 		_, _ = search.SearchBook(ctx, bookID, mediaType)
 	})
-	go imp.RunPeriodic(bgCtx, importInterval)
-	go search.RunPeriodic(bgCtx, wantedSearchInterval)
+	go imp.RunPeriodic(bgCtx, timings.ImportInterval())
+	go search.RunPeriodic(bgCtx, timings.SearchInterval())
 
 	handler, healthSvc := api.NewRouter(cfg, db, providers, version)
-	go healthSvc.RunPeriodic(bgCtx, healthCheckInterval)
+	go healthSvc.RunPeriodic(bgCtx, timings.HealthInterval())
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr(),
