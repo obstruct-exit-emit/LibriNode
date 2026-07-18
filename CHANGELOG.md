@@ -107,6 +107,11 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- The scan no longer silently attaches a file to a book that belongs only to
+  the OTHER format library (the "added an ebook, it showed up in Audiobooks"
+  linkage): the file lands in Unmatched with a confident suggestion, and the
+  one-click import is the consent that enrolls the second format. Books in
+  no format library yet still match freely on scan.
 - A library page's Organize… now moves only that library's files (it used to
   organize every library at once); the rename API gained a mediaType scope.
 - Manga/comic unmatched files without an auto-matched series can now be

@@ -44,7 +44,13 @@ in both, this switches to a status badge instead of a button.
 - Cross-add from the book page (**+ Add to Audiobooks/Ebooks**, with a
   monitor prompt).
 - Scanning/importing a format's file auto-enrolls the book (and its
-  author) there.
+  author) there — with one deliberate exception: a scan never *silently*
+  attaches a file to a book that belongs only to the **other** format
+  library. That file lands in Unmatched with a confident suggestion, and
+  the one-click import is the consent that enrolls the second format —
+  adding an ebook can't quietly grow an audiobook presence. (A book in no
+  format library yet matches freely; its first owned file decides its
+  first home.)
 - Refreshing metadata never enrolls, un-enrolls, or re-monitors anything —
   only descriptions/covers/new-book metadata update.
 

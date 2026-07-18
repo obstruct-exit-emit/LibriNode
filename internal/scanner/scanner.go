@@ -138,7 +138,7 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 			return err
 		}
 		parsed := ParsePath(rel)
-		bookID := index.match(parsed)
+		bookID := index.match(parsed, "ebook")
 
 		file := &library.BookFile{
 			RootFolderID: root.ID,
@@ -194,7 +194,7 @@ func (s *Service) scanAudiobookRoot(ctx context.Context, root library.RootFolder
 		if err != nil {
 			return err
 		}
-		bookID := index.match(ParsePath(rel))
+		bookID := index.match(ParsePath(rel), "audiobook")
 		file := &library.BookFile{
 			RootFolderID: root.ID,
 			BookID:       bookID,
@@ -548,7 +548,7 @@ func (s *Service) RematchUnmatched() (int, error) {
 				return matched, err
 			}
 		default:
-			bookID = index.match(ParsePath(rel))
+			bookID = index.match(ParsePath(rel), root.MediaType)
 		}
 		if bookID == 0 {
 			continue
@@ -588,6 +588,35 @@ type matchIndex struct {
 	byTitle       map[string]map[int64]bool      // title key → set of book ids
 	volumes       map[string]map[float64]int64   // mediaType/series key → number → book id
 	magazines     map[string]*library.Series     // Normalize(title) → magazine series
+	// membership: prose book id → format-library bits (1 ebook, 2 audiobook).
+	// Auto-matching respects it: a book that belongs to SOME format library
+	// but not the file's format is never silently attached — the file lands
+	// in Unmatched with a confident suggestion, and the one-click import is
+	// the consent that enrolls the other format. A book in no format library
+	// yet (a bibliography stub) matches freely — the first owned file decides
+	// its first home.
+	membership map[int64]uint8
+}
+
+const (
+	memberEbook     uint8 = 1
+	memberAudiobook uint8 = 2
+)
+
+// allowedFor reports whether a prose file of the given format may auto-match
+// this book (see membership above). Non-prose media types are unaffected.
+func (idx *matchIndex) allowedFor(bookID int64, mediaType string) bool {
+	m := idx.membership[bookID]
+	if m == 0 {
+		return true
+	}
+	switch mediaType {
+	case "ebook":
+		return m&memberEbook != 0
+	case "audiobook":
+		return m&memberAudiobook != 0
+	}
+	return true
 }
 
 // keyedBook is one book's claim on a title key. Several books can emit the
@@ -633,6 +662,7 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 		byAuthorTitle: map[int64]map[string]keyedBook{},
 		byTitle:       map[string]map[int64]bool{},
 		volumes:       map[string]map[float64]int64{},
+		membership:    map[int64]uint8{},
 	}
 
 	refs, err := s.store.ListVolumeRefs()
@@ -670,6 +700,18 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 	}
 	for _, b := range books {
 		inLib := b.InEbookLibrary || b.InAudiobookLibrary || b.Monitored
+		if b.MediaType == "book" {
+			var m uint8
+			if b.InEbookLibrary {
+				m |= memberEbook
+			}
+			if b.InAudiobookLibrary {
+				m |= memberAudiobook
+			}
+			if m != 0 {
+				idx.membership[b.ID] = m
+			}
+		}
 		for i, key := range TitleKeys(b.Title) {
 			if key == "" {
 				continue
@@ -690,7 +732,9 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 // match. Author+title wins; a title-only match is accepted only when it is
 // unambiguous across the whole library. The alt title (after the last dash,
 // e.g. our own "Series N - Title" template output) is a fallback candidate.
-func (idx *matchIndex) match(p ParsedFile) int64 {
+// mediaType is the file's format: a book belonging to some format library
+// but not this one is never silently attached (allowedFor).
+func (idx *matchIndex) match(p ParsedFile, mediaType string) int64 {
 	if p.Title == "" {
 		return 0
 	}
@@ -702,7 +746,7 @@ func (idx *matchIndex) match(p ParsedFile) int64 {
 	if p.Author != "" {
 		if authorID, ok := idx.authorsByName[Normalize(p.Author)]; ok {
 			for _, key := range keys {
-				if kb, ok := idx.byAuthorTitle[authorID][key]; ok {
+				if kb, ok := idx.byAuthorTitle[authorID][key]; ok && idx.allowedFor(kb.id, mediaType) {
 					return kb.id
 				}
 			}
@@ -712,7 +756,9 @@ func (idx *matchIndex) match(p ParsedFile) int64 {
 	for _, key := range keys {
 		if candidates := idx.byTitle[key]; len(candidates) == 1 {
 			for bookID := range candidates {
-				return bookID
+				if idx.allowedFor(bookID, mediaType) {
+					return bookID
+				}
 			}
 		}
 	}

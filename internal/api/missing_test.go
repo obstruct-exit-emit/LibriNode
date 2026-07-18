@@ -3,6 +3,8 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/librinode/librinode/internal/library"
@@ -88,6 +90,60 @@ func TestAddIsolation(t *testing.T) {
 	a.want(a.call("GET", "/api/v1/author?library=audiobook", nil, &audioAuthors), http.StatusOK)
 	if len(audioAuthors) != 0 {
 		t.Fatalf("audiobook library gained an author from an ebook book-add")
+	}
+}
+
+// TestScanCrossFormatGuard: a scan must not silently attach a file to a book
+// that belongs only to the OTHER format library — the exact "I added the
+// ebook and it showed up in Audiobooks" linkage. The file stays unmatched
+// with a confident suggestion; the one-click import is the consent step.
+func TestScanCrossFormatGuard(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// An ebook-library-only book…
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author",
+		map[string]string{"foreignAuthorId": "100", "library": "ebook"}, &author), http.StatusCreated)
+	var books []library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book?authorId=%d", author.ID), nil, &books), http.StatusOK)
+	var added library.Book
+	a.want(a.call("POST", "/api/v1/book",
+		map[string]string{"foreignBookId": books[0].ForeignID, "library": "ebook"}, &added), http.StatusCreated)
+
+	// …and a matching AUDIOBOOK file on disk.
+	audioRoot := t.TempDir()
+	dir := filepath.Join(audioRoot, "Terry Pratchett")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "The Colour of Magic.m4b"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "audiobook", "path": audioRoot}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	// The book must NOT be in the audiobook library, and the file must be an
+	// unmatched stray…
+	var after library.Book
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", added.ID), nil, &after), http.StatusOK)
+	if after.InAudiobookLibrary || after.HasAudiobookFile {
+		t.Fatalf("scan silently attached a cross-format file: inAudio %v hasAudioFile %v",
+			after.InAudiobookLibrary, after.HasAudiobookFile)
+	}
+	var options []unmatchedOption
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=audiobook", nil, &options), http.StatusOK)
+	if len(options) != 1 || !options[0].Confident || options[0].Suggested != added.ID {
+		t.Fatalf("stray options = %+v, want one confident suggestion for the book", options)
+	}
+
+	// …whose one-click import IS the consent that enrolls the audiobook side.
+	a.want(a.call("POST", fmt.Sprintf("/api/v1/bookfile/%d/match", options[0].File.ID),
+		map[string]int64{"bookId": added.ID}, nil), http.StatusOK)
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/book/%d", added.ID), nil, &after), http.StatusOK)
+	if !after.InAudiobookLibrary || !after.HasAudiobookFile {
+		t.Fatalf("import should enroll + attach: inAudio %v hasAudioFile %v",
+			after.InAudiobookLibrary, after.HasAudiobookFile)
 	}
 }
 
