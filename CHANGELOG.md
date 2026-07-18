@@ -10,6 +10,26 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Series pack grab: manga/comic series pages get "🎁 Search packs" — release
+  parsing understands volume ranges ("v01-v41", "#1-60") and completeness
+  words, pack candidates are ranked (full range > partial > bare series
+  title; single volumes rejected back to the per-volume flow), and a grabbed
+  pack is imported by the existing pack importer, filing every matching
+  volume. Closes the "series torrents are whole-series packs" content gap.
+- Configurable background timings (Settings → General → Advanced): wanted
+  search, metadata refresh, health checks, and import polling — blank means
+  default, values are clamped to sane ranges, applied at startup.
+- Bulk monitor from Missing on author and series pages: per-row checkboxes
+  with "+ Monitor selected", plus "+ Monitor all" per series group or whole
+  section.
+- Activity History paging: server-side total with progressive "Show more"
+  (the 200-row cap is gone) and a debounced title filter.
+- Friendly first-use states: an empty library now shows per-type guidance
+  with direct + Add / Scan actions instead of one line of text.
+- Responsive pass (≤700px): wrapping card heads and action rows, full-width
+  settings fields, adaptive poster grids, bottom-sheet toasts; plus an
+  accessibility edge pass (aria-current nav, labeled icon-only controls,
+  meaningful alt text on detail art).
 - White-glove P3 surface passes: quality profile formats are ordered chips
   (reorder/remove/add with per-type suggestions); indexer and download
   client rows show protocol/priority/disabled pills with the URL beneath;

@@ -143,12 +143,25 @@ export default function SeriesLibraryView({
         ))}
 
       {series.length === 0 ? (
-        <p className="muted">
-          This library is empty — use <strong>+ Add</strong>
-          {mediaType === "magazine"
-            ? " to add a magazine by name."
-            : ` to search for ${mediaType} series.`}
-        </p>
+        <div className="empty-state">
+          <span className="empty-icon" aria-hidden="true">
+            {mediaType === "manga" ? "🀄" : mediaType === "comic" ? "💥" : "📰"}
+          </span>
+          <h3>Your {(libraryLabels[mediaType] ?? mediaType).toLowerCase()} library is empty</h3>
+          <p className="muted">
+            {mediaType === "magazine"
+              ? "Add a magazine by name — issues are recognized from file names when you scan, and organized into clean folders."
+              : `Search for a ${mediaType} series and monitor the volumes you want, or scan a root folder with files you already own.`}
+          </p>
+          <div className="settings-actions">
+            <button onClick={() => setShowAdd(true)}>
+              {mediaType === "magazine" ? "+ Add a magazine" : "+ Add a series"}
+            </button>
+            <button className="toggle" disabled={busy} onClick={scan}>
+              Scan files
+            </button>
+          </div>
+        </div>
       ) : (
         (() => {
           const filtered = series.filter((s) =>

@@ -12,6 +12,9 @@ export default function ActivityView({
   const { confirmDlg } = useUi();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [history, setHistory] = useState<GrabRecord[]>([]);
+  const [histTotal, setHistTotal] = useState(0);
+  const [histFilter, setHistFilter] = useState("");
+  const [histLimit, setHistLimit] = useState(100);
   const [blocked, setBlocked] = useState<BlockEntry[]>([]);
   const [clientErrors, setClientErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,16 +23,32 @@ export default function ActivityView({
   const [notice, setNotice] = useState("");
 
   const reload = useCallback(() => {
-    Promise.all([api.queue(), api.history(), api.blocklist()])
+    Promise.all([api.queue(), api.history(histFilter, histLimit), api.blocklist()])
       .then(([q, h, b]) => {
         setItems(q.items);
         setClientErrors(q.errors);
-        setHistory(h);
+        setHistory(h.records);
+        setHistTotal(h.total);
         setBlocked(b);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
-  }, [onError]);
+  }, [onError, histFilter, histLimit]);
+
+  // The filter re-queries as you type — debounced so each keystroke doesn't
+  // hit the API.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      api
+        .history(histFilter, histLimit)
+        .then((h) => {
+          setHistory(h.records);
+          setHistTotal(h.total);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [histFilter, histLimit]);
 
   const removeItem = async (it: QueueItem) => {
     const ok = await confirmDlg({
@@ -175,11 +194,23 @@ export default function ActivityView({
       </section>
     )}
 
-    {history.length > 0 && (
+    {(histTotal > 0 || histFilter) && (
       <section className="card">
         <details className="disclosure">
-          <summary>History ({history.length})</summary>
+          <summary>History ({histTotal})</summary>
           <div className="disclosure-body">
+            <input
+              className="grid-filter"
+              placeholder="Filter history by title…"
+              value={histFilter}
+              onChange={(e) => {
+                setHistFilter(e.target.value);
+                setHistLimit(100);
+              }}
+            />
+            {history.length === 0 && (
+              <p className="muted">No grabs match the filter.</p>
+            )}
             <ul className="rows">
               {history.map((g) => (
                 <li key={g.id}>
@@ -201,6 +232,14 @@ export default function ActivityView({
                 </li>
               ))}
             </ul>
+            {history.length < histTotal && (
+              <button
+                className="toggle show-more"
+                onClick={() => setHistLimit(histLimit + 200)}
+              >
+                Show more ({history.length} of {histTotal})
+              </button>
+            )}
           </div>
         </details>
       </section>

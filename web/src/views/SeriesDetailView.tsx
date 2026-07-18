@@ -178,7 +178,7 @@ export default function SeriesDetailView({
 
       <section className="card detail-head">
         {series.coverUrl ? (
-          <img className="detail-art" src={proxiedImage(series.coverUrl)} alt="" />
+          <img className="detail-art" src={proxiedImage(series.coverUrl)} alt={`Cover of ${series.title}`} />
         ) : (
           <div className="detail-art fallback">{series.title.charAt(0)}</div>
         )}

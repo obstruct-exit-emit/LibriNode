@@ -2017,10 +2017,13 @@ func TestAutoSearchEndpoints(t *testing.T) {
 		t.Fatalf("outcome = %+v", outcome)
 	}
 
-	// History has the grab tied to the book.
-	var history []download.GrabRecord
+	// History has the grab tied to the book (paged shape with a total).
+	var history struct {
+		Records []download.GrabRecord `json:"records"`
+		Total   int                   `json:"total"`
+	}
 	a.want(a.call("GET", "/api/v1/history", nil, &history), http.StatusOK)
-	if len(history) != 1 || history[0].BookID != book.ID {
+	if history.Total != 1 || len(history.Records) != 1 || history.Records[0].BookID != book.ID {
 		t.Fatalf("history = %+v", history)
 	}
 

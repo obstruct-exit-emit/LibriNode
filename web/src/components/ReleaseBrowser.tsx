@@ -190,7 +190,12 @@ export default function ReleaseBrowser({
             <option value="age">Newest</option>
           </select>
           {onClose && (
-            <button className="toggle" onClick={onClose} title="Close the release list">
+            <button
+              className="toggle"
+              onClick={onClose}
+              title="Close the release list"
+              aria-label="Close the release list"
+            >
               ✕
             </button>
           )}

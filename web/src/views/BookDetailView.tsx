@@ -116,7 +116,7 @@ export default function BookDetailView({
 
       <section className="card detail-head">
         {book.coverUrl ? (
-          <img className="detail-art" src={proxiedImage(book.coverUrl)} alt="" />
+          <img className="detail-art" src={proxiedImage(book.coverUrl)} alt={`Cover of ${book.title}`} />
         ) : (
           <div className="detail-art fallback">{book.title.charAt(0)}</div>
         )}

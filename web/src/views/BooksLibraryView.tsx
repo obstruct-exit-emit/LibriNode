@@ -155,10 +155,23 @@ export default function BooksLibraryView({
         )}
 
         {authors.length === 0 ? (
-          <p className="muted">
-            This library is empty — use <strong>+ Add</strong> to search for an
-            author or book, or scan a root folder with existing files.
-          </p>
+          <div className="empty-state">
+            <span className="empty-icon" aria-hidden="true">
+              {library === "ebook" ? "📖" : "🎧"}
+            </span>
+            <h3>Your {label.toLowerCase()} library is empty</h3>
+            <p className="muted">
+              Two ways to fill it: search for an author or book and monitor
+              what you want, or point a root folder at files you already own
+              and scan.
+            </p>
+            <div className="settings-actions">
+              <button onClick={() => setShowAdd(true)}>+ Add an author or book</button>
+              <button className="toggle" disabled={busyHeader} onClick={scan}>
+                Scan files
+              </button>
+            </div>
+          </div>
         ) : (
           (() => {
             const filtered = authors.filter((a) =>

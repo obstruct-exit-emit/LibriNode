@@ -710,7 +710,10 @@ export const api = {
       `/api/v1/queue/${clientConfigId}/${encodeURIComponent(itemId)}${grabId ? `?grabId=${grabId}` : ""}`,
       { method: "DELETE" },
     ),
-  history: () => request<GrabRecord[]>("/api/v1/history"),
+  history: (search = "", limit = 100, offset = 0) =>
+    request<{ records: GrabRecord[]; total: number }>(
+      `/api/v1/history?search=${encodeURIComponent(search)}&limit=${limit}&offset=${offset}`,
+    ),
   runImport: () =>
     request<ImportResult>("/api/v1/library/import", { method: "POST" }),
 

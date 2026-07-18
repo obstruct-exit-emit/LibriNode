@@ -263,21 +263,18 @@ func (s *server) handleImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-// handleHistory lists grab records, newest first (?status= filters).
+// handleHistory lists grab records, newest first, paged:
+// GET /history?search=&limit=&offset= → {"records": […], "total": N}.
 func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	status := r.URL.Query().Get("status")
-	switch status {
-	case "", download.GrabStatusGrabbed, download.GrabStatusImported, download.GrabStatusFailed:
-	default:
-		writeError(w, http.StatusBadRequest, "status must be grabbed, imported, or failed")
-		return
-	}
-	grabs, err := s.downloads.Store().ListGrabs(status)
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	records, total, err := s.downloads.Store().GrabHistory(q.Get("search"), limit, offset)
 	if err != nil {
 		writeDownloadError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, grabs)
+	writeJSON(w, http.StatusOK, map[string]any{"records": records, "total": total})
 }
 
 // handleBlocklist lists releases blocked after failed downloads.

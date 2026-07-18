@@ -217,6 +217,7 @@ function AppInner() {
     return (
       <button
         key={label}
+        aria-current={current ? "page" : undefined}
         className={current ? "nav-item active" : "nav-item"}
         onClick={() => go(p)}
       >

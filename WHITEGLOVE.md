@@ -69,52 +69,55 @@ Priorities: **P1** most visible / worst gap · **P2** systemic consistency ·
       progress bar) in both headers; file lists and sizes had already been
       unified in the formatting pass
 
-## P3 — per-surface passes not yet done
-- [ ] **Deeper detail-page work** (beyond the completed header/meter pass):
-      Missing rows and file lists could still carry richer actions — batch
-      monitor from Missing, per-file actions inline.
+## Done (power + foundation wave)
+- [x] **Power: Series pack grab** — release parsing understands volume
+      ranges ("v01-v41", "#1-60") and completeness words; ScoreSeriesPack
+      ranks full range > partial > bare series-title, rejects single
+      volumes; `GET /release/packs?seriesId=` + "🎁 Search packs" on
+      manga/comic series pages (shared ReleaseBrowser in pack mode); the
+      grab binds to the first missing volume and the existing pack importer
+      fills the rest on completion. The one real content-gap feature.
+- [x] **Power: Configurable timings** — wanted search / metadata refresh /
+      health checks / import poll are config.TimingSettings (blank =
+      default, clamped ranges), edited under Settings → General → Advanced:
+      background timings; applied at startup.
+- [x] **Power: Bulk actions** (scoped to where one-at-a-time hurt) — both
+      Missing sections get per-row checkboxes, "+ Monitor selected (N)",
+      and "+ Monitor all (N)" per series group / whole section, with
+      settled-batch error reporting.
+- [x] **Foundation: responsive pass** — a 700px breakpoint covers poster
+      grids, card heads, row-action wrapping, full-width settings fields,
+      bottom-sheet toasts, and modal margins; long paths/titles wrap
+      instead of overflowing.
+- [x] **Foundation: accessibility (edge pass)** — aria-current on nav,
+      aria-labels on icon-only and checkbox controls, meaningful alt on
+      standalone detail art (grid covers stay decorative alt=""),
+      role=dialog/status + Escape on the UI layer.
+- [x] **Activity History** — server-side paging with total (LIMIT-200 cap
+      gone), debounced title filter, "Show more" progressive loading.
+- [x] **Empty / first-use states** — every library's zero state is a
+      friendly onboarding block: icon, per-type guidance, and direct
+      + Add / Scan files actions.
 
-## Power — the "powerful" half
-- [ ] **Bulk actions.** Everything is one-at-a-time. Multi-select on library
-      grids / Missing / Wanted for bulk monitor / grab / remove.
-- [ ] **Series pack grab.** Known content gap — manga/comic torrents are
-      whole-series packs that get rejected. A deliberate series-level pack grab
-      (reusing the pack importer) would close it.
-- [ ] **Configurable timings.** Wanted-search (6h), metadata refresh (24h),
-      health check (15m), import (1m), stale-grab grace (30m) are hardcoded in
-      `main.go`/`importer.go` (the code even flags "not yet configurable").
-      Expose the useful ones (search interval especially) in an advanced
-      settings section.
-
-## Foundation — cross-cutting
-- [ ] **Accessibility.** Improved at the edges (aria-labels on new
-      components, role=dialog/status, Escape handling on the confirm modal)
-      but still no systematic pass: icon-only buttons rely on `title`, book
-      covers use empty `alt`, no focus trapping. Add labels, focus
-      management, and keyboard paths.
-- [ ] **Responsive / mobile.** Only two media queries (sidebar collapse at
-      800px, detail-head stack at 600px). Poster grids, Settings forms, the
-      release browser controls, and Activity rows have no responsive handling;
-      the mobile sidebar is icon-only with hidden group labels.
-
-## Investigate before scoping
-- [ ] **Empty / first-use states** — friendlier zero-state per library beyond
-      "+ Add" text.
-- [ ] **Remote Path Mapping UI** — still relies on mounting at an exact path; a
-      real Settings feature (map client prefix → local path) is still open.
-- [ ] **Activity History** — capped at 200 rows (backend `LIMIT 200`) with no
-      filter, search, or paging; it's a collapsible dropdown now but gets
-      unwieldy on a busy instance.
-- [ ] **Light theme / UI preferences** — dark-only today (`color-scheme:
-      dark`, no light vars). README defers a theme/language/dates prefs page
-      to post-1.0; listed here so it isn't forgotten.
-- [ ] **Session ↔ user binding** — sessions are anonymous tokens, so removing a
-      user doesn't end their open session until the next restart. Fine for a
-      trusted instance; revisit if accounts ever gate different access.
+## Still open (honestly)
+- [ ] **Accessibility, the systematic pass** — focus trapping in dialogs,
+      full keyboard paths through grids/rows, and a screen-reader walk of
+      the main flows. The edge pass above is real but not that.
+- [ ] **Mobile sidebar labels** — group labels are still hidden at the
+      collapse breakpoint; usable, not lovely.
+- [ ] **Per-file actions inline on detail pages** (delete/re-organize one
+      file from the file list without leaving the page).
+- [ ] **Remote Path Mapping UI** — still relies on mounting at an exact
+      path; a real Settings feature (map client prefix → local path) is
+      open (also tracked in the README's hardening list).
+- [ ] **Light theme / UI preferences** — dark-only today; README defers a
+      theme/language/dates prefs page to post-1.0.
+- [ ] **Session ↔ user binding** — sessions are anonymous tokens, so
+      removing a user doesn't end their open session until the next
+      restart. Fine for a trusted instance; revisit if accounts ever gate
+      different access.
 
 ---
-All P1, P2, and P3 passes are done, plus global search, priority controls,
-and the shared formatting utils. What remains is the Power list
-(configurable timings, bulk actions, series pack grab) and the closing
-foundation sweeps (accessibility, responsive). Series pack grab is the one
-real content-gap feature left.
+The backlog's P1/P2/P3 passes, the Power list, and the foundation sweeps
+are done. What's left is deliberately parked: the deep accessibility pass,
+remote path mapping, and the post-1.0 preference page.

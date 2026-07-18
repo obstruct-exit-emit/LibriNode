@@ -3,6 +3,7 @@ package download
 import (
 	"database/sql"
 	"errors"
+	"strings"
 )
 
 // Grab statuses.
@@ -60,6 +61,48 @@ func (s *Store) AddGrab(g *GrabRecord) error {
 		RETURNING id, grabbed_at`,
 		bookID, configID, g.ClientItemID, g.Title, g.GUID, g.Protocol, g.MediaType, g.Status,
 	).Scan(&g.ID, &g.GrabbedAt)
+}
+
+// GrabHistory returns grab history newest first with paging and an optional
+// case-insensitive title filter; the second return is the total matching
+// count so the UI can page through a busy instance's full history.
+func (s *Store) GrabHistory(search string, limit, offset int) ([]GrabRecord, int, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	where := ""
+	args := []any{}
+	if search != "" {
+		where = ` WHERE title LIKE ? ESCAPE '\' COLLATE NOCASE`
+		esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)
+		args = append(args, "%"+esc+"%")
+	}
+
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM grabs`+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := s.db.Query(
+		`SELECT `+grabCols+` FROM grabs`+where+` ORDER BY grabbed_at DESC, id DESC LIMIT ? OFFSET ?`,
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	grabs := []GrabRecord{}
+	for rows.Next() {
+		g, err := scanGrab(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		grabs = append(grabs, *g)
+	}
+	return grabs, total, rows.Err()
 }
 
 // ListGrabs returns grab history, optionally filtered by status, newest first.

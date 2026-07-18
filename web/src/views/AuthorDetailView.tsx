@@ -142,7 +142,7 @@ export default function AuthorDetailView({
 
       <section className="card detail-head">
         {author.imageUrl ? (
-          <img className="detail-art" src={proxiedImage(author.imageUrl)} alt="" />
+          <img className="detail-art" src={proxiedImage(author.imageUrl)} alt={`Portrait of ${author.name}`} />
         ) : (
           <div className="detail-art fallback">{author.name.charAt(0)}</div>
         )}
