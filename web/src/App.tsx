@@ -190,6 +190,10 @@ function AppInner() {
   }, [auth, key, reloadLibraries]);
 
   const active = libraries.filter((l) => l.active);
+  // API-key access (no login system, or not yet signed in via session) is
+  // root-equivalent, matching the backend's requireAdmin check; a signed-in
+  // session is admin only if its account role says so.
+  const isAdmin = !auth?.authEnabled || auth.role === "admin";
 
   // Back/forward and hand-edited URLs drive the page through the hash.
   useEffect(() => {
@@ -245,8 +249,8 @@ function AppInner() {
             <div className="nav-group">App</div>
             {navButton({ name: "calendar" }, "Calendar", "📅")}
             {navButton({ name: "activity" }, "Activity", "⬇️")}
-            {navButton({ name: "settings" }, "Settings", "⚙️")}
-            {navButton({ name: "system" }, "System", "🖥️")}
+            {isAdmin && navButton({ name: "settings" }, "Settings", "⚙️")}
+            {isAdmin && navButton({ name: "system" }, "System", "🖥️")}
             {auth?.authEnabled && auth.authenticated && (
               <button
                 className="nav-item"
@@ -271,7 +275,7 @@ function AppInner() {
           <SetupWizard
             onDone={() => {
               setSetupNeeded(false);
-              setAuth({ authEnabled: true, authenticated: true });
+              api.authStatus().then(setAuth).catch(() => setAuth({ authEnabled: true, authenticated: true }));
             }}
           />
         )}
@@ -281,7 +285,9 @@ function AppInner() {
             <h2>Sign in</h2>
             <p className="muted">Welcome back — sign in to your LibriNode.</p>
             <LoginForm
-              onLoggedIn={() => setAuth({ authEnabled: true, authenticated: true })}
+              onLoggedIn={() =>
+                api.authStatus().then(setAuth).catch(() => setAuth({ authEnabled: true, authenticated: true }))
+              }
             />
           </section>
         )}
@@ -427,9 +433,9 @@ function AppInner() {
         )}
         {connected && page.name === "activity" && <ActivityView onError={onError} />}
         {connected && page.name === "settings" && (
-          <SettingsView onError={onError} onLibrariesChanged={reloadLibraries} />
+          <SettingsView isAdmin={isAdmin} onError={onError} onLibrariesChanged={reloadLibraries} />
         )}
-        {connected && page.name === "system" && <SystemView onError={onError} />}
+        {connected && isAdmin && page.name === "system" && <SystemView onError={onError} />}
       </main>
     </div>
   );

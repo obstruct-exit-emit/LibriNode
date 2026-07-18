@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -180,5 +181,183 @@ func TestSessionUserBinding(t *testing.T) {
 	// missing key — cookie path must not authenticate.)
 	if got := status(dan); got != http.StatusUnauthorized {
 		t.Fatalf("session after disable-login: status %d, want 401", got)
+	}
+}
+
+// TestMemberRoleRestrictions: a member session reaches ordinary library
+// endpoints (auth) but is turned away (403) from server-configuration ones
+// (requireAdmin) — and can change their own password but not someone
+// else's, while an admin can do both.
+func TestMemberRoleRestrictions(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	a.want(a.call("PUT", "/api/v1/auth/credentials",
+		map[string]string{"username": "admin1", "password": "admin-pass-1"}, nil), http.StatusOK)
+	// No role specified — defaults to member (see handleAddUser).
+	a.want(a.call("POST", "/api/v1/auth/users",
+		map[string]string{"username": "kid", "password": "kid-pass-1"}, nil), http.StatusCreated)
+
+	login := func(user, pass string) *http.Cookie {
+		resp, err := http.Post(a.srv.URL+"/api/v1/auth/login", "application/json",
+			strings.NewReader(`{"username":"`+user+`","password":"`+pass+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("login %s: status %d", user, resp.StatusCode)
+		}
+		for _, c := range resp.Cookies() {
+			if c.Name == sessionCookie {
+				return c
+			}
+		}
+		t.Fatalf("login %s: no session cookie", user)
+		return nil
+	}
+	do := func(c *http.Cookie, method, path, body string) int {
+		var bodyReader *strings.Reader
+		if body != "" {
+			bodyReader = strings.NewReader(body)
+		} else {
+			bodyReader = strings.NewReader("")
+		}
+		req, _ := http.NewRequest(method, a.srv.URL+path, bodyReader)
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(c)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+
+	kid := login("kid", "kid-pass-1")
+	admin := login("admin1", "admin-pass-1")
+
+	// auth/status reports the role, for the frontend to gate its own UI.
+	var whoami struct {
+		Username string `json:"username"`
+		Role     string `json:"role"`
+	}
+	req, _ := http.NewRequest("GET", a.srv.URL+"/api/v1/auth/status", nil)
+	req.AddCookie(kid)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&whoami); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if whoami.Username != "kid" || whoami.Role != "member" {
+		t.Fatalf("auth/status for kid = %+v, want username kid, role member", whoami)
+	}
+
+	// A member reaches ordinary library endpoints fine.
+	if got := do(kid, "GET", "/api/v1/author", ""); got != http.StatusOK {
+		t.Fatalf("member GET /author = %d, want 200", got)
+	}
+	// A member is turned away from server configuration — 403, not 401 (they
+	// ARE authenticated, just not privileged enough).
+	if got := do(kid, "GET", "/api/v1/indexer", ""); got != http.StatusForbidden {
+		t.Fatalf("member GET /indexer = %d, want 403", got)
+	}
+	if got := do(kid, "POST", "/api/v1/rootfolder", `{"mediaType":"ebook","path":"/tmp"}`); got != http.StatusForbidden {
+		t.Fatalf("member POST /rootfolder = %d, want 403", got)
+	}
+	if got := do(kid, "GET", "/api/v1/backup", ""); got != http.StatusForbidden {
+		t.Fatalf("member GET /backup = %d, want 403", got)
+	}
+	// An admin reaches the same endpoint fine.
+	if got := do(admin, "GET", "/api/v1/indexer", ""); got != http.StatusOK {
+		t.Fatalf("admin GET /indexer = %d, want 200", got)
+	}
+
+	// Self-service: a member can change their OWN password...
+	if got := do(kid, "PUT", "/api/v1/auth/users/kid/password", `{"password":"kid-pass-2"}`); got != http.StatusOK {
+		t.Fatalf("member changing own password = %d, want 200", got)
+	}
+	// ...but not someone else's.
+	kid2 := login("kid", "kid-pass-2")
+	if got := do(kid2, "PUT", "/api/v1/auth/users/admin1/password", `{"password":"stolen-pass1"}`); got != http.StatusForbidden {
+		t.Fatalf("member changing another user's password = %d, want 403", got)
+	}
+	// An admin can change anyone's.
+	if got := do(admin, "PUT", "/api/v1/auth/users/kid/password", `{"password":"kid-pass-3"}`); got != http.StatusOK {
+		t.Fatalf("admin changing member's password = %d, want 200", got)
+	}
+}
+
+// TestUserRoleChangeAndDefaultInvariant: SetUserRole promotes/demotes and
+// revokes the account's sessions; the default user can never be demoted,
+// and promoting someone to default makes them an admin in the same step.
+func TestUserRoleChangeAndDefaultInvariant(t *testing.T) {
+	a := newTestAPI(t, nil)
+
+	a.want(a.call("PUT", "/api/v1/auth/credentials",
+		map[string]string{"username": "owner", "password": "owner-pass-1"}, nil), http.StatusOK)
+	a.want(a.call("POST", "/api/v1/auth/users",
+		map[string]any{"username": "helper", "password": "helper-pass1", "role": "admin"}, nil), http.StatusCreated)
+
+	// The default user ("owner") can't be demoted.
+	if r := a.call("PUT", "/api/v1/auth/users/owner/role", map[string]string{"role": "member"}, nil); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("demoting the default user = %d, want 400", r.StatusCode)
+	}
+
+	// helper was created as admin (explicit role); demote them to member.
+	login := func(user, pass string) *http.Cookie {
+		resp, err := http.Post(a.srv.URL+"/api/v1/auth/login", "application/json",
+			strings.NewReader(`{"username":"`+user+`","password":"`+pass+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		for _, c := range resp.Cookies() {
+			if c.Name == sessionCookie {
+				return c
+			}
+		}
+		t.Fatalf("login %s: no session cookie", user)
+		return nil
+	}
+	status := func(c *http.Cookie, path string) int {
+		req, _ := http.NewRequest("GET", a.srv.URL+path, nil)
+		req.AddCookie(c)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+
+	helperSession := login("helper", "helper-pass1")
+	if got := status(helperSession, "/api/v1/indexer"); got != http.StatusOK {
+		t.Fatalf("helper (admin) GET /indexer = %d, want 200", got)
+	}
+
+	a.want(a.call("PUT", "/api/v1/auth/users/helper/role", map[string]string{"role": "member"}, nil), http.StatusOK)
+	// Demotion revokes the existing session immediately.
+	if got := status(helperSession, "/api/v1/indexer"); got != http.StatusUnauthorized {
+		t.Fatalf("helper's session after demotion = %d, want 401 (revoked)", got)
+	}
+
+	// Logged back in, helper is now a plain member.
+	helperSession2 := login("helper", "helper-pass1")
+	if got := status(helperSession2, "/api/v1/indexer"); got != http.StatusForbidden {
+		t.Fatalf("demoted helper GET /indexer = %d, want 403", got)
+	}
+
+	// Promoting helper to default makes them admin too, even though they're
+	// currently a member.
+	a.want(a.call("PUT", "/api/v1/auth/users/helper/default", nil, nil), http.StatusOK)
+	if got := status(helperSession2, "/api/v1/indexer"); got != http.StatusUnauthorized {
+		t.Fatalf("helper's session after becoming default = %d, want 401 (revoked by promotion)", got)
+	}
+	helperSession3 := login("helper", "helper-pass1")
+	if got := status(helperSession3, "/api/v1/indexer"); got != http.StatusOK {
+		t.Fatalf("helper (new default) GET /indexer = %d, want 200", got)
 	}
 }

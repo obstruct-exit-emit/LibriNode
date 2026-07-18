@@ -231,6 +231,10 @@ export interface GrabRecord {
 export interface AuthStatus {
   authEnabled: boolean;
   authenticated: boolean;
+  // Present once signed in — absent when auth is disabled or not yet
+  // authenticated (API-key access, no per-account identity).
+  username?: string;
+  role?: "admin" | "member";
 }
 
 export interface BackupInfo {
@@ -407,6 +411,7 @@ export interface TimingSettings {
 export interface UserAccount {
   username: string;
   default: boolean;
+  role: "admin" | "member";
 }
 
 // UnmatchedOption is an unmatched file plus its existing-file import choices:
@@ -514,8 +519,8 @@ export const api = {
       method: "PUT",
     }),
   listUsers: () => request<{ users: UserAccount[] }>("/api/v1/auth/users"),
-  addUser: (username: string, password: string) =>
-    request<{ users: UserAccount[] }>("/api/v1/auth/users", json({ username, password })),
+  addUser: (username: string, password: string, role: "admin" | "member" = "member") =>
+    request<{ users: UserAccount[] }>("/api/v1/auth/users", json({ username, password, role })),
   removeUser: (username: string) =>
     request<{ users: UserAccount[] }>(`/api/v1/auth/users/${encodeURIComponent(username)}`, {
       method: "DELETE",
@@ -527,6 +532,11 @@ export const api = {
     }),
   makeDefaultUser: (username: string) =>
     request<{ users: UserAccount[] }>(`/api/v1/auth/users/${encodeURIComponent(username)}/default`, {
+      method: "PUT",
+    }),
+  setUserRole: (username: string, role: "admin" | "member") =>
+    request<{ users: UserAccount[] }>(`/api/v1/auth/users/${encodeURIComponent(username)}/role`, {
+      ...json({ role }),
       method: "PUT",
     }),
   regenerateApiKey: () =>

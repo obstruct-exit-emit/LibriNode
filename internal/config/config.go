@@ -204,10 +204,36 @@ func defaultNaming() NamingSettings {
 // UserAccount is one login. Passwords are stored only as PBKDF2 hashes.
 // Exactly one user is the default: the protected primary account — it can't
 // be removed, only superseded by promoting another user to default.
+// Roles: admin has full access (settings, indexers, download clients,
+// backups, logs, user management, API key); member gets everything else —
+// browsing, monitoring, search, scan, grab, organize — but not the server's
+// own configuration or other accounts. A self-hosted household's common
+// shape: one or two admins (the owner, maybe a partner) and everyone else
+// as members.
+const (
+	RoleAdmin  = "admin"
+	RoleMember = "member"
+)
+
 type UserAccount struct {
 	Username     string `yaml:"username" json:"username"`
 	PasswordHash string `yaml:"password_hash" json:"-"`
 	Default      bool   `yaml:"default,omitempty" json:"default"`
+	// Role is RoleAdmin or RoleMember; empty means admin (see EffectiveRole)
+	// — every account saved before roles existed keeps full access on
+	// upgrade rather than being silently downgraded.
+	Role string `yaml:"role,omitempty" json:"role"`
+}
+
+// EffectiveRole returns the account's role, defaulting to admin for
+// accounts from before roles existed (Load backfills this on disk too, so
+// it's only ever relevant for the moment between reading the file and the
+// first save completing).
+func (u UserAccount) EffectiveRole() string {
+	if u.Role == "" {
+		return RoleAdmin
+	}
+	return u.Role
 }
 
 // AuthSettings holds the optional login accounts. No users means
@@ -459,6 +485,15 @@ func Load(dataDir string) (*Config, error) {
 		}
 		cfg.Auth.Username, cfg.Auth.PasswordHash = "", ""
 	}
+	// Every account already on disk before roles existed gets admin — the
+	// safe, non-downgrading default. New accounts always specify a role via
+	// AddUser, so this only ever touches pre-existing records, and only
+	// until the next save fills the field in on disk.
+	for i := range cfg.Auth.Users {
+		if cfg.Auth.Users[i].Role == "" {
+			cfg.Auth.Users[i].Role = RoleAdmin
+		}
+	}
 	normalizeUsers(&cfg.Auth)
 	if v := os.Getenv("LIBRINODE_HARDCOVER_TOKEN"); v != "" {
 		cfg.setProviderToken("hardcover", v)
@@ -689,8 +724,13 @@ func normalizeUsers(a *AuthSettings) {
 	}
 }
 
-// AddUser appends a login account; the first account becomes the default.
-func (c *Config) AddUser(username, passwordHash string) error {
+// AddUser appends a login account with the given role (RoleAdmin or
+// RoleMember; anything else — including "" — becomes RoleMember, the safer
+// default for a newly added account). The first account becomes the
+// protected default and is always admin regardless of what's requested,
+// since the default being demotable could leave an instance with no admin
+// at all.
+func (c *Config) AddUser(username, passwordHash, role string) error {
 	c.mu.Lock()
 	for i := range c.Auth.Users {
 		if strings.EqualFold(c.Auth.Users[i].Username, username) {
@@ -698,10 +738,18 @@ func (c *Config) AddUser(username, passwordHash string) error {
 			return fmt.Errorf("user %q already exists", username)
 		}
 	}
+	isFirst := len(c.Auth.Users) == 0
+	if role != RoleAdmin {
+		role = RoleMember
+	}
+	if isFirst {
+		role = RoleAdmin
+	}
 	c.Auth.Users = append(c.Auth.Users, UserAccount{
 		Username:     username,
 		PasswordHash: passwordHash,
-		Default:      len(c.Auth.Users) == 0,
+		Default:      isFirst,
+		Role:         role,
 	})
 	c.mu.Unlock()
 	return c.save()
@@ -740,7 +788,10 @@ func (c *Config) SetUserPassword(username, passwordHash string) error {
 	return c.save()
 }
 
-// SetDefaultUser makes the named account the protected default.
+// SetDefaultUser makes the named account the protected default, promoting
+// it to admin in the same step if it wasn't already — the default-is-always-
+// admin invariant (SetUserRole relies on it to refuse demoting the default)
+// must hold no matter which direction an account became the default.
 func (c *Config) SetDefaultUser(username string) error {
 	c.mu.Lock()
 	if c.Auth.Find(username) == nil {
@@ -749,7 +800,32 @@ func (c *Config) SetDefaultUser(username string) error {
 	}
 	for i := range c.Auth.Users {
 		c.Auth.Users[i].Default = c.Auth.Users[i].Username == username
+		if c.Auth.Users[i].Username == username {
+			c.Auth.Users[i].Role = RoleAdmin
+		}
 	}
+	c.mu.Unlock()
+	return c.save()
+}
+
+// SetUserRole changes an account's role. The default user can't be demoted
+// — it's the one account guaranteed to survive removal, so keeping it an
+// admin guarantees the instance always has at least one.
+func (c *Config) SetUserRole(username, role string) error {
+	if role != RoleAdmin && role != RoleMember {
+		return fmt.Errorf("role must be %q or %q", RoleAdmin, RoleMember)
+	}
+	c.mu.Lock()
+	u := c.Auth.Find(username)
+	if u == nil {
+		c.mu.Unlock()
+		return fmt.Errorf("user %q not found", username)
+	}
+	if u.Default && role != RoleAdmin {
+		c.mu.Unlock()
+		return fmt.Errorf("the default user must stay an admin — promote another user to default first")
+	}
+	u.Role = role
 	c.mu.Unlock()
 	return c.save()
 }

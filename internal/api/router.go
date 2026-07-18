@@ -5,7 +5,6 @@ package api
 
 import (
 	"context"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"io/fs"
@@ -99,27 +98,32 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/setup/status", s.handleSetupStatus)
 	mux.HandleFunc("POST /api/v1/auth/setup", s.handleSetup)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
-	mux.HandleFunc("PUT /api/v1/auth/credentials", s.auth(s.handleSetCredentials))
-	mux.HandleFunc("GET /api/v1/auth/users", s.auth(s.handleListUsers))
-	mux.HandleFunc("POST /api/v1/auth/users", s.auth(s.handleAddUser))
-	mux.HandleFunc("DELETE /api/v1/auth/users/{username}", s.auth(s.handleRemoveUser))
+	// Account/server-configuration surface: admin-only. handleSetUserPassword
+	// is the one exception — it stays on plain auth because it self-services
+	// (any signed-in account may change its own password; the handler itself
+	// checks admin-or-self).
+	mux.HandleFunc("PUT /api/v1/auth/credentials", s.requireAdmin(s.handleSetCredentials))
+	mux.HandleFunc("GET /api/v1/auth/users", s.requireAdmin(s.handleListUsers))
+	mux.HandleFunc("POST /api/v1/auth/users", s.requireAdmin(s.handleAddUser))
+	mux.HandleFunc("DELETE /api/v1/auth/users/{username}", s.requireAdmin(s.handleRemoveUser))
 	mux.HandleFunc("PUT /api/v1/auth/users/{username}/password", s.auth(s.handleSetUserPassword))
-	mux.HandleFunc("PUT /api/v1/auth/users/{username}/default", s.auth(s.handleMakeDefaultUser))
-	mux.HandleFunc("POST /api/v1/auth/apikey/regenerate", s.auth(s.handleRegenerateAPIKey))
+	mux.HandleFunc("PUT /api/v1/auth/users/{username}/default", s.requireAdmin(s.handleMakeDefaultUser))
+	mux.HandleFunc("PUT /api/v1/auth/users/{username}/role", s.requireAdmin(s.handleSetUserRole))
+	mux.HandleFunc("POST /api/v1/auth/apikey/regenerate", s.requireAdmin(s.handleRegenerateAPIKey))
 	mux.HandleFunc("GET /api/v1/system/status", s.auth(s.handleSystemStatus))
 	mux.HandleFunc("GET /api/v1/image", s.auth(s.handleImage))
-	mux.HandleFunc("GET /api/v1/backup", s.auth(s.handleListBackups))
-	mux.HandleFunc("POST /api/v1/backup", s.auth(s.handleCreateBackup))
-	mux.HandleFunc("DELETE /api/v1/backup/{name}", s.auth(s.handleDeleteBackup))
-	mux.HandleFunc("POST /api/v1/backup/{name}/restore", s.auth(s.handleRestoreBackup))
-	mux.HandleFunc("GET /api/v1/backup/{name}/download", s.auth(s.handleDownloadBackup))
+	mux.HandleFunc("GET /api/v1/backup", s.requireAdmin(s.handleListBackups))
+	mux.HandleFunc("POST /api/v1/backup", s.requireAdmin(s.handleCreateBackup))
+	mux.HandleFunc("DELETE /api/v1/backup/{name}", s.requireAdmin(s.handleDeleteBackup))
+	mux.HandleFunc("POST /api/v1/backup/{name}/restore", s.requireAdmin(s.handleRestoreBackup))
+	mux.HandleFunc("GET /api/v1/backup/{name}/download", s.requireAdmin(s.handleDownloadBackup))
 	mux.HandleFunc("GET /api/v1/health", s.auth(s.handleHealth))
 	mux.HandleFunc("POST /api/v1/health/check", s.auth(s.handleHealthCheck))
-	mux.HandleFunc("GET /api/v1/log", s.auth(s.handleLogTail))
-	mux.HandleFunc("GET /api/v1/filesystem", s.auth(s.handleBrowseFilesystem))
-	mux.HandleFunc("GET /api/v1/rootfolder", s.auth(s.handleListRootFolders))
-	mux.HandleFunc("POST /api/v1/rootfolder", s.auth(s.handleAddRootFolder))
-	mux.HandleFunc("DELETE /api/v1/rootfolder/{id}", s.auth(s.handleDeleteRootFolder))
+	mux.HandleFunc("GET /api/v1/log", s.requireAdmin(s.handleLogTail))
+	mux.HandleFunc("GET /api/v1/filesystem", s.requireAdmin(s.handleBrowseFilesystem))
+	mux.HandleFunc("GET /api/v1/rootfolder", s.requireAdmin(s.handleListRootFolders))
+	mux.HandleFunc("POST /api/v1/rootfolder", s.requireAdmin(s.handleAddRootFolder))
+	mux.HandleFunc("DELETE /api/v1/rootfolder/{id}", s.requireAdmin(s.handleDeleteRootFolder))
 
 	mux.HandleFunc("GET /api/v1/search", s.auth(s.handleSearch))
 	mux.HandleFunc("GET /api/v1/author", s.auth(s.handleListAuthors))
@@ -136,9 +140,9 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("POST /api/v1/book", s.auth(s.handleAddBook))
 	mux.HandleFunc("GET /api/v1/book/{id}", s.auth(s.handleGetBook))
 	mux.HandleFunc("GET /api/v1/book/{id}/cover", s.auth(s.handleBookCover))
-	mux.HandleFunc("DELETE /api/v1/library/covers/cache", s.auth(s.handleClearCoverCache))
-	mux.HandleFunc("DELETE /api/v1/settings/metadata/descriptions", s.auth(s.handleClearDescriptions))
-	mux.HandleFunc("DELETE /api/v1/cache", s.auth(s.handleClearAllCache))
+	mux.HandleFunc("DELETE /api/v1/library/covers/cache", s.requireAdmin(s.handleClearCoverCache))
+	mux.HandleFunc("DELETE /api/v1/settings/metadata/descriptions", s.requireAdmin(s.handleClearDescriptions))
+	mux.HandleFunc("DELETE /api/v1/cache", s.requireAdmin(s.handleClearAllCache))
 	mux.HandleFunc("PUT /api/v1/book/{id}/monitor", s.auth(s.handleMonitorBook))
 	mux.HandleFunc("PUT /api/v1/book/{id}/library", s.auth(s.handleBookLibrary))
 	mux.HandleFunc("GET /api/v1/libraries", s.auth(s.handleLibraries))
@@ -166,44 +170,46 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("POST /api/v1/bookfile/{id}/replace", s.auth(s.handleReplaceBookFile))
 	mux.HandleFunc("DELETE /api/v1/bookfile/{id}", s.auth(s.handleDeleteBookFile))
 
-	mux.HandleFunc("GET /api/v1/settings/metadata", s.auth(s.handleGetMetadataSettings))
-	mux.HandleFunc("PUT /api/v1/settings/metadata", s.auth(s.handlePutMetadataSettings))
-	mux.HandleFunc("POST /api/v1/settings/metadata/test", s.auth(s.handleTestMetadataProvider))
-	mux.HandleFunc("DELETE /api/v1/settings/metadata/cache", s.auth(s.handleClearMetadataCache))
-	mux.HandleFunc("GET /api/v1/settings/naming", s.auth(s.handleGetNamingSettings))
-	mux.HandleFunc("PUT /api/v1/settings/naming", s.auth(s.handlePutNamingSettings))
-	mux.HandleFunc("GET /api/v1/settings/import", s.auth(s.handleGetImportSettings))
-	mux.HandleFunc("PUT /api/v1/settings/import", s.auth(s.handlePutImportSettings))
-	mux.HandleFunc("GET /api/v1/settings/timings", s.auth(s.handleGetTimingSettings))
-	mux.HandleFunc("PUT /api/v1/settings/timings", s.auth(s.handlePutTimingSettings))
-	mux.HandleFunc("GET /api/v1/settings/pathmappings", s.auth(s.handleGetPathMappings))
-	mux.HandleFunc("PUT /api/v1/settings/pathmappings", s.auth(s.handlePutPathMappings))
+	mux.HandleFunc("GET /api/v1/settings/metadata", s.requireAdmin(s.handleGetMetadataSettings))
+	mux.HandleFunc("PUT /api/v1/settings/metadata", s.requireAdmin(s.handlePutMetadataSettings))
+	mux.HandleFunc("POST /api/v1/settings/metadata/test", s.requireAdmin(s.handleTestMetadataProvider))
+	mux.HandleFunc("DELETE /api/v1/settings/metadata/cache", s.requireAdmin(s.handleClearMetadataCache))
+	mux.HandleFunc("GET /api/v1/settings/naming", s.requireAdmin(s.handleGetNamingSettings))
+	mux.HandleFunc("PUT /api/v1/settings/naming", s.requireAdmin(s.handlePutNamingSettings))
+	mux.HandleFunc("GET /api/v1/settings/import", s.requireAdmin(s.handleGetImportSettings))
+	mux.HandleFunc("PUT /api/v1/settings/import", s.requireAdmin(s.handlePutImportSettings))
+	mux.HandleFunc("GET /api/v1/settings/timings", s.requireAdmin(s.handleGetTimingSettings))
+	mux.HandleFunc("PUT /api/v1/settings/timings", s.requireAdmin(s.handlePutTimingSettings))
+	mux.HandleFunc("GET /api/v1/settings/pathmappings", s.requireAdmin(s.handleGetPathMappings))
+	mux.HandleFunc("PUT /api/v1/settings/pathmappings", s.requireAdmin(s.handlePutPathMappings))
 
-	mux.HandleFunc("GET /api/v1/qualityprofile", s.auth(s.handleListProfiles))
-	mux.HandleFunc("POST /api/v1/qualityprofile", s.auth(s.handleAddProfile))
-	mux.HandleFunc("PUT /api/v1/qualityprofile/{id}", s.auth(s.handleUpdateProfile))
-	mux.HandleFunc("PUT /api/v1/qualityprofile/{id}/default", s.auth(s.handleDefaultProfile))
-	mux.HandleFunc("DELETE /api/v1/qualityprofile/{id}", s.auth(s.handleDeleteProfile))
+	mux.HandleFunc("GET /api/v1/qualityprofile", s.requireAdmin(s.handleListProfiles))
+	mux.HandleFunc("POST /api/v1/qualityprofile", s.requireAdmin(s.handleAddProfile))
+	mux.HandleFunc("PUT /api/v1/qualityprofile/{id}", s.requireAdmin(s.handleUpdateProfile))
+	mux.HandleFunc("PUT /api/v1/qualityprofile/{id}/default", s.requireAdmin(s.handleDefaultProfile))
+	mux.HandleFunc("DELETE /api/v1/qualityprofile/{id}", s.requireAdmin(s.handleDeleteProfile))
 
-	mux.HandleFunc("GET /api/v1/indexer", s.auth(s.handleListIndexers))
-	mux.HandleFunc("POST /api/v1/indexer", s.auth(s.handleAddIndexer))
-	mux.HandleFunc("GET /api/v1/indexer/schema", s.auth(s.handleIndexerSchema))
-	mux.HandleFunc("GET /api/v1/indexer/{id}", s.auth(s.handleGetIndexer))
-	mux.HandleFunc("PUT /api/v1/indexer/{id}", s.auth(s.handleUpdateIndexer))
-	mux.HandleFunc("DELETE /api/v1/indexer/{id}", s.auth(s.handleDeleteIndexer))
-	mux.HandleFunc("POST /api/v1/indexer/test", s.auth(s.handleTestIndexer))
-	mux.HandleFunc("GET /api/v1/tag", s.auth(s.handleListTags))
+	mux.HandleFunc("GET /api/v1/indexer", s.requireAdmin(s.handleListIndexers))
+	mux.HandleFunc("POST /api/v1/indexer", s.requireAdmin(s.handleAddIndexer))
+	mux.HandleFunc("GET /api/v1/indexer/schema", s.requireAdmin(s.handleIndexerSchema))
+	mux.HandleFunc("GET /api/v1/indexer/{id}", s.requireAdmin(s.handleGetIndexer))
+	mux.HandleFunc("PUT /api/v1/indexer/{id}", s.requireAdmin(s.handleUpdateIndexer))
+	mux.HandleFunc("DELETE /api/v1/indexer/{id}", s.requireAdmin(s.handleDeleteIndexer))
+	mux.HandleFunc("POST /api/v1/indexer/test", s.requireAdmin(s.handleTestIndexer))
+	mux.HandleFunc("GET /api/v1/tag", s.requireAdmin(s.handleListTags))
 	// Readarr-only capability Prowlarr reads during app sync (see handler).
-	mux.HandleFunc("GET /api/v1/metadataprofile", s.auth(s.handleListMetadataProfiles))
+	mux.HandleFunc("GET /api/v1/metadataprofile", s.requireAdmin(s.handleListMetadataProfiles))
+	// Release search/grab is normal app usage (acquiring wanted content), not
+	// server configuration — members keep this.
 	mux.HandleFunc("GET /api/v1/release", s.auth(s.handleSearchReleases))
 	mux.HandleFunc("GET /api/v1/release/packs", s.auth(s.handleSearchSeriesPacks))
 	mux.HandleFunc("POST /api/v1/release/grab", s.auth(s.handleGrabRelease))
 
-	mux.HandleFunc("GET /api/v1/downloadclient", s.auth(s.handleListDownloadClients))
-	mux.HandleFunc("POST /api/v1/downloadclient", s.auth(s.handleAddDownloadClient))
-	mux.HandleFunc("PUT /api/v1/downloadclient/{id}", s.auth(s.handleUpdateDownloadClient))
-	mux.HandleFunc("DELETE /api/v1/downloadclient/{id}", s.auth(s.handleDeleteDownloadClient))
-	mux.HandleFunc("POST /api/v1/downloadclient/test", s.auth(s.handleTestDownloadClient))
+	mux.HandleFunc("GET /api/v1/downloadclient", s.requireAdmin(s.handleListDownloadClients))
+	mux.HandleFunc("POST /api/v1/downloadclient", s.requireAdmin(s.handleAddDownloadClient))
+	mux.HandleFunc("PUT /api/v1/downloadclient/{id}", s.requireAdmin(s.handleUpdateDownloadClient))
+	mux.HandleFunc("DELETE /api/v1/downloadclient/{id}", s.requireAdmin(s.handleDeleteDownloadClient))
+	mux.HandleFunc("POST /api/v1/downloadclient/test", s.requireAdmin(s.handleTestDownloadClient))
 	mux.HandleFunc("GET /api/v1/queue", s.auth(s.handleQueue))
 	mux.HandleFunc("DELETE /api/v1/queue/{id}/{itemId}", s.auth(s.handleRemoveQueueItem))
 	mux.HandleFunc("GET /api/v1/blocklist", s.auth(s.handleBlocklist))
@@ -242,20 +248,36 @@ func (s *server) refreshHealth() {
 }
 
 // auth admits requests carrying the API key (scripts, Prowlarr) or a valid
-// login session cookie (the web UI once authentication is enabled).
+// login session cookie (the web UI once authentication is enabled) — either
+// role. Use requireAdmin instead for the server's own configuration.
 func (s *server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		key := r.Header.Get("X-Api-Key")
-		if key == "" {
-			key = r.URL.Query().Get("apikey")
-		}
-		if key != "" &&
-			subtle.ConstantTimeCompare([]byte(key), []byte(s.cfg.CurrentAPIKey())) == 1 {
+		if s.apiKeyMatches(r) || s.hasSession(r) {
 			next(w, r)
 			return
 		}
-		if s.hasSession(r) {
+		writeError(w, http.StatusUnauthorized, "invalid or missing API key")
+	}
+}
+
+// requireAdmin is auth, plus a role check: the API key always passes (it's
+// the instance owner's master credential — scripts and Prowlarr authenticate
+// this way, and have no narrower role to check), but a session belonging to
+// a member account is turned away. Everything that touches the server's own
+// configuration — settings, indexers, download clients, backups, logs, user
+// management — sits behind this instead of auth.
+func (s *server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.apiKeyMatches(r) {
 			next(w, r)
+			return
+		}
+		if sess, ok := s.sessions.lookup(currentToken(r)); ok {
+			if sess.role == config.RoleAdmin {
+				next(w, r)
+				return
+			}
+			writeError(w, http.StatusForbidden, "admin access required")
 			return
 		}
 		writeError(w, http.StatusUnauthorized, "invalid or missing API key")

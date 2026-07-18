@@ -67,10 +67,12 @@ func verifyPassword(stored, password string) bool {
 }
 
 // sessionStore tracks login sessions in memory. Each session is bound to
-// the account that created it, so removing a user (or changing a password)
-// ends their sessions immediately instead of at the next restart.
+// the account that created it (and that account's role at the time), so
+// removing a user, changing a password, or changing their role ends their
+// sessions immediately instead of at the next restart.
 type session struct {
 	user   string
+	role   string
 	expiry time.Time
 }
 
@@ -83,7 +85,7 @@ func newSessionStore() *sessionStore {
 	return &sessionStore{tokens: map[string]session{}}
 }
 
-func (st *sessionStore) create(user string) string {
+func (st *sessionStore) create(user, role string) string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		panic(fmt.Sprintf("crypto/rand unavailable: %v", err))
@@ -98,26 +100,34 @@ func (st *sessionStore) create(user string) string {
 			delete(st.tokens, t)
 		}
 	}
-	st.tokens[token] = session{user: user, expiry: now.Add(sessionTTL)}
+	st.tokens[token] = session{user: user, role: role, expiry: now.Add(sessionTTL)}
 	st.mu.Unlock()
 	return token
 }
 
 func (st *sessionStore) valid(token string) bool {
+	_, ok := st.lookup(token)
+	return ok
+}
+
+// lookup returns the session behind a token, if it's present and not
+// expired — the single source of truth hasSession/currentUser/requireAdmin
+// all build on.
+func (st *sessionStore) lookup(token string) (session, bool) {
 	if token == "" {
-		return false
+		return session{}, false
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	sess, ok := st.tokens[token]
 	if !ok {
-		return false
+		return session{}, false
 	}
 	if time.Now().After(sess.expiry) {
 		delete(st.tokens, token)
-		return false
+		return session{}, false
 	}
-	return true
+	return sess, true
 }
 
 func (st *sessionStore) revoke(token string) {
@@ -159,6 +169,31 @@ func (s *server) hasSession(r *http.Request) bool {
 	return err == nil && s.sessions.valid(c.Value)
 }
 
+// apiKeyMatches reports whether the request carries the current API key
+// (header or query param) — the instance's master credential, equivalent to
+// an admin session, since scripts and Prowlarr authenticate this way.
+func (s *server) apiKeyMatches(r *http.Request) bool {
+	key := r.Header.Get("X-Api-Key")
+	if key == "" {
+		key = r.URL.Query().Get("apikey")
+	}
+	return key != "" && subtle.ConstantTimeCompare([]byte(key), []byte(s.cfg.CurrentAPIKey())) == 1
+}
+
+// currentUser resolves who's making the request: the API key always reports
+// as an anonymous admin (it has no one username — Prowlarr/scripts use it),
+// a valid session reports its account's username and role. ok is false when
+// neither authenticates.
+func (s *server) currentUser(r *http.Request) (username, role string, ok bool) {
+	if s.apiKeyMatches(r) {
+		return "", config.RoleAdmin, true
+	}
+	if sess, valid := s.sessions.lookup(currentToken(r)); valid {
+		return sess.user, sess.role, true
+	}
+	return "", "", false
+}
+
 func (s *server) setSessionCookie(w http.ResponseWriter, token string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
@@ -171,12 +206,18 @@ func (s *server) setSessionCookie(w http.ResponseWriter, token string, maxAge in
 }
 
 // handleAuthStatus is unauthenticated: the UI needs it to decide between the
-// login page, the API-key prompt, and going straight in.
+// login page, the API-key prompt, and going straight in — and, once signed
+// in, whether to show the admin-only Settings/System surface.
 func (s *server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"authEnabled":   s.cfg.AuthSettings().Enabled(),
 		"authenticated": s.hasSession(r),
-	})
+	}
+	if sess, ok := s.sessions.lookup(currentToken(r)); ok {
+		resp["username"] = sess.user
+		resp["role"] = sess.role
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleLogin is unauthenticated by nature. Failed attempts are logged and
@@ -195,12 +236,12 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "authentication is not enabled")
 		return
 	}
-	matched := ""
+	matched, matchedRole := "", ""
 	for i := range auth.Users {
 		u := &auth.Users[i]
 		if subtle.ConstantTimeCompare([]byte(req.Username), []byte(u.Username)) == 1 &&
 			verifyPassword(u.PasswordHash, req.Password) {
-			matched = u.Username
+			matched, matchedRole = u.Username, u.EffectiveRole()
 			break
 		}
 	}
@@ -210,7 +251,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
-	s.setSessionCookie(w, s.sessions.create(matched), int(sessionTTL.Seconds()))
+	s.setSessionCookie(w, s.sessions.create(matched, matchedRole), int(sessionTTL.Seconds()))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -257,23 +298,31 @@ func (s *server) handleSetCredentials(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
 		return
 	}
-	// Upsert: change the existing user's password, or add a new account.
+	// Upsert: change the existing user's password, or add a new account. This
+	// endpoint predates roles and is now admin-gated (see router.go), so a
+	// fresh add always becomes an admin — the Settings UI's own add-user flow
+	// is what offers a role choice for everyone after the first account.
 	if s.cfg.AuthSettings().Find(req.Username) != nil {
 		err = s.cfg.SetUserPassword(req.Username, hash)
 		// A changed password ends the account's other sessions.
 		s.sessions.revokeUser(req.Username, currentToken(r))
 	} else {
-		err = s.cfg.AddUser(req.Username, hash)
+		err = s.cfg.AddUser(req.Username, hash, config.RoleAdmin)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}
-	s.setSessionCookie(w, s.sessions.create(req.Username), int(sessionTTL.Seconds()))
+	role := config.RoleAdmin
+	if u := s.cfg.AuthSettings().Find(req.Username); u != nil {
+		role = u.EffectiveRole()
+	}
+	s.setSessionCookie(w, s.sessions.create(req.Username, role), int(sessionTTL.Seconds()))
 	writeJSON(w, http.StatusOK, map[string]any{"authEnabled": true})
 }
 
-// --- User management (Settings → Security) ---
+// --- User management (Settings → Security, admin-only except self-service
+// password changes) ---
 
 // handleListUsers returns the login accounts (never their hashes).
 func (s *server) handleListUsers(w http.ResponseWriter, r *http.Request) {
@@ -281,11 +330,13 @@ func (s *server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAddUser creates an additional login account (the first one becomes
-// the default).
+// the default and is always admin — see config.AddUser). Role defaults to
+// member, the safer choice for a household account that isn't the owner.
 func (s *server) handleAddUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Role     string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -305,7 +356,7 @@ func (s *server) handleAddUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
 		return
 	}
-	if err := s.cfg.AddUser(req.Username, hash); err != nil {
+	if err := s.cfg.AddUser(req.Username, hash, req.Role); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -326,9 +377,21 @@ func (s *server) handleRemoveUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": s.cfg.AuthSettings().Users})
 }
 
-// handleSetUserPassword changes one account's password.
+// handleSetUserPassword changes one account's password. Admin-only in
+// general, but self-service is always allowed: any signed-in account may
+// change its own password without needing admin rights (this endpoint sits
+// under plain auth in router.go, not requireAdmin, precisely for that).
 func (s *server) handleSetUserPassword(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
+	actorUser, actorRole, ok := s.currentUser(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid or missing API key")
+		return
+	}
+	if actorRole != config.RoleAdmin && !strings.EqualFold(actorUser, username) {
+		writeError(w, http.StatusForbidden, "admin access required to change another user's password")
+		return
+	}
 	var req struct {
 		Password string `json:"password"`
 	}
@@ -356,14 +419,40 @@ func (s *server) handleSetUserPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleMakeDefaultUser promotes an account to the protected default.
+// handleMakeDefaultUser promotes an account to the protected default (and to
+// admin in the same step — see config.SetDefaultUser).
 func (s *server) handleMakeDefaultUser(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
 	if err := s.cfg.SetDefaultUser(username); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// The promoted user's role may just have changed (member -> admin); its
+	// other sessions must pick that up on next login, not keep the old role.
+	s.sessions.revokeUser(username, currentToken(r))
 	slog.Info("default user changed", "username", username)
+	writeJSON(w, http.StatusOK, map[string]any{"users": s.cfg.AuthSettings().Users})
+}
+
+// handleSetUserRole promotes/demotes an account between admin and member.
+// Admin-only; the default user can't be demoted (config.SetUserRole).
+func (s *server) handleSetUserRole(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := s.cfg.SetUserRole(username, req.Role); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// The account's sessions were issued under the old role; end them so a
+	// demoted member can't keep using an admin session it already holds.
+	s.sessions.revokeUser(username, currentToken(r))
+	slog.Info("user role changed", "username", username, "role", req.Role)
 	writeJSON(w, http.StatusOK, map[string]any{"users": s.cfg.AuthSettings().Users})
 }
 
@@ -426,12 +515,15 @@ func (s *server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "hashing password: "+err.Error())
 		return
 	}
-	if err := s.cfg.AddUser(req.Username, hash); err != nil {
+	// The first-run wizard is always claiming a fresh instance — the account
+	// it creates is the protected default, always admin regardless of what's
+	// passed (see config.AddUser).
+	if err := s.cfg.AddUser(req.Username, hash, config.RoleAdmin); err != nil {
 		writeError(w, http.StatusInternalServerError, "saving config: "+err.Error())
 		return
 	}
 	slog.Info("instance claimed via first-run setup", "username", req.Username)
-	s.setSessionCookie(w, s.sessions.create(req.Username), int(sessionTTL.Seconds()))
+	s.setSessionCookie(w, s.sessions.create(req.Username, config.RoleAdmin), int(sessionTTL.Seconds()))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

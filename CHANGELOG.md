@@ -10,6 +10,19 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Roles / permissions: every login account is now an **admin** or a
+  **member**. Members get everyday use — browsing, monitoring, search, grab,
+  scan, organize, and their own password — but not the server's own
+  configuration (Settings, Indexers, Download Clients, Quality Profiles,
+  backups, logs, root folders) or other accounts. Every configuration and
+  account-management route is gated behind an admin check on the backend (the
+  UI only hides what the API already refuses); the API key stays
+  admin-equivalent for automation. Set the role when adding a user or
+  promote/demote later. The default user is always an admin, so an instance
+  can never be left with no one who can administer it, and changing a role
+  revokes that account's other sessions immediately. Accounts created before
+  roles existed migrate to admin, so nothing changes until you choose to
+  restrict someone.
 - Library-wide "Refresh metadata" on every library page (except organize-only
   magazines) — the bulk twin of the per-author/per-series Refresh buttons,
   honoring per-record provider overrides; runs in the background, one at a

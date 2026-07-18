@@ -75,9 +75,11 @@ function Disclosure({
 }
 
 export default function SettingsView({
+  isAdmin,
   onError,
   onLibrariesChanged,
 }: {
+  isAdmin: boolean;
   onError: (message: string) => void;
   onLibrariesChanged?: () => void;
 }) {
@@ -99,6 +101,13 @@ export default function SettingsView({
     reloadLibraries();
     onLibrariesChanged?.();
   };
+
+  // Members get no server-configuration UI at all (every other card's
+  // backing endpoints are admin-only and would just 403) — only the
+  // self-service password change inside Security.
+  if (!isAdmin) {
+    return <SecurityCard onError={onError} isAdmin={false} />;
+  }
 
   return (
     <>
@@ -169,7 +178,7 @@ function GeneralCard({ onError }: { onError: (message: string) => void }) {
 
   return (
     <>
-      <SecurityCard onError={onError} />
+      <SecurityCard onError={onError} isAdmin />
 
       <section className="card">
         <h2>API Key</h2>
@@ -318,7 +327,13 @@ function TimingsPanel({ onError }: { onError: (message: string) => void }) {
 // actions (change password, make default, remove) plus add-user and
 // disable-login. The default user is protected — promote another user first.
 // The API key keeps working for scripts and Prowlarr either way.
-function SecurityCard({ onError }: { onError: (message: string) => void }) {
+function SecurityCard({
+  onError,
+  isAdmin,
+}: {
+  onError: (message: string) => void;
+  isAdmin: boolean;
+}) {
   const { confirmDlg } = useUi();
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [users, setUsers] = useState<UserAccount[]>([]);
@@ -327,6 +342,7 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
+  const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -335,10 +351,10 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
       .authStatus()
       .then((s) => {
         setStatus(s);
-        return s.authEnabled ? api.listUsers().then((r) => setUsers(r.users)) : setUsers([]);
+        return s.authEnabled && isAdmin ? api.listUsers().then((r) => setUsers(r.users)) : setUsers([]);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
-  }, [onError]);
+  }, [onError, isAdmin]);
 
   useEffect(reload, [reload]);
 
@@ -347,6 +363,7 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
     setUsername("");
     setPassword("");
     setConfirmPw("");
+    setRole("member");
     setNotice("");
   };
 
@@ -381,7 +398,7 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
         () =>
           users.length === 0
             ? api.setCredentials(username.trim(), password)
-            : api.addUser(username.trim(), password),
+            : api.addUser(username.trim(), password, role),
         users.length === 0
           ? "✓ Login required from now on — this browser is already signed in"
           : `✓ Added ${username.trim()}`,
@@ -414,12 +431,21 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
   };
 
   // The inline username/password form (add user or change password).
-  const credentialForm = (title: string, withUsername: boolean) => (
+  const credentialForm = (title: string, withUsername: boolean, withRole?: boolean) => (
     <div className="settings-form user-form">
       {withUsername && (
         <label>
           Username
           <input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
+        </label>
+      )}
+      {withRole && (
+        <label>
+          Role
+          <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "member")}>
+            <option value="member">Member — everyday use, no server configuration</option>
+            <option value="admin">Admin — full access, including settings and accounts</option>
+          </select>
         </label>
       )}
       <label>
@@ -450,6 +476,31 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
     </div>
   );
 
+  if (!isAdmin) {
+    return (
+      <section className="card">
+        <h2>Security</h2>
+        <p className="muted">
+          Signed in as <strong>{status?.username}</strong> ({status?.role}).
+          Account management — adding users, roles, removal — is admin-only;
+          ask an admin for that.
+        </p>
+        {form === `pw:${status?.username}` ? (
+          credentialForm("Change password", false)
+        ) : (
+          <div className="settings-actions">
+            <button disabled={busy || !status?.username} onClick={() => openForm(`pw:${status?.username}`)}>
+              Change my password
+            </button>
+          </div>
+        )}
+        {notice && (
+          <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</span>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section className="card">
       <h2>Security</h2>
@@ -466,6 +517,12 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
               <div className="row">
                 <span>
                   👤 {u.username}
+                  <span
+                    className="pill"
+                    title={u.role === "admin" ? "Full access, including settings" : "No server configuration access"}
+                  >
+                    {u.role}
+                  </span>
                   {u.default && (
                     <span className="pill user-default" title="Protected — cannot be removed">
                       default
@@ -482,6 +539,23 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
                   </button>
                   {!u.default && (
                     <>
+                      <button
+                        className="toggle"
+                        disabled={busy}
+                        title={
+                          u.role === "admin"
+                            ? "Demote — loses access to settings and accounts"
+                            : "Promote — full access, including settings and accounts"
+                        }
+                        onClick={() =>
+                          run(
+                            () => api.setUserRole(u.username, u.role === "admin" ? "member" : "admin"),
+                            `✓ ${u.username} is now ${u.role === "admin" ? "a member" : "an admin"}`,
+                          )
+                        }
+                      >
+                        {u.role === "admin" ? "demote to member" : "promote to admin"}
+                      </button>
                       <button
                         className="toggle"
                         disabled={busy}
@@ -503,7 +577,8 @@ function SecurityCard({ onError }: { onError: (message: string) => void }) {
         </ul>
       )}
 
-      {form === "add" && credentialForm(users.length === 0 ? "Enable login" : "Add user", true)}
+      {form === "add" &&
+        credentialForm(users.length === 0 ? "Enable login" : "Add user", true, users.length > 0)}
 
       <div className="settings-actions" style={{ marginTop: "0.6rem" }}>
         {form !== "add" && (

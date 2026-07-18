@@ -368,9 +368,18 @@ metadata endpoints return 503.
   install offers a first-run setup wizard that creates the first account
   without needing the API key. Sessions are 30-day cookies held in memory, so
   a server restart signs everyone out — but **sessions are also bound to
-  their account**: removing a user or changing a password ends that
-  account's other sessions immediately, no restart required. Disable login
-  (removes all accounts, and every session with them) in the same place.
+  their account**: removing a user, changing a password, or changing a role
+  ends that account's other sessions immediately, no restart required. Disable
+  login (removes all accounts, and every session with them) in the same place.
+- **Roles:** each account is an **admin** or a **member**. Admins get
+  everything; members get everyday use — browsing, monitoring, search, grab,
+  scan, organize — but not the server's own configuration (Settings, Indexers,
+  Download Clients, Quality Profiles, backups, logs, root folders) or other
+  accounts. Members still manage their own password. Set a role when adding a
+  user, or promote/demote later; the default user is always an admin, so an
+  instance can never be left with no one who can administer it. The API key
+  stays admin-equivalent for automation. Existing accounts from before roles
+  existed migrate to admin, so nothing changes until you say so.
 - **API key:** always works for automation (Prowlarr sync, scripts) via the
   `X-Api-Key` header or `?apikey=`. Regenerate it under **Settings →
   General** — the old key stops working immediately, so update Prowlarr and
@@ -505,7 +514,7 @@ turns "works on the dev box" into "trustable release".
 ### Post-1.0 ideas
 - [ ] Fuzzy / ISBN- and embedded-metadata-based file matching (scanning is exact-normalized-match today)
 - [ ] `ComicInfo.xml` for CBR archives (needs a RAR writer)
-- [ ] Multi-user / permissions
+- [x] **Multi-user / permissions**: accounts now carry an **admin**/**member** role. Members get everyday use (browse, monitor, search, grab, scan, organize) but not the server's own configuration or other accounts; admins get everything, the API key stays admin-equivalent, and the default user is always an admin so an instance can't be locked out of administration. Set the role when adding a user or promote/demote later — role changes revoke the account's other sessions immediately. Pre-role accounts migrate to admin. Backend gates every configuration/account route behind an admin check (the UI just hides what the API already refuses); see **Security & remote access** above
 - [ ] Additional metadata providers (Open Library, Google Books) as fallbacks
 - [ ] **Native indexer framework — sources Prowlarr can't reach, working *beside* Prowlarr, not instead of it.** Prowlarr only speaks Newznab/Torznab, so sites with no such API (HTML-scrape trackers, direct-download shadow libraries) are structurally out of its reach. Add a `type: native` indexer kind alongside the synced `newznab`/`torznab` rows: each names a built-in Go implementation, and all three kinds feed the *same* `SearchAll` merge, release scoring, and grab pipeline — a native source is a peer indexer in the same list, not a bolt-on. Native rows are LibriNode-managed only and stay off the Readarr-facing surface, so Prowlarr never sees, syncs, or collides with them; they fill exactly the gap it leaves. Two first targets, each exercising a different seam:
   - **AudioBook Bay** (audiobooks). No API — scrape the public listings and **assemble the magnet ourselves** from the on-page info hash + tracker list (precisely the step that breaks Prowlarr→Jackett today). Yields a normal `torrent` release, so it rides the existing qBittorrent path untouched. Design constraints: Cloudflare/anti-bot means a real UA, gentle rate-limiting, and cached caps — the per-indexer exponential backoff already covers repeat failures; audiobook category only.

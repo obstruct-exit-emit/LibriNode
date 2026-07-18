@@ -84,10 +84,10 @@ func TestAuthUserMigrationAndManagement(t *testing.T) {
 	}
 
 	// Add a second user; alice stays default.
-	if err := cfg.AddUser("bob", "hash-b"); err != nil {
+	if err := cfg.AddUser("bob", "hash-b", RoleMember); err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.AddUser("Bob", "hash-b2"); err == nil {
+	if err := cfg.AddUser("Bob", "hash-b2", RoleMember); err == nil {
 		t.Error("case-insensitive duplicate username should be rejected")
 	}
 	// The default cannot be removed.
