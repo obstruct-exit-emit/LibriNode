@@ -14,8 +14,15 @@ auth:                  # present once a login account is added
     - username: you
       password_hash: pbkdf2-sha256$...
       default: true    # the protected primary account (cannot be removed)
+      role: admin      # admin | member (omitted = admin; the default user is
+                       #   always admin). Members can't reach settings/accounts
 metadata:
-  active: hardcover
+  active: hardcover              # primary book provider: hardcover |
+                                 #   openlibrary | googlebooks
+  fallbacks: [openlibrary, googlebooks]  # book providers, in order, consulted
+                                 #   ONLY when the active one draws a blank on a
+                                 #   search or lookup (Settings → Metadata →
+                                 #   Fallbacks); omit for none
   manga_provider: anilist        # anilist | hardcover | none (Settings → Metadata)
   comic_provider: hardcover      # hardcover | comicvine | none
   manga_cover_source: provider   # provider | file — manga volume covers
@@ -26,6 +33,7 @@ metadata:
   providers:
     hardcover: { token: "..." }
     comicvine: { token: "..." }
+    googlebooks: { token: "..." }  # optional — only lifts the rate limit
 naming:
   # Each ebook gets its own folder, so sidecars travel with the book.
   ebook_folder: "{Author Name}/{Book Title} ({Release Year})"
@@ -88,10 +96,22 @@ nests one level shallower (and the magazine default
 Add a user under **Settings → General → Security** to replace the API-key
 prompt with a login page (30-day in-memory sessions — restarts sign everyone
 out). You can keep several accounts: each row has **change password**, and
-non-default users get **make default** and **remove**. One user is always the
-protected **default** — it can't be removed until you promote another user in
-its place. **Disable login** removes every account and returns to the API-key
-prompt. Passwords are stored only as PBKDF2-SHA256 hashes.
+non-default users get a role toggle (**promote/demote**), **make default**,
+and **remove**. One user is always the protected **default** — it can't be
+removed until you promote another user in its place. **Disable login** removes
+every account and returns to the API-key prompt. Passwords are stored only as
+PBKDF2-SHA256 hashes.
+
+Each account is an **admin** or a **member**. Members get everyday use —
+browsing, monitoring, search, grab, scan, organize, and their own password —
+but not the server's own configuration (Settings, Indexers, Download Clients,
+Quality Profiles, backups, logs, root folders) or other accounts; the backend
+refuses those routes, not just the UI. Admins get everything. The default user
+is always an admin, so an instance can't be locked out of administration, and
+changing a role (or password, or removing a user) revokes that account's other
+sessions immediately. Accounts created before roles existed load as admins, so
+nothing changes until you deliberately restrict someone. The API key stays
+admin-equivalent for Prowlarr and scripts.
 
 A brand-new instance offers a **first-run setup wizard** instead (no API key
 needed): it creates the first account — which becomes the default — and walks
@@ -131,8 +151,9 @@ safe to delete (they rebuild on demand):
   source file changes. Clear it from **Settings → Metadata → Clear extracted
   covers**.
 - **Provider art** (`covers/remote/…`): author portraits and series/book
-  covers from Hardcover/AniList/ComicVine, downloaded on add/refresh so the
-  UI serves them locally and they survive the provider's link rot.
+  covers from any provider (Hardcover, AniList, ComicVine, Open Library,
+  Google Books), downloaded on add/refresh so the UI serves them locally and
+  they survive the provider's link rot.
 
 **Settings → Metadata** has buttons to clear each of these, plus
 **Descriptions** (stored in the database — cleared descriptions return on the

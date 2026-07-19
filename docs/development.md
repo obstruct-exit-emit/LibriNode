@@ -27,12 +27,14 @@ npm run build    # production build into web/dist
 cmd/librinode/        entrypoint, background loops, restore staging
 internal/api/         REST handlers, router, auth, backups
 internal/library/     domain model + SQLite store (authors/books/series)
-internal/metadata/    provider registry; hardcover/, anilist/, comicvine/
+internal/metadata/    provider registry + fallback chain; hardcover/,
+                      anilist/, comicvine/, openlibrary/, googlebooks/
 internal/indexer/     Newznab/Torznab clients, search fan-out, backoff
 internal/release/     release parsing + scoring
 internal/download/    qBittorrent/SABnzbd clients, grabs, blocklist
 internal/autosearch/  wanted-list sweeps, per-book search
 internal/importer/    Completed Download Handling, seed-goal cleanup
+internal/refresh/     scheduled + manual metadata re-sync
 internal/scanner/     library file scanning + matching
 internal/organize/    naming-template rename engine (all media types)
 internal/naming/      template token rendering
@@ -41,6 +43,7 @@ internal/comicinfo/   ComicInfo.xml for CBZ archives
 internal/comiccover/  cover extraction from CBZ/CBR archives
 internal/imagecache/  provider-image download cache
 internal/health/      background health checks
+internal/redact/      strips credential-shaped values out of errors/logs
 internal/logging/     rotating log file
 internal/config/      config.yaml + env overrides
 internal/database/    SQLite open + embedded migrations
@@ -49,7 +52,10 @@ docs/                 this documentation (mkdocs)
 packaging/            Docker entrypoint, systemd unit, Windows scripts
 ```
 
-Releases are cut by tagging `v*` — CI builds version-stamped binaries and a
-Docker image (see `.github/workflows/release.yml`).
+Releases are cut by tagging `v*` — CI builds version-stamped binaries
+(linux amd64/arm64, windows amd64), attaches them to a GitHub release, and
+builds and pushes a Docker image to `ghcr.io/<owner>/librinode` (`:latest`
+follows stable tags; a `-rc` tag is a prerelease). See
+`.github/workflows/release.yml`.
 
 Docs preview: `pip install mkdocs-material && mkdocs serve`.

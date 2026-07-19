@@ -1,8 +1,9 @@
 # Changelog
 
 Notable changes to LibriNode. Format loosely follows
-[Keep a Changelog](https://keepachangelog.com/); versions follow semver once
-tagged releases begin (v0.9.0-rc is planned as the first).
+[Keep a Changelog](https://keepachangelog.com/); versions follow semver.
+Tagging began with `v0.9.0-rc.1` and `v0.9.0-rc.2` (release candidates that
+shook out the release CI); `v0.9.0` will be the first stable tag.
 
 ## [Unreleased]
 

@@ -15,8 +15,8 @@ per-type libraries — automatically.
 
 | Type | Metadata | Formats |
 |---|---|---|
-| Ebooks | Hardcover | epub, mobi, azw3, pdf |
-| Audiobooks | Hardcover | m4b, m4a, mp3, flac, opus |
+| Ebooks | Hardcover (+ Open Library / Google Books fallbacks) | epub, mobi, azw3, pdf |
+| Audiobooks | Hardcover (+ Open Library / Google Books fallbacks) | m4b, m4a, mp3, flac, opus |
 | Manga | AniList (no key) or Hardcover | cbz, cbr, epub |
 | Comics | Hardcover or ComicVine (free key) | cbz, cbr, pdf |
 | Magazines | none — added by name (organize-only for now) | pdf, epub, cbz |
@@ -35,8 +35,9 @@ added it to (or own).
 - Reader-friendly layouts: Audiobookshelf folders for audio, Kavita/Komga
   layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre.
 - Poster-grid browsing with detail pages, per-library Wanted pages, a
-  release calendar, health checks, optional login, backups, and a log
-  viewer.
+  release calendar, health checks, backups, and a log viewer.
+- Optional login with **admin/member roles**: members get everyday use,
+  admins get the server's configuration and accounts.
 - Manga/comic extras: per-series Missing view with selective monitoring
   (adds pull metadata only), colorized/monochrome manga variants in one
   library, and covers from the provider or extracted from the owned CBZ/CBR.

@@ -11,7 +11,7 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 | Area | Endpoints |
 |---|---|
 | System | `GET /system/status`, `GET /ping` (no auth), `GET /health`, `POST /health/check`, `GET /log?lines=N`, `GET /image?url=` (cached provider-image proxy) |
-| Auth | `GET /auth/status` + `POST /auth/login` (unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (create/change one account; empty username disables all), `GET/POST /auth/users`, `DELETE /auth/users/{username}` (not the default), `PUT /auth/users/{username}/password`, `PUT /auth/users/{username}/default`, `POST /auth/apikey/regenerate` |
+| Auth | `GET /auth/status` + `POST /auth/login` (unauthenticated), `POST /auth/logout`, `PUT /auth/credentials` (create/change one account; empty username disables all), `GET/POST /auth/users` (adds take `"role": "admin"\|"member"`, default member), `DELETE /auth/users/{username}` (not the default), `PUT /auth/users/{username}/password` (self-service: admin, or the same user), `PUT /auth/users/{username}/role` (`admin`\|`member`; the default user stays admin), `PUT /auth/users/{username}/default`, `POST /auth/apikey/regenerate` |
 | Setup | `GET /setup/status` (unauthenticated — is this a fresh instance?), `POST /auth/setup` (first-run wizard: claim a fresh instance, create the default account, no API key needed) |
 | Backups | `GET/POST /backup`, `DELETE /backup/{name}`, `POST /backup/{name}/restore`, `GET /backup/{name}/download` |
 | Root folders | `GET/POST /rootfolder` (manga roots take a `"variant"`: `color`\|`mono`, default `mono`), `DELETE /rootfolder/{id}`, `GET /filesystem?path=` (folder picker: lists a directory's subfolders and its parent; empty path starts at the filesystem root) |
@@ -49,4 +49,17 @@ Notes:
   Readarr-shaped resources (download clients carry `protocol` so torrent
   indexers sync) when the caller's User-Agent is Prowlarr, native JSON
   otherwise.
+- Book metadata (`/search?type=book`, `POST /author`/`/book`) is served by the
+  active provider with the configured fallbacks behind it: a fallback answers
+  only when the active provider finds nothing, and a record found that way is
+  stored under the fallback's name so its later refresh routes back to the same
+  source.
+- **Admin vs. member**: every server-configuration and account-management route
+  (all `/settings/*`, `/indexer*`, `/downloadclient*`, `/qualityprofile*`,
+  `/rootfolder*`, `/backup*`, `/log`, `/filesystem`, and the `/auth/users`
+  management endpoints) requires an **admin** session and returns 403 for a
+  member. Content routes (search, grab, scan, library browsing) are open to any
+  authenticated user. A valid API key is admin-equivalent, so scripts and
+  Prowlarr are unaffected. `PUT /auth/users/{username}/password` is the one
+  exception — a member may change their own password.
 - Without a metadata token, metadata endpoints return 503.
