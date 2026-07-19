@@ -11,6 +11,16 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **Light theme** with a sidebar theme control: Auto (follows your OS, live),
+  Light, or Dark — a per-browser preference applied before first paint, so
+  there's no flash. The whole UI runs on one CSS-variable contract; the light
+  palette is paper-toned.
+- **Per-file actions** on book and volume detail pages: every file row now has
+  **organize** (preview → confirm the naming-template moves for that book) and
+  **delete** (removes the file from disk after a confirmation) — no more
+  round-trip through library-wide organize or the API.
+- Mobile: sidebar group labels now render as row headers at the narrow
+  breakpoint instead of disappearing.
 - **Anna's Archive** + a general **`direct` download protocol**. `direct` is a
   third release protocol beside torrent and usenet: a built-in download client
   (type `direct`, its "host" a local download folder) where **LibriNode streams

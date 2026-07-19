@@ -5,6 +5,7 @@ import ReleaseBrowser from "../components/ReleaseBrowser";
 import { DetailSkeleton } from "../components/Skeleton";
 import { downloadPct, useQueue } from "../useQueue";
 import { formatBytes } from "../format";
+import { useUi } from "../ui";
 
 // Full-page book detail, mirroring the author page: header with cover art,
 // about text, and per-format status/actions, then releases, files, and
@@ -24,6 +25,7 @@ export default function BookDetailView({
   // badge links there when the book is already in it).
   onSwitchLibrary?: (library: "ebook" | "audiobook") => void;
 }) {
+  const { confirmDlg } = useUi();
   const [book, setBook] = useState<Book | null>(null);
   const [author, setAuthor] = useState<Author | null>(null);
   const [showReleases, setShowReleases] = useState(false);
@@ -31,6 +33,8 @@ export default function BookDetailView({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [addingOther, setAddingOther] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
+  const [fileBusy, setFileBusy] = useState(false);
+  const [fileNotice, setFileNotice] = useState("");
 
   const reload = useCallback(() => {
     api
@@ -240,6 +244,7 @@ export default function BookDetailView({
       {files.length > 0 && (
         <section className="card">
           <h2>Files ({files.length})</h2>
+          {fileNotice && <p className="notice ok">{fileNotice}</p>}
           <ul className="rows">
             {files.map((f) => (
               <li key={f.id}>
@@ -247,8 +252,70 @@ export default function BookDetailView({
                   <span className="file-path">
                     {f.tracks?.length ? "📁" : "📄"} {f.path}
                   </span>
-                  <span className="muted">
-                    {f.format} · {formatBytes(f.size)}
+                  <span className="row-actions">
+                    <span className="muted">
+                      {f.format} · {formatBytes(f.size)}
+                    </span>
+                    <button
+                      className="toggle"
+                      disabled={fileBusy}
+                      title="Move this book's files to match the naming templates"
+                      onClick={async () => {
+                        setFileBusy(true);
+                        setFileNotice("");
+                        try {
+                          const preview = await api.renamePreview(undefined, undefined, undefined, book.id);
+                          if (preview.moves.length === 0) {
+                            setFileNotice("✓ Already organized — files match the naming templates.");
+                            return;
+                          }
+                          const ok = await confirmDlg({
+                            title: "Organize files",
+                            message:
+                              `Move ${preview.moves.length} file(s) to match the naming templates?\n\n` +
+                              preview.moves.map((m) => `${m.from}\n  → ${m.to}`).join("\n"),
+                            confirmLabel: "Organize",
+                          });
+                          if (!ok) return;
+                          const applied = await api.renameApply(undefined, undefined, undefined, book.id);
+                          setFileNotice(`✓ Moved ${applied.moves.length} file(s).`);
+                          reload();
+                        } catch (err) {
+                          onError(String(err instanceof Error ? err.message : err));
+                        } finally {
+                          setFileBusy(false);
+                        }
+                      }}
+                    >
+                      organize
+                    </button>
+                    <button
+                      className="danger"
+                      disabled={fileBusy}
+                      title="Delete this file from disk and forget it"
+                      onClick={async () => {
+                        const ok = await confirmDlg({
+                          title: "Delete file",
+                          message: `Delete this file from disk?\n\n${f.path}\n\nThe book loses this copy; without it the book counts as wanted again.`,
+                          confirmLabel: "Delete file",
+                          danger: true,
+                        });
+                        if (!ok) return;
+                        setFileBusy(true);
+                        setFileNotice("");
+                        try {
+                          await api.dismissFile(f.id, true);
+                          setFileNotice("✓ File deleted.");
+                          reload();
+                        } catch (err) {
+                          onError(String(err instanceof Error ? err.message : err));
+                        } finally {
+                          setFileBusy(false);
+                        }
+                      }}
+                    >
+                      delete
+                    </button>
                   </span>
                 </div>
                 {(f.tracks?.length ?? 0) > 0 && (

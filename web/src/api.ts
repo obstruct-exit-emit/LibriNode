@@ -652,21 +652,33 @@ export const api = {
       method: "PUT",
     }),
   scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
-  renamePreview: (authorId?: number, seriesId?: number, mediaType?: string) =>
+  renamePreview: (authorId?: number, seriesId?: number, mediaType?: string, bookId?: number) =>
     request<RenameResult>(
       `/api/v1/library/rename${
-        seriesId
-          ? `?seriesId=${seriesId}`
-          : authorId
-            ? `?authorId=${authorId}`
-            : mediaType
-              ? `?mediaType=${mediaType}`
-              : ""
+        bookId
+          ? `?bookId=${bookId}`
+          : seriesId
+            ? `?seriesId=${seriesId}`
+            : authorId
+              ? `?authorId=${authorId}`
+              : mediaType
+                ? `?mediaType=${mediaType}`
+                : ""
       }`,
     ),
-  renameApply: (authorId?: number, seriesId?: number, mediaType?: string) =>
+  renameApply: (authorId?: number, seriesId?: number, mediaType?: string, bookId?: number) =>
     request<RenameResult>("/api/v1/library/rename", {
-      ...json(seriesId ? { seriesId } : authorId ? { authorId } : mediaType ? { mediaType } : {}),
+      ...json(
+        bookId
+          ? { bookId }
+          : seriesId
+            ? { seriesId }
+            : authorId
+              ? { authorId }
+              : mediaType
+                ? { mediaType }
+                : {},
+      ),
       method: "POST",
     }),
   unmatchedOptions: (mediaType: string) =>

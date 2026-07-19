@@ -13,6 +13,7 @@ import ReleaseBrowser from "../components/ReleaseBrowser";
 import { downloadPct, useQueue } from "../useQueue";
 import { DetailSkeleton } from "../components/Skeleton";
 import { formatBytes } from "../format";
+import { useUi } from "../ui";
 
 // Full-page series detail, *arr-style: header with cover, description and
 // series-level actions, then volumes/issues as rows. Manga volumes and comic
@@ -464,6 +465,7 @@ function VolumeRow({
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
+  const { confirmDlg } = useUi();
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<Book | null>(null);
   const [rowBusy, setRowBusy] = useState(false);
@@ -480,6 +482,56 @@ function VolumeRow({
         .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
     }
     setOpen(!open);
+  };
+
+  // Refresh both the expanded file list and the series' owned/wanted badges.
+  const reloadFiles = () => {
+    api.getBook(volume.id).then(setDetail).catch(() => {});
+    onChanged();
+  };
+
+  const organizeFiles = async () => {
+    setRowBusy(true);
+    try {
+      const preview = await api.renamePreview(undefined, undefined, undefined, volume.id);
+      if (preview.moves.length === 0) {
+        setGrabNotice("✓ Already organized — files match the naming templates.");
+        return;
+      }
+      const ok = await confirmDlg({
+        title: "Organize files",
+        message:
+          `Move ${preview.moves.length} file(s) to match the naming templates?\n\n` +
+          preview.moves.map((m) => `${m.from}\n  → ${m.to}`).join("\n"),
+        confirmLabel: "Organize",
+      });
+      if (!ok) return;
+      await api.renameApply(undefined, undefined, undefined, volume.id);
+      reloadFiles();
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setRowBusy(false);
+    }
+  };
+
+  const deleteFile = async (path: string, fileId: number) => {
+    const ok = await confirmDlg({
+      title: "Delete file",
+      message: `Delete this file from disk?\n\n${path}\n\nThe volume loses this copy; without one it counts as wanted again.`,
+      confirmLabel: "Delete file",
+      danger: true,
+    });
+    if (!ok) return;
+    setRowBusy(true);
+    try {
+      await api.dismissFile(fileId, true);
+      reloadFiles();
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setRowBusy(false);
+    }
   };
 
   const act = (action: () => Promise<unknown>) => {
@@ -560,8 +612,26 @@ function VolumeRow({
                         📄 {variantLabel(f.variant) && `${variantLabel(f.variant)} · `}
                         {f.path}
                       </span>
-                      <span className="muted">
-                        {f.format} · {formatBytes(f.size)}
+                      <span className="row-actions">
+                        <span className="muted">
+                          {f.format} · {formatBytes(f.size)}
+                        </span>
+                        <button
+                          className="toggle"
+                          disabled={rowBusy}
+                          title="Move this volume's files to match the naming templates"
+                          onClick={organizeFiles}
+                        >
+                          organize
+                        </button>
+                        <button
+                          className="danger"
+                          disabled={rowBusy}
+                          title="Delete this file from disk and forget it"
+                          onClick={() => deleteFile(f.path, f.id)}
+                        >
+                          delete
+                        </button>
                       </span>
                     </div>
                   </li>

@@ -9,6 +9,7 @@ import {
   type LibraryStatus,
 } from "./api";
 import SetupWizard from "./components/SetupWizard";
+import { getThemePref, setThemePref, type ThemePref } from "./theme";
 import { UiProvider, useUi } from "./ui";
 import ActivityView from "./views/ActivityView";
 import AuthorDetailView from "./views/AuthorDetailView";
@@ -251,6 +252,7 @@ function AppInner() {
             {navButton({ name: "activity" }, "Activity", "⬇️")}
             {isAdmin && navButton({ name: "settings" }, "Settings", "⚙️")}
             {isAdmin && navButton({ name: "system" }, "System", "🖥️")}
+            <ThemeButton />
             {auth?.authEnabled && auth.authenticated && (
               <button
                 className="nav-item"
@@ -438,6 +440,32 @@ function AppInner() {
         {connected && isAdmin && page.name === "system" && <SystemView onError={onError} />}
       </main>
     </div>
+  );
+}
+
+// ThemeButton cycles the display theme: Auto (follow the OS) → Light → Dark.
+// A per-browser preference, so it lives in the sidebar where every account —
+// member or admin — can reach it.
+function ThemeButton() {
+  const [pref, setPref] = useState<ThemePref>(getThemePref);
+  const next: Record<ThemePref, ThemePref> = { auto: "light", light: "dark", dark: "auto" };
+  const face: Record<ThemePref, { icon: string; label: string }> = {
+    auto: { icon: "🌗", label: "Theme: Auto" },
+    light: { icon: "☀️", label: "Theme: Light" },
+    dark: { icon: "🌙", label: "Theme: Dark" },
+  };
+  return (
+    <button
+      className="nav-item"
+      title="Switch between Auto (follow your system), Light, and Dark"
+      onClick={() => {
+        const p = next[pref];
+        setThemePref(p);
+        setPref(p);
+      }}
+    >
+      <span className="nav-icon">{face[pref].icon}</span> {face[pref].label}
+    </button>
   );
 }
 

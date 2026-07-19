@@ -113,10 +113,10 @@ turns "works on the dev box" into "trustable release".
   These are shadow libraries: **off by default, user-configured, user-responsible**, rate-limited, and documented as such (the same dual-use posture as Prowlarr's own AudioBook Bay definition).
 - [ ] Magazine metadata, two tiers (magazines are fully provider-less today): **Wikidata** as the default series enricher — description, publisher, ISSN, and publication frequency (no key; structured properties, not Wikipedia infobox scraping), with frequency feeding expected-issue prediction for the Calendar and wanted logic — plus **Internet Archive** as an optional per-issue provider for archived/vintage titles (its collections carry real per-issue records with dates and covers, so it can populate an issue list the way Hardcover does for comics). Neither source has per-issue data for *current* magazines — those stay grab/scan-materialized — and commercial newsstand catalogs (Zinio/PressReader) have the right data but no public APIs
 - [ ] Localization
-- [ ] **Light theme / UI preferences** — dark-only today; a theme/language/dates preferences page (natural home for the Localization work above)
+- [x] **Light theme / UI preferences** — a full light palette over the same CSS-variable contract, with a sidebar theme control (Auto → Light → Dark; Auto follows the OS live). Per-browser preference, applied before first paint so there is no flash; language/date preferences remain with Localization above
 - [ ] **Accessibility, the systematic pass** — focus trapping in dialogs, full keyboard paths through the poster grids and row lists, and a screen-reader walk of the main flows (the current polish handled edges, not this)
-- [ ] **Mobile sidebar labels** — sidebar group labels are still hidden at the collapse breakpoint: usable, not lovely
-- [ ] **Per-file actions inline on detail pages** — delete or re-organize a single file straight from a book/volume's file list, without leaving the page
+- [x] **Mobile sidebar labels** — at the collapse breakpoint the group labels now render as full-width row headers over the wrapped nav instead of disappearing
+- [x] **Per-file actions inline on detail pages** — every file row on book and volume pages carries **organize** (preview → confirm the naming-template moves for that book) and **delete** (from disk, with a danger confirm) without leaving the page
 
 ## Maybe ideas
 - [ ] Direct integrations: Calibre, Kavita, Komga, Audiobookshelf notify-on-import

@@ -6,6 +6,7 @@
   --border: #2c2c3a;
   --text: #e8e6e3;
   --muted: #9a97a3;
+  --muted-soft: rgba(154, 151, 163, 0.15);
   --accent: #8e7cc3;
   --accent-dim: #3a3350;
   --accent-soft: rgba(142, 124, 195, 0.12);
@@ -13,6 +14,53 @@
   --danger-soft: rgba(179, 84, 63, 0.14);
   --ok: #5f9e6e;
   --ok-soft: rgba(95, 158, 110, 0.14);
+  /* Informational blue (downloading badges, release-score pills). */
+  --info: #7aa2f7;
+  --info-faint: rgba(122, 162, 247, 0.08);
+  --info-soft: rgba(122, 162, 247, 0.15);
+  --info-strong: rgba(122, 162, 247, 0.3);
+  --warn: #c9a227;
+  --log-err: #e08575;
+  --log-warn: #d9b26a;
+  --code-bg: #22222c;
+  --btn-text: #14141b; /* text on accent-filled buttons */
+  --skel-mid: #3a3a4c;
+  --shadow: rgba(0, 0, 0, 0.45);
+  --shadow-strong: rgba(0, 0, 0, 0.5);
+  --overlay: rgba(0, 0, 0, 0.55);
+}
+
+/* Light theme: same variable contract, paper-toned values. Activated by the
+   sidebar theme control (persisted per browser); "auto" follows the OS. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f3ef;
+  --card: #fdfdfb;
+  --card-2: #f0eeeb;
+  --border: #d9d5cf;
+  --text: #26232e;
+  --muted: #6e6a78;
+  --muted-soft: rgba(110, 106, 120, 0.14);
+  --accent: #6b58a8;
+  --accent-dim: #ddd5ef;
+  --accent-soft: rgba(107, 88, 168, 0.1);
+  --danger: #a3442f;
+  --danger-soft: rgba(163, 68, 47, 0.12);
+  --ok: #3e7d4e;
+  --ok-soft: rgba(62, 125, 78, 0.14);
+  --info: #3a68c0;
+  --info-faint: rgba(58, 104, 192, 0.07);
+  --info-soft: rgba(58, 104, 192, 0.13);
+  --info-strong: rgba(58, 104, 192, 0.28);
+  --warn: #94770f;
+  --log-err: #a3442f;
+  --log-warn: #8a6d1a;
+  --code-bg: #eceae5;
+  --btn-text: #ffffff;
+  --skel-mid: #e6e3dd;
+  --shadow: rgba(30, 25, 45, 0.18);
+  --shadow-strong: rgba(30, 25, 45, 0.25);
+  --overlay: rgba(30, 25, 45, 0.4);
 }
 
 * {
@@ -106,7 +154,7 @@ nav {
 }
 
 code {
-  background: #22222c;
+  background: var(--code-bg);
   padding: 0.15em 0.4em;
   border-radius: 4px;
 }
@@ -180,7 +228,7 @@ button {
   background: var(--accent);
   border: none;
   border-radius: 6px;
-  color: #14141b;
+  color: var(--btn-text);
   font-weight: 600;
   padding: 0.55rem 1rem;
   cursor: pointer;
@@ -467,12 +515,12 @@ button.toggle.on:hover:not(:disabled) {
 }
 
 .owned.yes {
-  background: rgba(95, 158, 110, 0.15);
+  background: var(--ok-soft);
   color: var(--ok);
 }
 
 .owned.no {
-  background: rgba(154, 151, 163, 0.12);
+  background: var(--muted-soft);
   color: var(--muted);
 }
 
@@ -480,7 +528,7 @@ button.toggle.on:hover:not(:disabled) {
 .progress {
   height: 4px;
   border-radius: 999px;
-  background: rgba(154, 151, 163, 0.18);
+  background: var(--muted-soft);
   overflow: hidden;
   margin: 0.35rem 0 0.15rem;
 }
@@ -502,7 +550,7 @@ button.toggle.on:hover:not(:disabled) {
 
 /* Downloading badge: between wanted (muted) and owned (green). */
 .owned.dl {
-  background: rgba(122, 162, 247, 0.15);
+  background: var(--info-soft);
   color: var(--accent);
 }
 
@@ -548,7 +596,7 @@ button.toggle.on:hover:not(:disabled) {
 
 /* --- Security card: user list --- */
 .pill.user-default {
-  background: rgba(95, 158, 110, 0.15);
+  background: var(--ok-soft);
   color: var(--ok);
 }
 
@@ -604,7 +652,7 @@ button.toggle.on:hover:not(:disabled) {
 }
 
 .fb-list button.link:hover {
-  background: rgba(122, 162, 247, 0.08);
+  background: var(--info-faint);
 }
 
 .fb-empty {
@@ -716,7 +764,7 @@ button.toggle.on:hover:not(:disabled) {
 }
 
 .pill.rb-score.on {
-  background: rgba(122, 162, 247, 0.3);
+  background: var(--info-strong);
 }
 
 .rb-errors {
@@ -731,24 +779,24 @@ button.toggle.on:hover:not(:disabled) {
   border-radius: 999px;
   padding: 0.05rem 0.5rem;
   margin-left: 0.35rem;
-  background: rgba(154, 151, 163, 0.15);
+  background: var(--muted-soft);
   color: var(--muted);
   white-space: nowrap;
 }
 
 .pill.rb-score {
-  background: rgba(122, 162, 247, 0.15);
+  background: var(--info-soft);
   color: var(--accent);
   font-weight: 600;
 }
 
 .pill.rb-retail {
-  background: rgba(95, 158, 110, 0.15);
+  background: var(--ok-soft);
   color: var(--ok);
 }
 
 .pill.match-confidence {
-  background: rgba(95, 158, 110, 0.15);
+  background: var(--ok-soft);
   color: var(--ok);
   font-weight: 600;
 }
@@ -832,7 +880,7 @@ button.owned-link:hover {
 }
 
 .nav-item.active {
-  background: var(--accent-dim, #2c2c3a);
+  background: var(--accent-dim);
   font-weight: 600;
 }
 
@@ -861,9 +909,15 @@ button.owned-link:hover {
   .sidebar nav {
     flex-direction: row;
     flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.35rem;
   }
+  /* Group labels stay visible on the wrapped horizontal nav: each takes its
+     own full-width line, so groups read as labeled clusters, not one soup. */
   .nav-group {
-    display: none;
+    flex-basis: 100%;
+    margin: 0.5rem 0 0.1rem;
+    padding-left: 0.2rem;
   }
 }
 
@@ -1060,14 +1114,14 @@ button.show-more {
 
 /* --- Health banner + issue lines --- */
 .health-banner {
-  border-color: #c9a227;
+  border-color: var(--warn);
   padding: 0.75rem 1.25rem;
 }
 
 .health-issue {
   margin: 0.25rem 0;
   font-size: 0.9rem;
-  color: #c9a227;
+  color: var(--warn);
 }
 
 .health-issue.error {
@@ -1270,7 +1324,7 @@ button.link.back:hover {
   border-left: 3px solid var(--accent);
   border-radius: 8px;
   padding: 0.6rem 0.75rem;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 6px 24px var(--shadow);
   animation: toast-in 0.18s ease-out;
 }
 
@@ -1318,7 +1372,7 @@ button.link.back:hover {
   position: fixed;
   inset: 0;
   z-index: 190;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1332,7 +1386,7 @@ button.link.back:hover {
   padding: 1.25rem 1.5rem;
   max-width: 420px;
   width: 100%;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 40px var(--shadow-strong);
 }
 
 .modal h3 {
@@ -1396,7 +1450,7 @@ button.link.back:hover {
   background: linear-gradient(
     100deg,
     var(--border) 40%,
-    #3a3a4c 50%,
+    var(--skel-mid) 50%,
     var(--border) 60%
   );
   background-size: 200% 100%;
@@ -1597,11 +1651,11 @@ button.link.back:hover {
 
 /* Log: level coloring */
 .log-line.err {
-  color: #e08575;
+  color: var(--log-err);
 }
 
 .log-line.warn {
-  color: #d9b26a;
+  color: var(--log-warn);
 }
 
 /* Auth entry screens */
