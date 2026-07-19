@@ -11,6 +11,17 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Native indexer framework + **AudioBook Bay**. A new `type: native` indexer
+  kind sits beside Newznab/Torznab: a built-in Go source, selected as the
+  indexer's type (no URL), feeding the same search/scoring/grab pipeline as the
+  API clients. Native sources are LibriNode-managed only and hidden from
+  Prowlarr, so it never treats them as indexers it owns. The first source is
+  AudioBook Bay: it has no API, so it scrapes the listings and **assembles the
+  magnet from the on-page info hash + tracker list**, yielding an ordinary
+  torrent that rides the existing qBittorrent path. These are dual-use
+  shadow-library sources — **nothing is bundled or enabled by default**; a user
+  adds one deliberately and is responsible for its use. (A general `direct`
+  HTTP-download protocol and Anna's Archive are the still-open next step.)
 - ISBN / embedded-metadata / fuzzy file matching for library scans. On top of
   the existing exact author/title matching, a file now also matches by **ISBN or
   ASIN** — parsed from the filename or read from an epub's embedded OPF metadata

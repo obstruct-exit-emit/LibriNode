@@ -1,0 +1,272 @@
+// Package audiobookbay is a native indexer for AudioBook Bay (ABB): an
+// audiobook torrent site with no Newznab/Torznab API, so Prowlarr can't reach
+// it. ABB never publishes a .torrent or a ready magnet — a release page carries
+// the info hash and a tracker list, and the magnet is assembled from them here
+// (the exact step that breaks a Prowlarr→Jackett definition). The result is an
+// ordinary torrent Release that rides LibriNode's existing qBittorrent path.
+//
+// This is a dual-use shadow-library source: it is never bundled or enabled by
+// default; a user adds it deliberately and is responsible for its use. HTML
+// selectors target ABB's known layout and may need updating if the site
+// changes — the inherent fragility of a scraped source.
+package audiobookbay
+
+import (
+	"context"
+	"fmt"
+	"html"
+	"io"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/librinode/librinode/internal/indexer"
+)
+
+const (
+	// Name is both the registry key and the stored indexer type.
+	Name = "audiobookbay"
+	// DefaultBaseURL is ABB's domain at time of writing; it rotates, so the
+	// user can override it on the indexer (Settings → Indexers → Site URL).
+	DefaultBaseURL = "https://audiobookbay.lu"
+
+	maxDetails  = 12                     // detail pages fetched per search (each is a request)
+	detailPause = 200 * time.Millisecond // politeness delay between detail fetches
+	// A real browser UA — ABB sits behind anti-bot filtering that rejects
+	// obvious scrapers; this is best-effort, not a guarantee.
+	userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+// Def is the native-indexer definition; register it with indexer.RegisterNative.
+func Def() indexer.NativeDef {
+	return indexer.NativeDef{
+		Name:           Name,
+		DisplayName:    "AudioBook Bay",
+		Protocol:       indexer.ProtocolTorrent,
+		MediaTypes:     []string{"audiobook"},
+		DefaultBaseURL: DefaultBaseURL,
+		New: func(ind *indexer.Indexer, httpc *http.Client) indexer.Searcher {
+			base := strings.TrimRight(strings.TrimSpace(ind.BaseURL), "/")
+			if base == "" {
+				base = DefaultBaseURL
+			}
+			return &searcher{ind: ind, base: base, httpc: httpc}
+		},
+	}
+}
+
+type searcher struct {
+	ind   *indexer.Indexer
+	base  string
+	httpc *http.Client
+}
+
+// Test confirms the site is reachable.
+func (s *searcher) Test(ctx context.Context) error {
+	_, err := s.fetch(ctx, s.base+"/")
+	return err
+}
+
+// Search finds audiobook torrents: scrape the listing for release pages, then
+// each page for its info hash + trackers, and assemble a magnet.
+func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]indexer.Release, error) {
+	if mediaType != "audiobook" {
+		return nil, nil
+	}
+	listing, err := s.fetch(ctx, s.base+"/?s="+url.QueryEscape(query))
+	if err != nil {
+		return nil, err
+	}
+
+	releases := []indexer.Release{}
+	for _, post := range parseListing(listing, s.base) {
+		if len(releases) >= maxDetails {
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		page, err := s.fetch(ctx, post.URL)
+		if err != nil {
+			continue // one dead post shouldn't sink the search
+		}
+		hash, trackers, size, ok := parseDetail(page)
+		if !ok {
+			continue // no info hash — nothing to build a magnet from
+		}
+		releases = append(releases, indexer.Release{
+			IndexerID:   s.ind.ID,
+			Indexer:     s.ind.Name,
+			Protocol:    indexer.ProtocolTorrent,
+			Title:       post.Title,
+			GUID:        post.URL,
+			InfoURL:     post.URL,
+			DownloadURL: buildMagnet(hash, post.Title, trackers),
+			Size:        size,
+			Seeders:     -1, // ABB doesn't report swarm health; unknown, not dead
+			Peers:       -1,
+		})
+		time.Sleep(detailPause)
+	}
+	return releases, nil
+}
+
+func (s *searcher) fetch(ctx context.Context, rawURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := s.httpc.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	if err != nil {
+		return "", fmt.Errorf("reading response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d from %s", resp.StatusCode, rawURL)
+	}
+	return string(body), nil
+}
+
+// --- Parsing (pure functions; fixture-tested) ---
+
+type post struct {
+	URL   string
+	Title string
+}
+
+var (
+	// A listing's release links: ABB wraps each post title in
+	// <div class="postTitle">…<a href="URL">Title</a>. Fallback below covers
+	// bare /audio-books/ permalinks if the wrapper markup shifts.
+	postTitleRe = regexp.MustCompile(`(?is)<div class="postTitle">.*?<a\s+href="([^"]+)"[^>]*>(.*?)</a>`)
+	audioLinkRe = regexp.MustCompile(`(?i)<a\s+href="([^"]*/audio-?books?/[^"]+)"[^>]*>([^<]+)</a>`)
+	tagRe       = regexp.MustCompile(`(?s)<[^>]+>`)
+
+	// A detail page's 40-hex info hash: the "Info Hash:" label, then the hash
+	// within a short window (lazily skipping any punctuation/markup between).
+	infoHashRe = regexp.MustCompile(`(?is)info\s*hash.{0,40}?([0-9a-f]{40})`)
+	// Tracker announce URLs (matched on the raw HTML, so hrefs count too).
+	trackerRe = regexp.MustCompile(`(?i)(udp://[^\s"'<>]+|https?://[^\s"'<>]*announce[^\s"'<>]*)`)
+	// "File Size: 512.5 MB" / "Size: 1.2 GB" (matched on tag-stripped text).
+	sizeRe = regexp.MustCompile(`(?i)(?:file\s*)?size:?\s*([0-9][0-9.,]*)\s*(kb|mb|gb|tb)`)
+)
+
+// parseListing extracts release-page links (absolute URLs) and titles from a
+// search results page. Duplicate URLs are collapsed.
+func parseListing(html, base string) []post {
+	seen := map[string]bool{}
+	out := []post{}
+	add := func(href, title string) {
+		u := absURL(base, href)
+		title = cleanText(title)
+		if u == "" || title == "" || seen[u] {
+			return
+		}
+		seen[u] = true
+		out = append(out, post{URL: u, Title: title})
+	}
+	for _, m := range postTitleRe.FindAllStringSubmatch(html, -1) {
+		add(m[1], m[2])
+	}
+	if len(out) == 0 { // markup changed — fall back to permalink shape
+		for _, m := range audioLinkRe.FindAllStringSubmatch(html, -1) {
+			add(m[1], m[2])
+		}
+	}
+	return out
+}
+
+// parseDetail extracts the info hash, tracker list, and size from a release
+// page. ok is false when there's no info hash (nothing to grab). The label and
+// hash often straddle table tags, so hash/size are read from tag-stripped text;
+// trackers are read from the raw HTML so URLs inside attributes still count.
+func parseDetail(pageHTML string) (hash string, trackers []string, size int64, ok bool) {
+	text := stripTags(pageHTML)
+	m := infoHashRe.FindStringSubmatch(text)
+	if m == nil {
+		return "", nil, 0, false
+	}
+	hash = strings.ToLower(m[1])
+
+	seen := map[string]bool{}
+	for _, t := range trackerRe.FindAllString(pageHTML, -1) {
+		t = strings.TrimRight(t, "/")
+		if !seen[t] {
+			seen[t] = true
+			trackers = append(trackers, t)
+		}
+	}
+	size = parseSize(text)
+	return hash, trackers, size, true
+}
+
+// stripTags removes HTML tags and decodes entities, yielding plain text.
+func stripTags(s string) string {
+	return html.UnescapeString(tagRe.ReplaceAllString(s, " "))
+}
+
+// buildMagnet assembles a magnet URI from the info hash, a display name, and
+// trackers.
+func buildMagnet(hash, title string, trackers []string) string {
+	var b strings.Builder
+	b.WriteString("magnet:?xt=urn:btih:")
+	b.WriteString(strings.ToLower(hash))
+	b.WriteString("&dn=")
+	b.WriteString(url.QueryEscape(title))
+	for _, tr := range trackers {
+		b.WriteString("&tr=")
+		b.WriteString(url.QueryEscape(tr))
+	}
+	return b.String()
+}
+
+func parseSize(html string) int64 {
+	m := sizeRe.FindStringSubmatch(html)
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.ParseFloat(strings.ReplaceAll(m[1], ",", ""), 64)
+	if err != nil {
+		return 0
+	}
+	switch strings.ToLower(m[2]) {
+	case "kb":
+		n *= 1 << 10
+	case "mb":
+		n *= 1 << 20
+	case "gb":
+		n *= 1 << 30
+	case "tb":
+		n *= 1 << 40
+	}
+	return int64(n)
+}
+
+// absURL resolves a possibly-relative href against the site base.
+func absURL(base, href string) string {
+	href = strings.TrimSpace(href)
+	if href == "" {
+		return ""
+	}
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+		return strings.TrimRight(href, "/")
+	}
+	if !strings.HasPrefix(href, "/") {
+		href = "/" + href
+	}
+	return strings.TrimRight(base, "/") + strings.TrimRight(href, "/")
+}
+
+// cleanText strips tags, decodes HTML entities, and collapses whitespace from a
+// title fragment.
+func cleanText(s string) string {
+	return strings.Join(strings.Fields(stripTags(s)), " ")
+}

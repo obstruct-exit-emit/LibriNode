@@ -36,8 +36,12 @@ type Indexer struct {
 	AddedAt            string `json:"addedAt"`
 }
 
-// Protocol reports how releases from this indexer are downloaded.
+// Protocol reports how releases from this indexer are downloaded. A native
+// source's protocol comes from its registered definition.
 func (i *Indexer) Protocol() string {
+	if def, ok := NativeDefFor(i.Type); ok {
+		return def.Protocol
+	}
 	if i.Type == TypeTorznab {
 		return ProtocolTorrent
 	}

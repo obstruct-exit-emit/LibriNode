@@ -30,25 +30,25 @@ import (
 )
 
 type server struct {
-	cfg       *config.Config
-	db        *sql.DB
-	store     *library.Store
-	metadata  *metadata.Manager // active provider is swappable at runtime
-	refresh   *refresh.Service
+	cfg      *config.Config
+	db       *sql.DB
+	store    *library.Store
+	metadata *metadata.Manager // active provider is swappable at runtime
+	refresh  *refresh.Service
 	// libRefreshBusy guards the background library-wide metadata refresh —
 	// one at a time, across all libraries.
 	libRefreshBusy atomic.Bool
-	scanner   *scanner.Service
-	organize  *organize.Service
-	indexers  *indexer.Service
-	downloads *download.Service
-	importer  *importer.Service
-	search    *autosearch.Service
-	health    *health.Service
-	images    *imagecache.Cache
-	sessions  *sessionStore
-	webFS     fs.FS // nil when no frontend build is embedded
-	version   string
+	scanner        *scanner.Service
+	organize       *organize.Service
+	indexers       *indexer.Service
+	downloads      *download.Service
+	importer       *importer.Service
+	search         *autosearch.Service
+	health         *health.Service
+	images         *imagecache.Cache
+	sessions       *sessionStore
+	webFS          fs.FS // nil when no frontend build is embedded
+	version        string
 }
 
 // NewRouter builds the API handler. The returned health service is the
@@ -192,6 +192,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("GET /api/v1/indexer", s.requireAdmin(s.handleListIndexers))
 	mux.HandleFunc("POST /api/v1/indexer", s.requireAdmin(s.handleAddIndexer))
 	mux.HandleFunc("GET /api/v1/indexer/schema", s.requireAdmin(s.handleIndexerSchema))
+	mux.HandleFunc("GET /api/v1/indexer/native", s.requireAdmin(s.handleListNativeIndexers))
 	mux.HandleFunc("GET /api/v1/indexer/{id}", s.requireAdmin(s.handleGetIndexer))
 	mux.HandleFunc("PUT /api/v1/indexer/{id}", s.requireAdmin(s.handleUpdateIndexer))
 	mux.HandleFunc("DELETE /api/v1/indexer/{id}", s.requireAdmin(s.handleDeleteIndexer))

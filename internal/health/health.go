@@ -237,7 +237,7 @@ func (s *Service) checkIndexers(ctx context.Context) []Issue {
 			continue
 		}
 		cctx, cancel := context.WithTimeout(ctx, checkTimeout)
-		err := s.indexers.Client().Test(cctx, ind)
+		err := s.indexers.Test(cctx, ind)
 		cancel()
 		if err != nil {
 			issues = append(issues, Issue{

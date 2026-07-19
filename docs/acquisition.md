@@ -24,6 +24,25 @@ An indexer that keeps failing **rests with exponential backoff** (5 minutes
 doubling up to 6 hours) instead of being retried every sweep; one success
 clears it.
 
+### Native indexers
+
+Some sites speak no Newznab/Torznab API, so Prowlarr structurally can't reach
+them. A **native** indexer is a built-in source, selected as the indexer's
+*type* under **Settings → Indexers** (no URL to paste) — it feeds the same
+search, scoring, and grab pipeline as everything else. Native indexers are
+LibriNode-managed only and are hidden from Prowlarr, so it never treats them as
+indexers it owns.
+
+**AudioBook Bay** (audiobooks) is the first: it scrapes the public listings and
+assembles a magnet from the page's info hash and tracker list, producing an
+ordinary torrent that goes through qBittorrent like any other. Its domain
+rotates, so the indexer takes an optional **Site URL** override.
+
+These are dual-use shadow-library sources: **nothing is bundled or enabled by
+default** — you add one deliberately, and its use is your responsibility. Being
+scraped, a native source is inherently more fragile than an API indexer (a site
+redesign can break it) and is rate-limited to stay polite.
+
 ## Release scoring & quality profiles
 
 Search results are parsed (author/title/year, formats, retail, language,

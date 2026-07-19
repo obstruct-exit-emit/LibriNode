@@ -10,6 +10,7 @@ import {
   type Indexer,
   type MetadataSettings,
   type NamingSettings,
+  type NativeIndexer,
   type PathMapping,
   type ProviderSettings,
   type QualityProfile,
@@ -1465,6 +1466,7 @@ function IndexersCard({
 }) {
   const { confirmDlg } = useUi();
   const [indexers, setIndexers] = useState<Indexer[]>([]);
+  const [natives, setNatives] = useState<NativeIndexer[]>([]);
   const [draft, setDraft] = useState(emptyIndexer);
   // Edit-in-place: the saved indexer loaded into the form, or null when adding.
   const [editing, setEditing] = useState<Indexer | null>(null);
@@ -1479,6 +1481,14 @@ function IndexersCard({
   }, [onError]);
 
   useEffect(reload, [reload]);
+  // Built-in native sources, offered as extra "types" in the add form.
+  useEffect(() => {
+    api.listNativeIndexers().then(setNatives).catch(() => setNatives([]));
+  }, []);
+
+  // The native definition backing the current draft type, if any — drives which
+  // fields the form shows (native sources have no Newznab/Torznab URL).
+  const nativeDef = natives.find((n) => n.name === draft.type);
 
   const set = (patch: Partial<typeof emptyIndexer>) =>
     setDraft((d) => ({ ...d, ...patch }));
@@ -1553,8 +1563,11 @@ function IndexersCard({
     if (ok) run(() => api.deleteIndexer(ind.id));
   };
 
-  const draftValid =
-    draft.name.trim() !== "" && /^https?:\/\//.test(draft.baseUrl.trim());
+  const draftValid = nativeDef
+    ? draft.name.trim() !== "" &&
+      (!nativeDef.needsApiKey || draft.apiKey.trim() !== "") &&
+      (draft.baseUrl.trim() === "" || /^https?:\/\//.test(draft.baseUrl.trim()))
+    : draft.name.trim() !== "" && /^https?:\/\//.test(draft.baseUrl.trim());
 
   return (
     <section className="card">
@@ -1575,15 +1588,29 @@ function IndexersCard({
                 <span className="saved-main">
                   <span className="saved-head">
                     <strong>{ind.name}</strong>
-                    <span className="pill" title={ind.type}>
-                      {ind.type === "torznab" ? "🧲 torrent" : "📡 usenet"}
-                    </span>
+                    {(() => {
+                      const nd = natives.find((n) => n.name === ind.type);
+                      if (nd) {
+                        return (
+                          <span className="pill" title={`native source: ${nd.name}`}>
+                            🧩 {nd.displayName}
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="pill" title={ind.type}>
+                          {ind.type === "torznab" ? "🧲 torrent" : "📡 usenet"}
+                        </span>
+                      );
+                    })()}
                     <span className="pill" title="Priority — lower wins ties">
                       prio {ind.priority}
                     </span>
                     {!ind.enabled && <span className="pill off">disabled</span>}
                   </span>
-                  <span className="muted file-path saved-sub">{ind.baseUrl}</span>
+                  <span className="muted file-path saved-sub">
+                    {ind.baseUrl || (natives.some((n) => n.name === ind.type) ? "built-in source" : "")}
+                  </span>
                 </span>
                 <span className="row-actions">
                   <button
@@ -1637,24 +1664,69 @@ function IndexersCard({
           Type
           <select
             value={draft.type}
-            onChange={(e) => set({ type: e.target.value as Indexer["type"] })}
+            onChange={(e) => {
+              const type = e.target.value;
+              const native = natives.find((n) => n.name === type);
+              // Switching to a native source clears the Newznab/Torznab URL and
+              // seeds any default site URL; switching back restores a blank.
+              set({ type, baseUrl: native?.defaultBaseUrl ?? "", apiKey: "" });
+            }}
           >
             <option value="torznab">Torznab (torrents)</option>
             <option value="newznab">Newznab (usenet)</option>
+            {natives.length > 0 && (
+              <optgroup label="Native sources (no API — scraped)">
+                {natives.map((n) => (
+                  <option key={n.name} value={n.name}>
+                    {n.displayName} ({n.mediaTypes.join(", ") || "all"})
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
-        <label>
-          URL
-          <input
-            placeholder="https://indexer.example (or a Prowlarr/Jackett feed URL)"
-            value={draft.baseUrl}
-            onChange={(e) => set({ baseUrl: e.target.value })}
-          />
-        </label>
-        <label>
-          API key
-          <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
-        </label>
+        {nativeDef ? (
+          <>
+            <p className="muted field-note">
+              <strong>{nativeDef.displayName}</strong> is a built-in scraped
+              source — no Newznab/Torznab endpoint. It's off until you enable it,
+              user-configured, and yours to use responsibly; it stays hidden from
+              Prowlarr. Serves: {nativeDef.mediaTypes.join(", ") || "all media"}.
+            </p>
+            {nativeDef.defaultBaseUrl !== "" && (
+              <label>
+                Site URL (override — its domain rotates)
+                <input
+                  placeholder={nativeDef.defaultBaseUrl}
+                  value={draft.baseUrl}
+                  onChange={(e) => set({ baseUrl: e.target.value })}
+                />
+              </label>
+            )}
+            {nativeDef.needsApiKey && (
+              <label>
+                API key / membership token
+                <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
+              </label>
+            )}
+          </>
+        ) : (
+          <>
+            <label>
+              URL
+              <input
+                placeholder="https://indexer.example (or a Prowlarr/Jackett feed URL)"
+                value={draft.baseUrl}
+                onChange={(e) => set({ baseUrl: e.target.value })}
+              />
+            </label>
+            <label>
+              API key
+              <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
+            </label>
+          </>
+        )}
+        {!nativeDef && (
         <Disclosure summary="Advanced — per-type categories">
           <p className="muted field-note">
             Newznab/Torznab category IDs searched per media type. Defaults cover
@@ -1692,17 +1764,18 @@ function IndexersCard({
               onChange={(e) => set({ magazineCategories: e.target.value })}
             />
           </label>
-          <label>
-            Priority (1–50, lower wins ties)
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={draft.priority}
-              onChange={(e) => set({ priority: Number(e.target.value) || 25 })}
-            />
-          </label>
         </Disclosure>
+        )}
+        <label>
+          Priority (1–50, lower wins ties)
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={draft.priority}
+            onChange={(e) => set({ priority: Number(e.target.value) || 25 })}
+          />
+        </label>
         <div className="settings-actions">
           <button disabled={busy || !draftValid} onClick={testDraft}>
             Test

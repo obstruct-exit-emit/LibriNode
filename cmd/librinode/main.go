@@ -22,6 +22,7 @@ import (
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/indexer"
+	"github.com/librinode/librinode/internal/indexer/audiobookbay"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/logging"
 	"github.com/librinode/librinode/internal/metadata"
@@ -159,6 +160,11 @@ func run(dataDir string) error {
 	// reports itself as "hardcover" (what series.Source records).
 	metadata.RegisterSeries("hardcover-comics", hardcover.ComicSeriesFactory)
 	metadata.RegisterSeries("comicvine", comicvine.Factory)
+
+	// Native indexers: built-in sources for sites with no Newznab/Torznab API.
+	// Nothing is bundled or enabled by default — registering only makes the
+	// implementation selectable when a user deliberately adds it.
+	indexer.RegisterNative(audiobookbay.Def())
 
 	providers := metadata.NewManager()
 	// ProviderSettings carries the global metadata preferences (language,

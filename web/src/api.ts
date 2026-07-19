@@ -115,7 +115,8 @@ export interface ScanResult {
 export interface Indexer {
   id: number;
   name: string;
-  type: "newznab" | "torznab";
+  // "newznab" | "torznab" | a native implementation name (e.g. "audiobookbay").
+  type: string;
   baseUrl: string;
   apiKey: string;
   categories: string;
@@ -125,6 +126,17 @@ export interface Indexer {
   enabled: boolean;
   priority: number;
   addedAt?: string;
+}
+
+// NativeIndexer describes a built-in scraped/bespoke source selectable as an
+// indexer type — no Newznab/Torznab URL, just the implementation.
+export interface NativeIndexer {
+  name: string;
+  displayName: string;
+  protocol: string;
+  mediaTypes: string[];
+  defaultBaseUrl: string;
+  needsApiKey: boolean;
 }
 
 export interface DownloadClient {
@@ -767,6 +779,7 @@ export const api = {
     }),
 
   listIndexers: () => request<Indexer[]>("/api/v1/indexer"),
+  listNativeIndexers: () => request<NativeIndexer[]>("/api/v1/indexer/native"),
   addIndexer: (ind: Omit<Indexer, "id" | "addedAt">) =>
     request<Indexer>("/api/v1/indexer", json(ind)),
   updateIndexer: (ind: Indexer) =>

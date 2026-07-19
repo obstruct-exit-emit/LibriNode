@@ -61,8 +61,25 @@ func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 	if in.Name == "" {
 		return nil, "name is required"
 	}
+	if in.Priority <= 0 || in.Priority > 50 {
+		in.Priority = 25
+	}
+
+	// A native source: no Newznab/Torznab URL or categories — the built-in
+	// implementation owns all of that. An optional base URL (for sources whose
+	// domain rotates) and API key pass through untouched.
+	if def, ok := indexer.NativeDefFor(in.Type); ok {
+		if in.BaseURL != "" && !strings.HasPrefix(in.BaseURL, "http://") && !strings.HasPrefix(in.BaseURL, "https://") {
+			return nil, "baseUrl must be an http(s) URL"
+		}
+		if def.NeedsAPIKey && in.APIKey == "" {
+			return nil, def.DisplayName + " needs an API key"
+		}
+		return &in, ""
+	}
+
 	if in.Type != indexer.TypeNewznab && in.Type != indexer.TypeTorznab {
-		return nil, "type must be newznab or torznab"
+		return nil, "type must be newznab, torznab, or a native source"
 	}
 	if !strings.HasPrefix(in.BaseURL, "http://") && !strings.HasPrefix(in.BaseURL, "https://") {
 		return nil, "baseUrl must be an http(s) URL"
@@ -79,10 +96,26 @@ func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 	if in.MagazineCategories == "" {
 		in.MagazineCategories = "7010"
 	}
-	if in.Priority <= 0 || in.Priority > 50 {
-		in.Priority = 25
-	}
 	return &in, ""
+}
+
+// handleListNativeIndexers lists the built-in native indexer implementations
+// the Settings UI can offer as indexer types (name, label, protocol, the media
+// types each serves, and whether it takes an optional base URL or an API key).
+func (s *server) handleListNativeIndexers(w http.ResponseWriter, r *http.Request) {
+	defs := indexer.NativeImplementations()
+	out := make([]map[string]any, 0, len(defs))
+	for _, d := range defs {
+		out = append(out, map[string]any{
+			"name":           d.Name,
+			"displayName":    d.DisplayName,
+			"protocol":       d.Protocol,
+			"mediaTypes":     d.MediaTypes,
+			"defaultBaseUrl": d.DefaultBaseURL,
+			"needsApiKey":    d.NeedsAPIKey,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *server) handleListIndexers(w http.ResponseWriter, r *http.Request) {
@@ -91,8 +124,15 @@ func (s *server) handleListIndexers(w http.ResponseWriter, r *http.Request) {
 		writeIndexerError(w, err)
 		return
 	}
+	// Native sources are LibriNode-managed only: hide them from Prowlarr so it
+	// never treats them as indexers it owns (and prunes them on sync). The
+	// app's own UI (any non-Prowlarr caller) still sees them.
+	prowlarr := isProwlarr(r)
 	resources := make([]map[string]any, 0, len(indexers))
 	for i := range indexers {
+		if prowlarr && indexer.IsNativeType(indexers[i].Type) {
+			continue
+		}
 		resources = append(resources, mergedIndexerResource(&indexers[i]))
 	}
 	writeJSON(w, http.StatusOK, resources)
@@ -176,7 +216,7 @@ func (s *server) handleTestIndexer(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), indexerTestTimeout)
 	defer cancel()
 
-	if err := s.indexers.Client().Test(ctx, in); err != nil {
+	if err := s.indexers.Test(ctx, in); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}

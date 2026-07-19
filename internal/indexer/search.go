@@ -38,6 +38,28 @@ func NewService(store *Store) *Service {
 func (s *Service) Store() *Store   { return s.store }
 func (s *Service) Client() *Client { return s.client }
 
+// searchOne runs one indexer's search, dispatching a native source to its
+// registered implementation and everything else to the Newznab/Torznab client.
+// A native source that doesn't serve the media type yields nothing (not an error).
+func (s *Service) searchOne(ctx context.Context, ind *Indexer, query, mediaType string) ([]Release, error) {
+	if def, ok := NativeDefFor(ind.Type); ok {
+		if !def.Serves(mediaType) {
+			return nil, nil
+		}
+		return def.New(ind, s.client.httpc).Search(ctx, query, mediaType)
+	}
+	return s.client.Search(ctx, ind, query, ind.CategoriesFor(mediaType))
+}
+
+// Test verifies an indexer definition, dispatching native sources to their
+// implementation and API indexers to the Newznab/Torznab caps check.
+func (s *Service) Test(ctx context.Context, ind *Indexer) error {
+	if def, ok := NativeDefFor(ind.Type); ok {
+		return def.New(ind, s.client.httpc).Test(ctx)
+	}
+	return s.client.Test(ctx, ind)
+}
+
 // resting reports whether an indexer is in backoff, without mutating state.
 func (s *Service) resting(id int64) (time.Time, bool) {
 	s.mu.Lock()
@@ -106,7 +128,7 @@ func (s *Service) SearchAll(ctx context.Context, query, mediaType string) (relea
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			found, err := s.client.Search(ctx, &ind, query, ind.CategoriesFor(mediaType))
+			found, err := s.searchOne(ctx, &ind, query, mediaType)
 			s.recordResult(ind.ID, err)
 			mu.Lock()
 			defer mu.Unlock()
