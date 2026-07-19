@@ -1116,6 +1116,76 @@ func TestExistingFileImport(t *testing.T) {
 	}
 }
 
+// TestExistingFileFuzzySuggestion: a filename that no title key is a substring
+// of — a couple of typos — still gets pre-filled with the closest book by fuzzy
+// similarity, but stays UNconfident so it's never auto-imported (the user
+// confirms in the picker).
+func TestExistingFileFuzzySuggestion(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	rootDir := t.TempDir()
+	// "The Colur of Magik" — two typos off "The Colour of Magic"; substring
+	// matching can't place it, fuzzy should.
+	path := filepath.Join(rootDir, "Terry Pratchett", "The Colur of Magik.epub")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, nil), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	type option struct {
+		File       library.BookFile `json:"file"`
+		Suggested  int64            `json:"suggested"`
+		Confident  bool             `json:"confident"`
+		Confidence int              `json:"confidence"`
+		Candidates []struct {
+			ID    int64  `json:"id"`
+			Title string `json:"title"`
+		} `json:"candidates"`
+	}
+	var options []option
+	a.want(a.call("GET", "/api/v1/bookfile/unmatched/options?mediaType=ebook", nil, &options), http.StatusOK)
+	if len(options) != 1 {
+		t.Fatalf("options = %d, want 1", len(options))
+	}
+	opt := options[0]
+
+	// The fuzzy pick is the typo's real book, offered but not auto-imported.
+	if opt.Confident {
+		t.Error("fuzzy match must not be confident (would auto-import a guess)")
+	}
+	var colourID int64
+	for _, c := range opt.Candidates {
+		if c.Title == "The Colour of Magic" {
+			colourID = c.ID
+		}
+	}
+	if colourID == 0 {
+		t.Fatalf("expected 'The Colour of Magic' among candidates: %+v", opt.Candidates)
+	}
+	if opt.Suggested != colourID {
+		t.Errorf("fuzzy Suggested = %d, want The Colour of Magic (%d)", opt.Suggested, colourID)
+	}
+
+	// A confident (substring/exact) match is unaffected — sanity that the
+	// fuzzy path didn't displace the normal one: the bulk import skips this
+	// unconfident guess.
+	var bulk struct {
+		Imported    int `json:"imported"`
+		NeedsReview int `json:"needsReview"`
+	}
+	a.want(a.call("POST", "/api/v1/bookfile/import-matched",
+		map[string]string{"mediaType": "ebook"}, &bulk), http.StatusOK)
+	if bulk.Imported != 0 || bulk.NeedsReview != 1 {
+		t.Errorf("bulk = %+v, want a fuzzy guess left for review, not imported", bulk)
+	}
+}
+
 // TestDuplicateUnmatchedFile: an unmatched file that confidently matches an
 // OWNED book is flagged as a duplicate with the current library file attached;
 // Replace swaps the library's copy for the new file (old one deleted from

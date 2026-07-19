@@ -37,8 +37,8 @@ type unmatchedOption struct {
 	AuthorID   int64                `json:"authorId,omitempty"`
 	SeriesName string               `json:"seriesName,omitempty"`
 	SeriesID   int64                `json:"seriesId,omitempty"`
-	Volume     float64              `json:"volume,omitempty"` // manga/comic: parsed volume number
-	Issue      string               `json:"issue,omitempty"`  // magazine: parsed issue identifier
+	Volume     float64              `json:"volume,omitempty"`    // manga/comic: parsed volume number
+	Issue      string               `json:"issue,omitempty"`     // magazine: parsed issue identifier
 	Suggested  int64                `json:"suggested,omitempty"` // candidate id; confident when Confident
 	Confident  bool                 `json:"confident"`
 	Confidence int                  `json:"confidence"` // 0–100, how sure the suggestion is
@@ -164,6 +164,11 @@ func (s *server) proseOptions(mediaType string, files []relFile) ([]unmatchedOpt
 		// book the library already has.
 		var want, dup matchTally
 		var dupBook *library.Book
+		// Fuzzy fallback (used only when nothing matched by containment): the
+		// closest unowned title by character-bigram similarity, with the
+		// runner-up so an ambiguous near-tie can be rejected.
+		var fuzzyBest, fuzzySecond float64
+		var fuzzyBook *library.Book
 		for j := range books {
 			b := &books[j]
 			if b.MediaType != "book" {
@@ -200,11 +205,40 @@ func (s *server) proseOptions(mediaType string, files []relFile) ([]unmatchedOpt
 			if want.consider(hit, cov, isExact) {
 				opt.Suggested = b.ID
 			}
+			// Track the closest title by fuzzy similarity for the rescue path.
+			sim := 0.0
+			for _, key := range scanner.TitleKeys(b.Title) {
+				if key == "" {
+					continue
+				}
+				if v := scanner.Similarity(key, normTitle); v > sim {
+					sim = v
+				}
+				if normAlt != "" {
+					if v := scanner.Similarity(key, normAlt); v > sim {
+						sim = v
+					}
+				}
+			}
+			if sim > fuzzyBest {
+				fuzzyBest, fuzzySecond, fuzzyBook = sim, fuzzyBest, b
+			} else if sim > fuzzySecond {
+				fuzzySecond = sim
+			}
 		}
 		opt.Confident = want.unique()
 		opt.Confidence = want.confidence()
 		if !opt.Confident {
 			opt.Suggested = 0 // ambiguous (or nothing) — the user picks
+		}
+		// Fuzzy rescue: nothing contained the title, but one candidate is close
+		// and clearly ahead of the runner-up. Pre-select it so the file lands
+		// in the picker with a best guess — never confident, so it's never
+		// auto-imported; the user confirms.
+		const fuzzyFloor, fuzzyGap = 0.72, 0.08
+		if want.bestLen == 0 && opt.Suggested == 0 && fuzzyBook != nil &&
+			fuzzyBest >= fuzzyFloor && fuzzyBest-fuzzySecond >= fuzzyGap {
+			opt.Suggested = fuzzyBook.ID
 		}
 		// Duplicate flag: a unique confident match against an owned book, with
 		// the file currently holding that spot so the user can compare.

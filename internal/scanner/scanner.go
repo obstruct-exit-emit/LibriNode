@@ -157,6 +157,15 @@ func (s *Service) scanRoot(ctx context.Context, root library.RootFolder, index *
 			return err
 		}
 		parsed := ParsePath(rel)
+		// The filename had no ISBN — an epub carries one in its OPF metadata;
+		// read it so a title-mismatched but correctly-identified file still lands.
+		if parsed.ISBN == "" && ext == ".epub" {
+			isbn, asin := EpubIdentifiers(path)
+			parsed.ISBN = isbn
+			if parsed.ASIN == "" {
+				parsed.ASIN = asin
+			}
+		}
 		bookID := index.match(parsed, "ebook")
 
 		file := &library.BookFile{
@@ -635,6 +644,7 @@ type matchIndex struct {
 	authorsByName map[string]int64               // Normalize(author name) → author id
 	byAuthorTitle map[int64]map[string]keyedBook // author id → title key → best claimant
 	byTitle       map[string]map[int64]bool      // title key → set of book ids
+	byIdentifier  map[string]int64               // ISBN-13 or ASIN → book id
 	volumes       map[string]map[float64]int64   // mediaType/series key → number → book id
 	magazines     map[string]*library.Series     // Normalize(title) → magazine series
 	// membership: prose book id → format-library bits (1 ebook, 2 audiobook).
@@ -710,8 +720,29 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 		authorsByName: map[string]int64{},
 		byAuthorTitle: map[int64]map[string]keyedBook{},
 		byTitle:       map[string]map[int64]bool{},
+		byIdentifier:  map[string]int64{},
 		volumes:       map[string]map[float64]int64{},
 		membership:    map[int64]uint8{},
+	}
+
+	idents, err := s.store.EditionIdentifiers()
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range idents {
+		// First writer wins; ISBNs are unique per edition, and if two editions
+		// of different books somehow share one, the title tiers still resolve
+		// the ambiguity the way they do today.
+		if id.ISBN13 != "" {
+			if _, ok := idx.byIdentifier[id.ISBN13]; !ok {
+				idx.byIdentifier[id.ISBN13] = id.BookID
+			}
+		}
+		if id.ASIN != "" {
+			if _, ok := idx.byIdentifier[id.ASIN]; !ok {
+				idx.byIdentifier[id.ASIN] = id.BookID
+			}
+		}
 	}
 
 	refs, err := s.store.ListVolumeRefs()
@@ -784,6 +815,19 @@ func (s *Service) buildIndex() (*matchIndex, error) {
 // mediaType is the file's format: a book belonging to some format library
 // but not this one is never silently attached (allowedFor).
 func (idx *matchIndex) match(p ParsedFile, mediaType string) int64 {
+	// Identifier tier: an ISBN/ASIN match is proof this file IS this book, so
+	// it wins outright — ahead of, and independent of, any title guessing.
+	// Format-enrollment consent still applies (allowedFor): a matching ebook
+	// for an audiobook-only book still routes to Unmatched, as today.
+	for _, ident := range []string{p.ISBN, p.ASIN} {
+		if ident == "" {
+			continue
+		}
+		if id, ok := idx.byIdentifier[ident]; ok && idx.allowedFor(id, mediaType) {
+			return id
+		}
+	}
+
 	if p.Title == "" {
 		return 0
 	}

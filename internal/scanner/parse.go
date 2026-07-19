@@ -185,6 +185,12 @@ type ParsedFile struct {
 	Author   string
 	Title    string
 	AltTitle string
+	// ISBN (normalized to ISBN-13) and ASIN parsed from the filename, when it
+	// carries one. Embedded-metadata identifiers (epub OPF) are filled in by
+	// the scanner, which has the file bytes. Either lets the matcher resolve
+	// the file by identifier before falling back to author/title.
+	ISBN string
+	ASIN string
 }
 
 // leadingIndex matches "01 - " / "1.5 - " series-position prefixes.
@@ -203,9 +209,12 @@ func ParsePath(relPath string) ParsedFile {
 
 	base := parts[len(parts)-1]
 	base = strings.TrimSuffix(base, filepath.Ext(base))
+	stem := base // pre-index-strip, so a leading numeric ISBN isn't eaten
 	base = leadingIndex.ReplaceAllString(base, "")
 
 	var p ParsedFile
+	p.ISBN = ISBNFromName(stem)
+	p.ASIN = ASINFromName(stem)
 	if len(parts) >= 2 {
 		// First directory is the author by convention.
 		p.Author = parts[0]

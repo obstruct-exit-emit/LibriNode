@@ -218,6 +218,91 @@ func TestScanUnmatchedGainsMatchAfterBookAdded(t *testing.T) {
 	}
 }
 
+// TestScanMatchesByIdentifier: a file the title parser can't place still
+// matches when it (or its embedded epub metadata) names an ISBN of a known
+// edition — and a file with neither a usable identifier nor a title match still
+// falls through to Unmatched, unchanged.
+func TestScanMatchesByIdentifier(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	author := &library.Author{Source: "hardcover", ForeignID: "1", Name: "George R. R. Martin", Monitored: true}
+	if err := store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	// Two books, each with an ISBN-bearing edition.
+	got := &library.Book{AuthorID: author.ID, Source: "hardcover", ForeignID: "b1", Title: "A Game of Thrones", Monitored: true}
+	clash := &library.Book{AuthorID: author.ID, Source: "hardcover", ForeignID: "b2", Title: "A Clash of Kings", Monitored: true}
+	for _, b := range []*library.Book{got, clash} {
+		if err := store.UpsertBook(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.UpsertEdition(&library.Edition{BookID: got.ID, Source: "hardcover", ForeignID: "e1", ISBN13: "9780553380163", Format: "ebook"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertEdition(&library.Edition{BookID: clash.ID, Source: "hardcover", ForeignID: "e2", ISBN13: "9780553381696", Format: "ebook"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rootDir := t.TempDir()
+	if _, err := db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('ebook', ?)`, rootDir); err != nil {
+		t.Fatal(err)
+	}
+	writeAt := func(rel string, body []byte) {
+		path := filepath.Join(rootDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Filename ISBN, title unrecognizable ("got_dl_final").
+	writeAt("George R. R. Martin/got_dl_final_9780553380163.epub", []byte("x"))
+	// Embedded-metadata ISBN: filename names neither the title nor the ISBN.
+	opf := `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0"><metadata><dc:identifier>urn:isbn:9780553381696</dc:identifier></metadata></package>`
+	writeAt("George R. R. Martin/scan0042.epub", buildEpub(t, opf))
+	// No identifier, no title match → stays unmatched.
+	writeAt("George R. R. Martin/Totally Unrelated Filename.epub", []byte("x"))
+
+	if _, err := New(store).Scan(context.Background()); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+
+	gotBook, _ := store.GetBook(got.ID)
+	if !gotBook.HasFile {
+		t.Error("A Game of Thrones should have matched by filename ISBN")
+	}
+	clashBook, _ := store.GetBook(clash.ID)
+	if !clashBook.HasFile {
+		t.Error("A Clash of Kings should have matched by embedded epub ISBN")
+	}
+	unmatched, _ := store.ListUnmatchedBookFiles()
+	if len(unmatched) != 1 || filepath.Base(unmatched[0].Path) != "Totally Unrelated Filename.epub" {
+		t.Fatalf("unmatched = %+v (want just the unrelated file)", unmatched)
+	}
+}
+
+// buildEpub returns the bytes of a minimal epub carrying the given OPF.
+func buildEpub(t *testing.T, opf string) []byte {
+	t.Helper()
+	path := writeEpub(t, map[string]string{
+		"META-INF/container.xml": containerXML,
+		"content.opf":            opf,
+	})
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
 // TestScanAudiobookDiscSubfolders: a book folder holding only disc-style
 // subfolders (CD1/CD2) is one multi-disc book unit, not a navigation level —
 // and never two bogus "CD1"/"CD2" books.

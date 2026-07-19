@@ -150,11 +150,23 @@ organize, browse, calendar) still works.
 
 ## Existing-file import (unmatched files)
 
+Scanning matches files in layers. First by **identifier**: an **ISBN** (read
+from the filename or an epub's embedded metadata) or Amazon **ASIN** matched
+against a known edition places a file outright, however oddly it's named
+(ISBN-10 and ISBN-13 are treated as the same book, and every candidate is
+checksum-validated so a stray number can't pose as one). Then by **title**, the
+exact author/title matching as before. Anything left goes to the Unmatched card
+below — where a **fuzzy** pass (typo- and word-order-tolerant) pre-fills the
+import picker with the closest book when it's confident enough, as a suggestion
+you confirm, never an automatic import.
+
 Every library page ends with an **Unmatched files** card when a scan found
-files it couldn't confidently place. Each row shows the library's best
-suggestion with a **0–100% confidence rating** (100% = exact title; a unique
-longer match scores by how much of the filename it explains and its lead
-over the runner-up; ties cap at 40% and never auto-import):
+files it couldn't confidently place (an ISBN-matched file is placed during the
+scan and never lands here). Each row shows the library's best suggestion with a
+**0–100% confidence rating** (100% = exact title; a unique longer match scores
+by how much of the filename it explains and its lead over the runner-up; ties
+cap at 40% and never auto-import; a fuzzy guess is offered pre-selected but
+never auto-imported):
 
 - **Confident rows import in one click** — and **Import all matched (N)**
   takes every confident row at once. Adopted prose books are enrolled in the

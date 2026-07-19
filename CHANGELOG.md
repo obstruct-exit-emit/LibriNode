@@ -11,6 +11,15 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- ISBN / embedded-metadata / fuzzy file matching for library scans. On top of
+  the existing exact author/title matching, a file now also matches by **ISBN or
+  ASIN** — parsed from the filename or read from an epub's embedded OPF metadata
+  — against a known edition, so a correctly-identified but oddly-named file is
+  placed outright (ISBN-10 and ISBN-13 fold to one checksum-validated form). And
+  when nothing matches by title, a **fuzzy** pass (character-bigram similarity)
+  pre-fills the Unmatched card's import picker with the closest book — offered
+  for one-click confirmation, never auto-imported. A file with neither a usable
+  identifier nor a fuzzy hit behaves exactly as before.
 - Automated clean-machine backup/restore drill: a backup taken on a populated
   data dir is staged into a brand-new empty one and swapped in through the real
   startup path, asserting the library comes back whole (author/book rows intact,

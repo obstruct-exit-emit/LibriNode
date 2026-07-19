@@ -396,7 +396,7 @@ func (s *Store) ListBooksInLibrary(mediaType string) ([]Book, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT `+bookCols+` FROM books WHERE media_type = 'book' AND `+col+` = 1 ORDER BY sort_title`)
+	rows, err := s.db.Query(`SELECT ` + bookCols + ` FROM books WHERE media_type = 'book' AND ` + col + ` = 1 ORDER BY sort_title`)
 	if err != nil {
 		return nil, err
 	}
@@ -495,6 +495,37 @@ func (s *Store) ListEditions(bookID int64) ([]Edition, error) {
 		editions = append(editions, *e)
 	}
 	return editions, rows.Err()
+}
+
+// EditionIdent is one edition's stable identifiers, for matching on-disk files
+// by ISBN/ASIN rather than by parsed title.
+type EditionIdent struct {
+	BookID int64
+	ISBN13 string
+	ASIN   string
+}
+
+// EditionIdentifiers returns every edition that carries an ISBN-13 or an ASIN,
+// in one query — the scanner builds an identifier→book index from it so a file
+// whose name or embedded metadata names an ISBN matches its book outright,
+// ahead of any title guessing.
+func (s *Store) EditionIdentifiers() ([]EditionIdent, error) {
+	rows, err := s.db.Query(
+		`SELECT book_id, isbn13, asin FROM editions WHERE isbn13 != '' OR asin != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	idents := []EditionIdent{}
+	for rows.Next() {
+		var e EditionIdent
+		if err := rows.Scan(&e.BookID, &e.ISBN13, &e.ASIN); err != nil {
+			return nil, err
+		}
+		idents = append(idents, e)
+	}
+	return idents, rows.Err()
 }
 
 // --- Series ---
