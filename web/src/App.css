@@ -818,6 +818,29 @@ button.owned-link:hover {
   overflow-wrap: anywhere;
 }
 
+/* Unmatched-file rows carry both a long file path and wide actions (Add /
+   Match-to-book select / Import). Let them wrap so the path takes its own
+   full-width line and the actions sit below, instead of the path collapsing
+   to a one-character-per-line vertical strip. */
+.unmatched-files .row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.unmatched-files .file-path {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.unmatched-files .row-actions {
+  flex-wrap: wrap;
+}
+
+/* The "Match to book…" select can be long; keep it inside the row. */
+.unmatched-files .row-actions select {
+  max-width: 100%;
+}
+
 .rename-plan {
   border: 1px solid var(--border);
   border-radius: 8px;

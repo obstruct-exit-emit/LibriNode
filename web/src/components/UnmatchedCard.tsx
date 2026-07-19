@@ -79,7 +79,7 @@ export default function UnmatchedCard({
         : "pick from the author's books";
 
   return (
-    <section className="card">
+    <section className="card unmatched-files">
       <div className="card-head">
         <h2>Unmatched files ({options.length})</h2>
         {confidentCount > 0 && (
