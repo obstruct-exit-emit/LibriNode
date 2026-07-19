@@ -1,11 +1,11 @@
 // Package annasarchive is a native indexer for Anna's Archive (AA): a
 // shadow-library search engine over ebook collections. Search is keyless
-// (scraped from the public results page), but downloads need a paid AA
-// membership key — the release then carries AA's fast-download API URL, which
-// answers JSON naming the real file URL; LibriNode's direct download client
-// follows that hop and streams the file itself. Without a key the source is
-// search-only: releases carry no download URL and scoring marks them
-// ungrabbable with the reason.
+// (scraped from the public results page). Downloads ride LibriNode's direct
+// client: AA identifies files by MD5 — the same key the open Libgen mirrors
+// serve by — so every release carries those mirror URLs as its download path,
+// membership or not. A paid AA membership key adds the fast-download API as
+// the first hop (fastest and most complete; AA indexes collections the open
+// mirrors don't carry), with the mirrors as failover.
 //
 // This is a dual-use shadow-library source: it is never bundled or enabled by
 // default; a user adds it deliberately and is responsible for its use. HTML
@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/librinode/librinode/internal/indexer"
+	"github.com/librinode/librinode/internal/indexer/libgen"
 )
 
 const (
@@ -45,8 +46,8 @@ func Def() indexer.NativeDef {
 		Protocol:       indexer.ProtocolDirect,
 		MediaTypes:     []string{"ebook"},
 		DefaultBaseURL: DefaultBaseURL,
-		// The key is optional: keyless = search-only (downloads need an AA
-		// membership key), so it isn't required to add the indexer.
+		// The key is optional: keyless downloads go through the open mirrors;
+		// a membership key adds AA's fast-download API as the first hop.
 		NeedsAPIKey: false,
 		New: func(ind *indexer.Indexer, httpc *http.Client) indexer.Searcher {
 			return &searcher{ind: ind, bases: parseBases(ind.BaseURL), httpc: httpc}
@@ -124,8 +125,16 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 			Seeders:   -1,
 			Peers:     -1,
 		}
+		// Anna's identifies files by MD5 — the same key the open Libgen
+		// mirrors serve by, so those mirrors are the download path even
+		// without a membership. A membership key adds the fast-download API
+		// as the first (fastest, most reliable) hop; the open mirrors stay
+		// as failover either way. Anna's also indexes collections the
+		// mirrors don't carry — those grabs fail over and error cleanly.
+		rel.DownloadURL = libgen.MirrorDownloadURLs(res.MD5)
 		if key := strings.TrimSpace(s.ind.APIKey); key != "" {
-			rel.DownloadURL = base + "/dyn/api/fast_download.json?md5=" + res.MD5 + "&key=" + url.QueryEscape(key)
+			rel.DownloadURL = base + "/dyn/api/fast_download.json?md5=" + res.MD5 +
+				"&key=" + url.QueryEscape(key) + "|" + rel.DownloadURL
 		}
 		releases = append(releases, rel)
 	}

@@ -127,11 +127,14 @@ Extending past what the standard *arr APIs can see:
 - **AudioBook Bay** (audiobooks): scrapes listings and assembles the magnet
   from the on-page info hash + trackers; rides the normal torrent path;
   primary + fallback site URLs for its rotating domains
-- **Anna's Archive** (ebooks): keyless search; downloads via a paid
-  membership key — without one it's search-only and says so
+- **Anna's Archive** (ebooks): keyless search; downloads route through the
+  open mirror network by MD5 — no account needed — and an optional membership
+  key adds its fast-download API as the first, fastest hop
+- **Library Genesis** (ebooks): both indexes (non-fiction + fiction)
+  searched and merged, downloads via the same open-mirror failover
 - **`direct` download protocol**: LibriNode's own HTTP fetcher — mirror-list
-  failover, membership-API awareness, progress in the queue, imported like any
-  other grab; open to Libgen/open-mirror sources later
+  failover, membership-API and landing-page awareness, progress in the
+  queue, imported like any other grab; any direct-link source can ride it
 - **Metadata fallbacks**: Open Library and Google Books (both keyless) answer
   only when the primary draws a blank; records remember their source so
   refreshes route back to it

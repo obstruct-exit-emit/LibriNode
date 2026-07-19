@@ -72,31 +72,33 @@ func TestDefAndSearchKeyedVsKeyless(t *testing.T) {
 
 	srv := serveResults(t)
 
-	// Keyless: real Search returns releases with no download URL (search-only).
+	// Keyless: downloads route through the open Libgen mirrors by MD5.
 	ind := &indexer.Indexer{Name: "AA", BaseURL: srv.URL}
 	s := def.New(ind, srv.Client())
 	rels, err := s.Search(context.Background(), "le guin", "ebook")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(rels) != 2 || rels[0].DownloadURL != "" {
-		t.Fatalf("keyless releases = %+v, want 2 with empty download URLs", rels)
+	md5 := "0123456789abcdef0123456789abcdef"
+	mirrors := "https://library.lol/main/" + md5 + "|https://libgen.li/ads.php?md5=" + md5
+	if len(rels) != 2 || rels[0].DownloadURL != mirrors {
+		t.Fatalf("keyless releases = %+v, want 2 with mirror download URLs", rels)
 	}
-	if rels[0].Protocol != indexer.ProtocolDirect || rels[0].GUID != "0123456789abcdef0123456789abcdef" {
+	if rels[0].Protocol != indexer.ProtocolDirect || rels[0].GUID != md5 {
 		t.Errorf("release = %+v", rels[0])
 	}
-	if rels[0].InfoURL != srv.URL+"/md5/0123456789abcdef0123456789abcdef" {
+	if rels[0].InfoURL != srv.URL+"/md5/"+md5 {
 		t.Errorf("info URL = %q", rels[0].InfoURL)
 	}
 
-	// With a key: the fast-download API URL, key query-escaped.
+	// With a key: the fast-download API first, the open mirrors as failover.
 	ind.APIKey = "sekret+key"
 	s = def.New(ind, srv.Client())
 	rels, err = s.Search(context.Background(), "le guin", "ebook")
 	if err != nil {
 		t.Fatalf("keyed Search: %v", err)
 	}
-	want := srv.URL + "/dyn/api/fast_download.json?md5=0123456789abcdef0123456789abcdef&key=sekret%2Bkey"
+	want := srv.URL + "/dyn/api/fast_download.json?md5=" + md5 + "&key=sekret%2Bkey|" + mirrors
 	if rels[0].DownloadURL != want {
 		t.Errorf("keyed download URL = %q, want %q", rels[0].DownloadURL, want)
 	}

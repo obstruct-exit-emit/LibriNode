@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -148,35 +150,63 @@ func (d *direct) setStatus(item *directItem, status, errMsg string) {
 	d.mu.Unlock()
 }
 
-// download fetches one URL into the folder, following a JSON "download_url"
-// answer (membership fast-download APIs) one hop to the real file.
+// download fetches one URL into the folder, following up to two indirection
+// hops to the real file: a JSON "download_url" envelope (membership
+// fast-download APIs) or an HTML landing page naming the file (open-mirror
+// hosts put the direct link behind a "GET" page).
 func (d *direct) download(ctx context.Context, item *directItem, rawURL string) (string, error) {
 	resp, err := d.get(ctx, rawURL)
 	if err != nil {
 		return "", err
 	}
 
-	// A JSON answer isn't the file — it's an API envelope naming the file.
-	if strings.Contains(resp.Header.Get("Content-Type"), "json") {
-		defer resp.Body.Close()
-		var envelope struct {
-			DownloadURL string `json:"download_url"`
-			Error       string `json:"error"`
-		}
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
-			return "", fmt.Errorf("unexpected JSON answer: %w", err)
-		}
-		if envelope.DownloadURL == "" {
-			if envelope.Error != "" {
-				return "", fmt.Errorf("download API: %s", envelope.Error)
+	for hop := 0; hop < 2; hop++ {
+		ct := resp.Header.Get("Content-Type")
+		switch {
+		case strings.Contains(ct, "json"):
+			// A JSON answer isn't the file — an API envelope naming it.
+			var envelope struct {
+				DownloadURL string `json:"download_url"`
+				Error       string `json:"error"`
 			}
-			return "", fmt.Errorf("download API answered without a download_url")
+			decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope)
+			resp.Body.Close()
+			if decodeErr != nil {
+				return "", fmt.Errorf("unexpected JSON answer: %w", decodeErr)
+			}
+			if envelope.DownloadURL == "" {
+				if envelope.Error != "" {
+					return "", fmt.Errorf("download API: %s", envelope.Error)
+				}
+				return "", fmt.Errorf("download API answered without a download_url")
+			}
+			if resp, err = d.get(ctx, envelope.DownloadURL); err != nil {
+				return "", err
+			}
+			continue
+		case strings.Contains(ct, "text/html"):
+			// A landing page, not the file: pick the download link out of it.
+			body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			resp.Body.Close()
+			if readErr != nil {
+				return "", readErr
+			}
+			next := fileLinkFromHTML(string(body), resp.Request.URL)
+			if next == "" {
+				return "", fmt.Errorf("mirror page has no recognizable download link")
+			}
+			if resp, err = d.get(ctx, next); err != nil {
+				return "", err
+			}
+			continue
 		}
-		if resp, err = d.get(ctx, envelope.DownloadURL); err != nil {
-			return "", err
-		}
+		break
 	}
 	defer resp.Body.Close()
+
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/html") || strings.Contains(ct, "json") {
+		return "", fmt.Errorf("mirror kept answering with pages instead of a file")
+	}
 
 	dest := filepath.Join(d.dir(), safeFilename(item.title)+extensionFor(resp))
 	part := dest + ".part"
@@ -284,6 +314,68 @@ func (d *direct) Remove(ctx context.Context, id string, deleteData bool) error {
 		os.Remove(it.path)
 	}
 	return nil
+}
+
+// anchorRe captures each <a href="…">text</a> pair on a landing page.
+var anchorRe = regexp.MustCompile(`(?is)<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)</a>`)
+
+// htmlTagRe strips markup from an anchor's inner text.
+var htmlTagRe = regexp.MustCompile(`(?s)<[^>]+>`)
+
+// fileExtRe marks hrefs whose path ends in a downloadable book/audio format.
+var fileExtRe = regexp.MustCompile(`(?i)\.(epub|pdf|mobi|azw3?|cbz|cbr|djvu|m4b|m4a|mp3|flac|zip)([?#]|$)`)
+
+// fileLinkFromHTML picks the download link out of a mirror landing page. The
+// open-mirror hosts share a small set of shapes: a big "GET" anchor
+// (library.lol, libgen ads pages), a get.php-style href, a direct file href,
+// or an IPFS gateway link — tried in that order. Returns "" when nothing on
+// the page looks like a file.
+func fileLinkFromHTML(page string, base *url.URL) string {
+	type link struct{ href, text string }
+	links := []link{}
+	for _, m := range anchorRe.FindAllStringSubmatch(page, -1) {
+		text := strings.TrimSpace(htmlTagRe.ReplaceAllString(m[2], " "))
+		links = append(links, link{href: m[1], text: strings.ToUpper(strings.Join(strings.Fields(text), " "))})
+	}
+	pick := func(match func(link) bool) string {
+		for _, l := range links {
+			if match(l) {
+				if abs := absoluteURL(base, l.href); abs != "" {
+					return abs
+				}
+			}
+		}
+		return ""
+	}
+	if u := pick(func(l link) bool { return l.text == "GET" }); u != "" {
+		return u
+	}
+	if u := pick(func(l link) bool { return strings.Contains(strings.ToLower(l.href), "get.php") }); u != "" {
+		return u
+	}
+	if u := pick(func(l link) bool { return fileExtRe.MatchString(l.href) }); u != "" {
+		return u
+	}
+	return pick(func(l link) bool { return strings.Contains(strings.ToLower(l.href), "ipfs") })
+}
+
+// absoluteURL resolves a possibly-relative href against the page's URL.
+func absoluteURL(base *url.URL, href string) string {
+	href = strings.TrimSpace(href)
+	if href == "" || strings.HasPrefix(href, "javascript:") || strings.HasPrefix(href, "#") {
+		return ""
+	}
+	ref, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+	if base == nil {
+		if ref.IsAbs() {
+			return ref.String()
+		}
+		return ""
+	}
+	return base.ResolveReference(ref).String()
 }
 
 // splitMirrors splits a "url|url|url" mirror list, dropping empties.

@@ -147,6 +147,77 @@ func TestDirectJSONErrorAndSecretRedaction(t *testing.T) {
 	}
 }
 
+// TestDirectFollowsHTMLLandingPage: an open-mirror landing page (a "GET"
+// anchor pointing at the real file, library.lol style) is followed to the
+// file; a second mirror shape (get.php href) works too.
+func TestDirectFollowsHTMLLandingPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/main/abc123":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(`<html><h1>Title</h1><a href="/file/book%20title.epub"><h2>GET</h2></a><a href="/ipfs/xyz">IPFS</a></html>`))
+		case "/ads.php":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(`<html><td><a href="get.php?md5=abc&key=x">GET</a></td></html>`))
+		case "/get.php":
+			_, _ = w.Write([]byte("mirror-two-bytes"))
+		case "/file/book title.epub", "/file/book%20title.epub":
+			w.Header().Set("Content-Type", "application/epub+zip")
+			_, _ = w.Write([]byte("landing-page-book"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), srv.URL+"/main/abc123", "Landing Book")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "completed" || !strings.HasSuffix(it.Path, ".epub") {
+		t.Fatalf("item = %+v, want completed .epub via the GET link", it)
+	}
+	body, _ := os.ReadFile(it.Path)
+	if string(body) != "landing-page-book" {
+		t.Errorf("file = %q, want the real file, not the landing page", body)
+	}
+
+	// The ads.php/get.php shape resolves too.
+	id2, err := d.Add(context.Background(), srv.URL+"/ads.php?md5=abc", "Mirror Two")
+	if err != nil {
+		t.Fatalf("Add(ads.php): %v", err)
+	}
+	it2 := waitDone(t, d, id2)
+	if it2.Status != "completed" {
+		t.Fatalf("ads.php item = %+v", it2)
+	}
+	body2, _ := os.ReadFile(it2.Path)
+	if string(body2) != "mirror-two-bytes" {
+		t.Errorf("mirror-two file = %q", body2)
+	}
+}
+
+// TestDirectHTMLWithoutFileLinkFails: a page with no recognizable download
+// link fails that mirror (and the whole download when it's the only one).
+func TestDirectHTMLWithoutFileLinkFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><a href="/about">About</a><a href="/search">Search</a></html>`))
+	}))
+	defer srv.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), srv.URL+"/page", "No Link Here")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if it := waitDone(t, d, id); it.Status != "failed" {
+		t.Fatalf("status = %q, want failed", it.Status)
+	}
+}
+
 // TestDirectEmptyURLRejected: an empty download URL errors immediately with
 // the needs-a-key hint.
 func TestDirectEmptyURLRejected(t *testing.T) {

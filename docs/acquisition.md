@@ -40,17 +40,22 @@ rotates and it runs several mirrors, so the indexer takes an optional **Site
 URL** override plus an optional **fallback site URL** — searches try the main
 site first and fail over to the mirror when it doesn't answer.
 
-**Anna's Archive** (ebooks) is the second, and it brings a third release
-protocol with it: **direct** — plain HTTP file downloads, handled by a built-in
+**Anna's Archive** and **Library Genesis** (ebooks) ride a third release
+protocol: **direct** — plain HTTP file downloads, handled by a built-in
 **Direct fetcher** download client (Settings → Download Clients: pick *Direct
 fetcher*, point it at a local download folder). LibriNode streams the file
-itself — no external program — shows progress in the Activity queue, and
-Completed Download Handling imports the result like any other grab. Anna's
-search works without any key; **downloads need a paid AA membership key**
-entered on the indexer — without one the source is search-only and release
-candidates are marked "no download link" with the reason. The fetcher takes
-mirror lists in stride (URLs tried in order), so other direct-link sources can
-ride the same client later.
+itself — no external program — follows mirror landing pages and
+membership-API answers to the real file, shows progress in the Activity
+queue, and Completed Download Handling imports the result like any other
+grab. Every release carries a **mirror list**: hosts are tried in order and
+a dead one fails over to the next.
+
+Both sources identify files by **MD5**, the key the open mirror network
+serves by — so downloads work **without any account**. On Anna's Archive, an
+optional paid **membership key** adds its fast-download API as the first,
+fastest hop (and covers collections the open mirrors don't carry); the open
+mirrors remain the failover either way. Libgen searches both its non-fiction
+and fiction indexes and merges the results.
 
 These are dual-use shadow-library sources: **nothing is bundled or enabled by
 default** — you add one deliberately, and its use is your responsibility. Being
