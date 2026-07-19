@@ -14,13 +14,15 @@ in progress. Highlights from the hardening period, newest first:
 - **Library Genesis** + keyless **Anna's Archive** downloads — the general
   shadow-library layer. Both sources identify files by MD5, the key the open
   mirror network serves by: every release now carries a mirror list the direct
-  fetcher fails over across, so downloads work **without any account**. The
-  fetcher learned to follow open-mirror landing pages (the "GET" page shapes)
-  to the real file, alongside the existing membership-API JSON hop. On Anna's,
-  a paid membership key now adds its fast-download API as the first hop rather
-  than being required; Libgen searches its non-fiction and fiction indexes and
-  merges the results. Same posture as every native source: off by default,
-  user-added, user-responsible.
+  fetcher fails over across, so downloads work **without any account**. Anna's
+  is **free-first** — its download chain leads with Anna's own free "slow"
+  partner servers and the open mirrors; an optional membership key only appends
+  the paid fast-download API as a last-resort fallback, never required and
+  never prioritized over the free path. The fetcher learned to follow
+  open-mirror landing pages (the "GET" page shapes) to the real file, alongside
+  the existing membership-API JSON hop. Libgen searches its non-fiction and
+  fiction indexes and merges the results. Same posture as every native source:
+  off by default, user-added, user-responsible.
 - **Light theme** with a sidebar theme control: Auto (follows your OS, live),
   Light, or Dark — a per-browser preference applied before first paint, so
   there's no flash. The whole UI runs on one CSS-variable contract; the light

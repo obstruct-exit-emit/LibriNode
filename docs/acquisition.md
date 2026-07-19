@@ -33,12 +33,33 @@ search, scoring, and grab pipeline as everything else. Native indexers are
 LibriNode-managed only and are hidden from Prowlarr, so it never treats them as
 indexers it owns.
 
-**AudioBook Bay** (audiobooks) is the first: it scrapes the public listings and
-assembles a magnet from the page's info hash and tracker list, producing an
-ordinary torrent that goes through qBittorrent like any other. Its domain
-rotates and it runs several mirrors, so the indexer takes an optional **Site
-URL** override plus an optional **fallback site URL** — searches try the main
-site first and fail over to the mirror when it doesn't answer.
+The built-in sources today:
+
+- **AudioBook Bay** (audiobooks) scrapes the public listings and assembles a
+  magnet from the page's info hash and tracker list, producing an ordinary
+  torrent that goes through qBittorrent like any other.
+- **Anna's Archive** (ebooks) searches without an account and — importantly —
+  **downloads without one too**: its releases use the `direct` protocol
+  (below), leading with Anna's own free "slow" partner servers and the open
+  mirror network, keyed by each file's MD5. A paid Anna's membership key is
+  optional; it only appends the fast-download API as a last-resort fallback,
+  so the free path is always primary.
+- **Library Genesis** (ebooks) searches both the non-fiction and fiction
+  indexes and downloads through the same open mirrors — the general
+  shadow-library layer, not tied to any single site.
+
+Each rotating-domain source takes an optional **Site URL** override plus an
+optional **fallback site URL** (comma-separated); searches try them in order.
+
+### The `direct` protocol
+
+Ebook shadow-library sources hand out plain HTTP links, not torrents or NZBs,
+so LibriNode has its own **direct** download client — add it under **Settings →
+Download Clients** with a local download folder as its "host". It streams the
+file itself, **failing over across a `|`-separated mirror list**, following a
+membership-API JSON answer or an open-mirror landing page one hop to the real
+file, and Completed Download Handling imports the result like any other grab.
+It's source-agnostic: any direct-link source can ride it.
 
 **Anna's Archive** and **Library Genesis** (ebooks) ride a third release
 protocol: **direct** — plain HTTP file downloads, handled by a built-in

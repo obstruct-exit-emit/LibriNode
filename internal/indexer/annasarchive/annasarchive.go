@@ -1,11 +1,11 @@
 // Package annasarchive is a native indexer for Anna's Archive (AA): a
 // shadow-library search engine over ebook collections. Search is keyless
-// (scraped from the public results page). Downloads ride LibriNode's direct
-// client: AA identifies files by MD5 — the same key the open Libgen mirrors
-// serve by — so every release carries those mirror URLs as its download path,
-// membership or not. A paid AA membership key adds the fast-download API as
-// the first hop (fastest and most complete; AA indexes collections the open
-// mirrors don't carry), with the mirrors as failover.
+// (scraped from the public results page), and so are downloads — the free
+// path is primary. Every release's download chain (handled by the direct
+// client, which fails over between entries) leads with AA's own free "slow"
+// partner servers, then the open Libgen mirror network (AA identifies files
+// by MD5, the same key those mirrors serve by). A paid AA membership key is
+// optional and only appends the fast-download API as a last-resort fallback.
 //
 // This is a dual-use shadow-library source: it is never bundled or enabled by
 // default; a user adds it deliberately and is responsible for its use. HTML
@@ -46,8 +46,8 @@ func Def() indexer.NativeDef {
 		Protocol:       indexer.ProtocolDirect,
 		MediaTypes:     []string{"ebook"},
 		DefaultBaseURL: DefaultBaseURL,
-		// The key is optional: keyless downloads go through the open mirrors;
-		// a membership key adds AA's fast-download API as the first hop.
+		// The key is optional: downloads are free by default (Anna's slow
+		// servers + open mirrors); a key only adds a paid fast-path fallback.
 		NeedsAPIKey: false,
 		New: func(ind *indexer.Indexer, httpc *http.Client) indexer.Searcher {
 			return &searcher{ind: ind, bases: parseBases(ind.BaseURL), httpc: httpc}
@@ -87,9 +87,30 @@ func (s *searcher) Test(ctx context.Context) error {
 	return fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
 }
 
-// Search scrapes AA's search results into releases. With a membership key each
-// release's download URL is the fast-download API (a JSON hop the direct
-// client follows); without one releases are informational only.
+// downloadURLs builds a release's "|"-separated direct-download chain,
+// free-first. Anna's free "slow" partner servers come first, then the open
+// Libgen mirrors (both need no account); a membership key adds the paid
+// fast-download API only as a last-resort fallback. This keeps the free path
+// primary — a paid key is a bonus, never a requirement.
+func (s *searcher) downloadURLs(base, md5 string) string {
+	parts := []string{
+		// Anna's own free downloads (slow partner servers).
+		base + "/slow_download/" + md5 + "/0/0",
+		base + "/slow_download/" + md5 + "/0/1",
+		base + "/slow_download/" + md5 + "/0/2",
+		// The open Libgen mirror network, keyed by the same MD5.
+		libgen.MirrorDownloadURLs(md5),
+	}
+	if key := strings.TrimSpace(s.ind.APIKey); key != "" {
+		parts = append(parts,
+			base+"/dyn/api/fast_download.json?md5="+md5+"&key="+url.QueryEscape(key))
+	}
+	return strings.Join(parts, "|")
+}
+
+// Search scrapes AA's search results into direct-protocol releases. Downloads
+// are free out of the box (Anna's slow servers + open mirrors); a membership
+// key only adds a paid fast-path fallback.
 func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]indexer.Release, error) {
 	if mediaType != "ebook" {
 		return nil, nil
@@ -125,17 +146,7 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 			Seeders:   -1,
 			Peers:     -1,
 		}
-		// Anna's identifies files by MD5 — the same key the open Libgen
-		// mirrors serve by, so those mirrors are the download path even
-		// without a membership. A membership key adds the fast-download API
-		// as the first (fastest, most reliable) hop; the open mirrors stay
-		// as failover either way. Anna's also indexes collections the
-		// mirrors don't carry — those grabs fail over and error cleanly.
-		rel.DownloadURL = libgen.MirrorDownloadURLs(res.MD5)
-		if key := strings.TrimSpace(s.ind.APIKey); key != "" {
-			rel.DownloadURL = base + "/dyn/api/fast_download.json?md5=" + res.MD5 +
-				"&key=" + url.QueryEscape(key) + "|" + rel.DownloadURL
-		}
+		rel.DownloadURL = s.downloadURLs(base, res.MD5)
 		releases = append(releases, rel)
 	}
 	return releases, nil

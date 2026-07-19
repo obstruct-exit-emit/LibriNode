@@ -71,18 +71,25 @@ func TestDefAndSearchKeyedVsKeyless(t *testing.T) {
 	}
 
 	srv := serveResults(t)
+	md5 := "0123456789abcdef0123456789abcdef"
+	// Free-first chain: Anna's own slow servers, then the open Libgen mirrors.
+	free := func(base string) string {
+		return base + "/slow_download/" + md5 + "/0/0" +
+			"|" + base + "/slow_download/" + md5 + "/0/1" +
+			"|" + base + "/slow_download/" + md5 + "/0/2" +
+			"|https://library.lol/main/" + md5 +
+			"|https://libgen.li/ads.php?md5=" + md5
+	}
 
-	// Keyless: downloads route through the open Libgen mirrors by MD5.
+	// Keyless: downloads work out of the box through the free path.
 	ind := &indexer.Indexer{Name: "AA", BaseURL: srv.URL}
 	s := def.New(ind, srv.Client())
 	rels, err := s.Search(context.Background(), "le guin", "ebook")
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	md5 := "0123456789abcdef0123456789abcdef"
-	mirrors := "https://library.lol/main/" + md5 + "|https://libgen.li/ads.php?md5=" + md5
-	if len(rels) != 2 || rels[0].DownloadURL != mirrors {
-		t.Fatalf("keyless releases = %+v, want 2 with mirror download URLs", rels)
+	if len(rels) != 2 || rels[0].DownloadURL != free(srv.URL) {
+		t.Fatalf("keyless release download URL = %q, want free chain %q", rels[0].DownloadURL, free(srv.URL))
 	}
 	if rels[0].Protocol != indexer.ProtocolDirect || rels[0].GUID != md5 {
 		t.Errorf("release = %+v", rels[0])
@@ -91,14 +98,15 @@ func TestDefAndSearchKeyedVsKeyless(t *testing.T) {
 		t.Errorf("info URL = %q", rels[0].InfoURL)
 	}
 
-	// With a key: the fast-download API first, the open mirrors as failover.
+	// With a key: the free chain still leads; the paid fast-download API is
+	// appended only as a last-resort fallback.
 	ind.APIKey = "sekret+key"
 	s = def.New(ind, srv.Client())
 	rels, err = s.Search(context.Background(), "le guin", "ebook")
 	if err != nil {
 		t.Fatalf("keyed Search: %v", err)
 	}
-	want := srv.URL + "/dyn/api/fast_download.json?md5=" + md5 + "&key=sekret%2Bkey|" + mirrors
+	want := free(srv.URL) + "|" + srv.URL + "/dyn/api/fast_download.json?md5=" + md5 + "&key=sekret%2Bkey"
 	if rels[0].DownloadURL != want {
 		t.Errorf("keyed download URL = %q, want %q", rels[0].DownloadURL, want)
 	}
