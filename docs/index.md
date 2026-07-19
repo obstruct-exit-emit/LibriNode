@@ -32,6 +32,10 @@ added it to (or own).
 - One acquisition pipeline for everything: Newznab/Torznab indexers (or
   Prowlarr sync), release parsing and scoring, quality profiles with
   upgrades, qBittorrent and SABnzbd, Completed Download Handling.
+- **Native indexers** for sources Prowlarr can't reach (AudioBook Bay,
+  Anna's Archive) plus a built-in **direct** HTTP fetcher — all off by
+  default, user-enabled, hidden from Prowlarr. See
+  [Acquisition](acquisition.md).
 - Reader-friendly layouts: Audiobookshelf folders for audio, Kavita/Komga
   layouts with `ComicInfo.xml` for comics, OPF sidecars for Calibre.
 - Poster-grid browsing with detail pages, per-library Wanted pages, a

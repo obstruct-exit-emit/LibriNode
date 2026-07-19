@@ -36,7 +36,8 @@
    the missing author/series/magazine right from the row.
 
 6. **Automate acquisition.** Add indexers (**Settings → Indexers**, or sync
-   them from Prowlarr by adding LibriNode as a *Readarr* application) and a
+   them from Prowlarr by adding LibriNode as a *Readarr* application — plus
+   optional built-in **native sources** for sites Prowlarr can't reach) and a
    download client (**Settings → Download Clients**, with **Test** buttons).
    Monitored items are searched automatically every six hours; **Search
    wanted**, per-item **Auto grab**, and interactive **Search releases**

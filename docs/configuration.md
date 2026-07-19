@@ -118,9 +118,37 @@ needed): it creates the first account — which becomes the default — and walk
 through libraries, metadata, an indexer, and a download client.
 
 The API key keeps working for Prowlarr and scripts regardless, and can be
-regenerated from the same page. For HTTPS, run behind a TLS-terminating
-reverse proxy (Caddy or nginx examples in the README) and never expose the
-raw port.
+regenerated from the same page. For HTTPS, see the next section.
+
+## HTTPS & reverse proxies
+
+LibriNode itself serves plain HTTP. For access beyond your LAN, put it
+behind a TLS-terminating reverse proxy **and enable the login**. Never
+expose the raw HTTP port directly to the internet.
+
+Caddy makes it a two-liner (automatic certificates):
+
+```
+librinode.example.com {
+    reverse_proxy 127.0.0.1:7845
+}
+```
+
+nginx equivalent:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name librinode.example.com;
+    # ssl_certificate / ssl_certificate_key ...
+    location / {
+        proxy_pass http://127.0.0.1:7845;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
 
 ## Health checks
 
