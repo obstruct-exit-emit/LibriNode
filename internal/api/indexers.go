@@ -124,6 +124,7 @@ func (s *server) handleListNativeIndexers(w http.ResponseWriter, r *http.Request
 			"mediaTypes":     d.MediaTypes,
 			"defaultBaseUrl": d.DefaultBaseURL,
 			"needsApiKey":    d.NeedsAPIKey,
+			"wip":            d.WIP,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

@@ -137,6 +137,8 @@ export interface NativeIndexer {
   mediaTypes: string[];
   defaultBaseUrl: string;
   needsApiKey: boolean;
+  // Experimental scraped source — the UI shows a work-in-progress warning.
+  wip: boolean;
 }
 
 export interface DownloadClient {
@@ -651,7 +653,14 @@ export const api = {
       ...json({ monitored }),
       method: "PUT",
     }),
-  scan: () => request<ScanResult>("/api/v1/library/scan", { method: "POST" }),
+  // Omit mediaType to scan every library; pass one to scan only that
+  // library's root folders (the Scan-files button on a library/author/series
+  // page passes its own type).
+  scan: (mediaType?: string) =>
+    request<ScanResult>(
+      `/api/v1/library/scan${mediaType ? `?mediaType=${encodeURIComponent(mediaType)}` : ""}`,
+      { method: "POST" },
+    ),
   renamePreview: (authorId?: number, seriesId?: number, mediaType?: string, bookId?: number) =>
     request<RenameResult>(
       `/api/v1/library/rename${

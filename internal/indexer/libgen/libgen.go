@@ -57,6 +57,7 @@ func Def() indexer.NativeDef {
 		Protocol:       indexer.ProtocolDirect,
 		MediaTypes:     []string{"ebook"},
 		DefaultBaseURL: DefaultBaseURL,
+		WIP:            true,
 		New: func(ind *indexer.Indexer, httpc *http.Client) indexer.Searcher {
 			return &searcher{ind: ind, bases: parseBases(ind.BaseURL), httpc: httpc}
 		},

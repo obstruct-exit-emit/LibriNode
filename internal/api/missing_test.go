@@ -49,12 +49,21 @@ func TestAuthorMissing(t *testing.T) {
 		t.Fatalf("after monitor, ebook missing = %+v, want only the other book", missing)
 	}
 
-	// Unmonitoring the unowned book returns it to Missing.
+	// Unmonitoring keeps the book in the library — membership decides
+	// visibility, not the monitored flag — so it stays OUT of Missing.
 	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", books[0].ID),
 		map[string]any{"library": "ebook", "member": true, "monitored": false}, nil), http.StatusOK)
 	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d/missing?library=ebook", author.ID), nil, &missing), http.StatusOK)
+	if len(missing) != 1 {
+		t.Fatalf("after unmonitor (still a member), missing = %d, want 1", len(missing))
+	}
+
+	// Removing membership is what returns a book to Missing.
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/book/%d/library", books[0].ID),
+		map[string]any{"library": "ebook", "member": false}, nil), http.StatusOK)
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/author/%d/missing?library=ebook", author.ID), nil, &missing), http.StatusOK)
 	if len(missing) != 2 {
-		t.Fatalf("after unmonitor, missing = %d, want 2", len(missing))
+		t.Fatalf("after removing membership, missing = %d, want 2", len(missing))
 	}
 }
 

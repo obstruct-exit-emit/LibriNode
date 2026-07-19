@@ -14,14 +14,25 @@ import (
 // scans can walk large libraries on slow disks; generous but bounded.
 const scanTimeout = 10 * time.Minute
 
-// handleScan walks all root folders synchronously and reports what it
-// found. Fine for current library sizes; a queued background command system
+// handleScan walks root folders synchronously and reports what it found.
+// ?mediaType= scopes the scan to one library (the Scan-files button on a
+// library/author/series page passes its own type); absent, it scans every
+// library. Fine for current library sizes; a queued background command system
 // can replace it if scans ever get slow.
 func (s *server) handleScan(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), scanTimeout)
 	defer cancel()
 
-	result, err := s.scanner.Scan(ctx)
+	var mediaTypes []string
+	if mt := r.URL.Query().Get("mediaType"); mt != "" {
+		if _, ok := renameMediaType(mt); !ok {
+			writeError(w, http.StatusBadRequest, "invalid mediaType")
+			return
+		}
+		mediaTypes = []string{mt}
+	}
+
+	result, err := s.scanner.Scan(ctx, mediaTypes...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

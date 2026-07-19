@@ -33,6 +33,10 @@ search, scoring, and grab pipeline as everything else. Native indexers are
 LibriNode-managed only and are hidden from Prowlarr, so it never treats them as
 indexers it owns.
 
+> ⚠️ **The native sources are a work in progress.** Scraping these sites
+> reliably still needs work — expect failed searches and grabs. The Settings
+> form flags each as WIP; enable them to experiment, not to depend on.
+
 The built-in sources today:
 
 - **AudioBook Bay** (audiobooks) scrapes the public listings and assembles a

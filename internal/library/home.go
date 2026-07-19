@@ -16,20 +16,16 @@ type LibraryStatus struct {
 var MediaTypes = []string{"ebook", "audiobook", "manga", "comic", "magazine"}
 
 // itemsWhere returns the SQL predicate selecting a library's *visible*
-// items. In the format libraries a member book shows only while monitored
-// or owned in that format — unmonitored, unowned members stay enrolled but
-// hidden (a post-1.0 Missing view will surface them).
+// items. Membership alone decides visibility: any book enrolled in a format
+// library shows there, monitored or not, owned or not. Monitoring only gates
+// automatic grabbing/upgrading (see wantedWhere) — it never hides a book.
+// The Missing section is the complement: bibliography books NOT yet enrolled.
 func itemsWhere(mediaType string) string {
-	ownedClause := func(mt string) string {
-		return `EXISTS (SELECT 1 FROM book_files bf WHERE bf.book_id = books.id AND bf.media_type = '` + mt + `')`
-	}
 	switch mediaType {
 	case "ebook":
-		return `books.media_type = 'book' AND books.in_ebook_library = 1
-			AND (books.ebook_monitored = 1 OR ` + ownedClause("ebook") + `)`
+		return `books.media_type = 'book' AND books.in_ebook_library = 1`
 	case "audiobook":
-		return `books.media_type = 'book' AND books.in_audiobook_library = 1
-			AND (books.audiobook_monitored = 1 OR ` + ownedClause("audiobook") + `)`
+		return `books.media_type = 'book' AND books.in_audiobook_library = 1`
 	}
 	return `books.media_type = '` + mediaType + `'`
 }
@@ -221,8 +217,8 @@ func (s *Store) Calendar(from, to string) ([]CalendarItem, error) {
 }
 
 // MissingForAuthor lists an author's bibliography gaps for one format
-// library: prose books that are NOT visible there (not monitored and not
-// owned in that format). Ordered for the Missing view — series first
+// library: prose books NOT yet enrolled in it (the complement of the visible
+// library grid). Ordered for the Missing view — series first
 // (alphabetical, by position within), then standalones by release date.
 // Each book carries at most one series link for grouping.
 func (s *Store) MissingForAuthor(authorID int64, mediaType string) ([]Book, error) {

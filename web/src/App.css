@@ -1681,12 +1681,6 @@ button.link.back:hover {
   font-size: 1.9rem;
 }
 
-/* Detail pages: ownership meter */
-.progress.owned-meter {
-  max-width: 260px;
-  margin: 0.15rem 0 0.6rem;
-}
-
 /* ---- Bulk select on Missing rows ---- */
 
 .row-select {

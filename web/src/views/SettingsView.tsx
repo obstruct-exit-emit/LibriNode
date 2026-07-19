@@ -812,11 +812,17 @@ function DownloadClientsCard({
           >
             <option value="qbittorrent">qBittorrent (torrents)</option>
             <option value="sabnzbd">SABnzbd (usenet)</option>
-            <option value="direct">Direct fetcher (built-in — plain HTTP downloads)</option>
+            <option value="direct">Direct fetcher (built-in — plain HTTP downloads) ⚠ WIP</option>
           </select>
         </label>
         {draft.type === "direct" ? (
           <>
+            <p className="notice bad field-note">
+              ⚠ <strong>Work in progress.</strong> The direct HTTP fetcher pairs
+              with the experimental shadow-library sources and is still wonky —
+              mirror hand-offs and landing pages don&apos;t all resolve yet.
+              Expect failures.
+            </p>
             <p className="muted field-note">
               LibriNode downloads the file itself — no external program. Needed
               only for <em>direct</em>-protocol sources (e.g. Anna&apos;s
@@ -1712,7 +1718,8 @@ function IndexersCard({
               <optgroup label="Native sources (no API — scraped)">
                 {natives.map((n) => (
                   <option key={n.name} value={n.name}>
-                    {n.displayName} ({n.mediaTypes.join(", ") || "all"})
+                    {n.displayName}
+                    {n.wip ? " ⚠ WIP" : ""} ({n.mediaTypes.join(", ") || "all"})
                   </option>
                 ))}
               </optgroup>
@@ -1721,6 +1728,14 @@ function IndexersCard({
         </label>
         {nativeDef ? (
           <>
+            {nativeDef.wip && (
+              <p className="notice bad field-note">
+                ⚠ <strong>Work in progress.</strong> {nativeDef.displayName} is
+                experimental and wonky — scraping these sites reliably still
+                needs work, so expect failed searches and grabs. Enable it to
+                try it, not to depend on it.
+              </p>
+            )}
             <p className="muted field-note">
               <strong>{nativeDef.displayName}</strong> is a built-in scraped
               source — no Newznab/Torznab endpoint. It's off until you enable it,

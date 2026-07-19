@@ -37,12 +37,11 @@ export default function AuthorDetailView({
   }, []);
 
   const reload = useCallback(() => {
-    // Visible = member of this library AND (monitored here or owned here);
-    // everything else in the bibliography lives in the Missing section below.
+    // Visible = enrolled in this library, monitored or not. Monitoring only
+    // controls auto-grab/upgrade; it never hides a book. Everything NOT
+    // enrolled lives in the Missing section below.
     const visible = (b: Book) =>
-      library === "ebook"
-        ? b.inEbookLibrary && (b.ebookMonitored || b.hasEbookFile)
-        : b.inAudiobookLibrary && (b.audiobookMonitored || b.hasAudiobookFile);
+      library === "ebook" ? b.inEbookLibrary : b.inAudiobookLibrary;
     Promise.all([api.getAuthor(id), api.listBooks(id)])
       .then(([a, all]) => {
         setAuthor(a);
@@ -93,9 +92,9 @@ export default function AuthorDetailView({
 
   const scan = () =>
     headerAction(async () => {
-      const r = await api.scan();
+      const r = await api.scan(library);
       return r.roots === 0
-        ? "No root folders to scan — add one under Settings."
+        ? `No ${label} root folders to scan — add one under Settings.`
         : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched.`;
     });
 
@@ -151,17 +150,6 @@ export default function AuthorDetailView({
           <p className="muted">
             {books.length} book{books.length === 1 ? "" : "s"} in {label} · {owned} owned
           </p>
-          {books.length > 0 && (
-            <div
-              className="progress owned-meter"
-              title={`${owned} of ${books.length} owned in ${label}`}
-            >
-              <div
-                className="progress-fill done"
-                style={{ width: `${Math.min(100, (owned / books.length) * 100)}%` }}
-              />
-            </div>
-          )}
           {author.description && <p className="detail-desc">{author.description}</p>}
           <div className="settings-actions">
             <button

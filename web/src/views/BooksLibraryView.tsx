@@ -66,10 +66,10 @@ export default function BooksLibraryView({
 
   const scan = () =>
     headerAction(async () => {
-      const r = await api.scan();
+      const r = await api.scan(library);
       const errors = r.errors?.length ? `, ${r.errors.length} root(s) failed` : "";
       return r.roots === 0
-        ? "No root folders to scan — add one under Settings."
+        ? `No ${label} root folders to scan — add one under Settings.`
         : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched, ${r.removed} removed${errors}`;
     });
 

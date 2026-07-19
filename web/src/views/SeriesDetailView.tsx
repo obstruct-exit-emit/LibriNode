@@ -132,11 +132,11 @@ export default function SeriesDetailView({
     setBusy(true);
     setNotice("");
     api
-      .scan()
+      .scan(mediaType)
       .then((r) => {
         setNotice(
           r.roots === 0
-            ? "No root folders to scan — add one under Settings."
+            ? `No ${label} root folders to scan — add one under Settings.`
             : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched.`,
         );
         reload();
@@ -189,17 +189,6 @@ export default function SeriesDetailView({
             {volumes.length} {unitName}
             {volumes.length === 1 ? "" : "s"} · {owned} owned
           </p>
-          {volumes.length > 0 && (
-            <div
-              className="progress owned-meter"
-              title={`${owned} of ${volumes.length} owned`}
-            >
-              <div
-                className="progress-fill done"
-                style={{ width: `${Math.min(100, (owned / volumes.length) * 100)}%` }}
-              />
-            </div>
-          )}
           {series.description && <p className="detail-desc">{series.description}</p>}
           <div className="settings-actions">
             <button

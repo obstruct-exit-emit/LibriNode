@@ -34,12 +34,19 @@ type Result struct {
 	Errors    []string `json:"errors,omitempty"`
 }
 
-// Scan walks every ebook root folder. Roots that fail (missing drive, ...)
-// are reported in Result.Errors without aborting the others.
-func (s *Service) Scan(ctx context.Context) (*Result, error) {
+// Scan walks root folders and reconciles their files. With no media types it
+// walks every root; given one or more, it walks only those libraries' roots —
+// so "Scan files" on the Manga page touches manga roots only, never the whole
+// server. Roots that fail (missing drive, ...) are reported in Result.Errors
+// without aborting the others.
+func (s *Service) Scan(ctx context.Context, mediaTypes ...string) (*Result, error) {
 	roots, err := s.store.ListRootFolders()
 	if err != nil {
 		return nil, err
+	}
+	only := map[string]bool{}
+	for _, mt := range mediaTypes {
+		only[mt] = true
 	}
 	index, err := s.buildIndex()
 	if err != nil {
@@ -48,6 +55,9 @@ func (s *Service) Scan(ctx context.Context) (*Result, error) {
 
 	result := &Result{Errors: []string{}}
 	for _, root := range roots {
+		if len(only) > 0 && !only[root.MediaType] {
+			continue
+		}
 		var scanErr error
 		switch root.MediaType {
 		case "ebook":

@@ -48,6 +48,7 @@ func Def() indexer.NativeDef {
 		Protocol:       indexer.ProtocolTorrent,
 		MediaTypes:     []string{"audiobook"},
 		DefaultBaseURL: DefaultBaseURL,
+		WIP:            true,
 		New: func(ind *indexer.Indexer, httpc *http.Client) indexer.Searcher {
 			return &searcher{ind: ind, bases: ParseBases(ind.BaseURL), httpc: httpc}
 		},

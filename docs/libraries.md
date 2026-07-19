@@ -15,16 +15,19 @@ libraries with explicit membership** — for both authors and books:
   audiobook of theirs (and vice versa for ebooks); adding/removing an
   author in one format never touches the other.
 - A **book** appears in a format library only if you own that format or
-  deliberately added it there — never inferred. Each book membership has
-  its own monitored flag; a library's Books grid lists only books that are
-  monitored or owned in that format.
+  deliberately added it there — never inferred. **Membership decides
+  visibility:** every enrolled book shows in the Books grid, monitored or
+  not, owned or not. The per-book monitored flag only controls automatic
+  grabbing and upgrading — it never hides a book. The **Missing** section is
+  the complement: bibliography books you haven't added to this library yet.
 
 Browsing: library grid (authors) → **author page** → **book page**.
 
 The author page has a portrait, bio, and author-scoped actions (**Search
 wanted**, **Organize…**, **Scan files**, **Refresh metadata**, **Remove
-from Ebooks/Audiobooks** — all touch only this author's books), a poster
-grid of their monitored-or-owned books, and a **Missing** section below it:
+from Ebooks/Audiobooks** — all touch only this author's books in this
+library), a poster grid of every book they have enrolled here (monitored or
+not), and a **Missing** section below it:
 the rest of the bibliography, grouped by series (then standalones by year),
 each row expandable to a thumbnail + blurb with a one-click **+ Monitor**
 that enrolls the book and starts searching. Adding an author pulls their
@@ -190,14 +193,18 @@ fuzzy-tolerant) and the `v02`/`#07` volume number; magazines parse the title
 and issue date/number — a confident magazine import materializes the issue
 on the spot.
 
-## Organizing files
+## Scanning & organizing (scoped per library)
 
-**Organize…** previews, then applies, moves that bring files in line with
-the naming templates (**Settings → Media Management**) — all five media
-types, multi-file audiobooks moving as whole folders with their sidecars.
-Emptied folders are swept up to (never including) the root. Available on
-every library page (everything) and on the author page (that author's
-files only).
+**Scan files** and **Organize…** always act on **only the library you're in**
+— scanning from the Manga page walks manga roots, not every root on the
+server; organizing from Ebooks moves ebook files only. Both narrow further on
+the pages that have them: an author page scans/organizes just that author's
+format library, and a series page just that series.
+
+**Organize…** previews, then applies, moves that bring files in line with the
+naming templates (**Settings → Media Management**) — all five media types,
+multi-file audiobooks moving as whole folders with their sidecars. Emptied
+folders are swept up to (never including) the root.
 
 ## Wanted, Home, and Calendar
 

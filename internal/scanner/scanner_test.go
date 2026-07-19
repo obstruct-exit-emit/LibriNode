@@ -218,6 +218,46 @@ func TestScanUnmatchedGainsMatchAfterBookAdded(t *testing.T) {
 	}
 }
 
+// TestScanScopedToMediaType: Scan("ebook") walks only ebook roots, leaving
+// other libraries' files untouched — the per-library Scan-files button.
+func TestScanScopedToMediaType(t *testing.T) {
+	f := fixture(t) // one ebook root with matchable files
+	// Add a manga root with a stray file that a full scan would record.
+	mangaRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('manga', ?)`, mangaRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mangaRoot, "Some Series v01.cbz"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Scan only ebooks: the manga root is skipped entirely.
+	res, err := f.svc.Scan(context.Background(), "ebook")
+	if err != nil {
+		t.Fatalf("scoped scan: %v", err)
+	}
+	if res.Roots != 1 {
+		t.Errorf("ebook-scoped scan walked %d roots, want 1 (manga skipped)", res.Roots)
+	}
+
+	// The manga file was never recorded.
+	unmatched, _ := f.store.ListUnmatchedBookFiles()
+	for _, u := range unmatched {
+		if filepath.Base(u.Path) == "Some Series v01.cbz" {
+			t.Error("ebook-scoped scan recorded a manga file")
+		}
+	}
+
+	// A full scan (no filter) does walk both roots.
+	res, err = f.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("full scan: %v", err)
+	}
+	if res.Roots != 2 {
+		t.Errorf("unscoped scan walked %d roots, want 2", res.Roots)
+	}
+}
+
 // TestScanMatchesByIdentifier: a file the title parser can't place still
 // matches when it (or its embedded epub metadata) names an ISBN of a known
 // edition — and a file with neither a usable identifier nor a title match still

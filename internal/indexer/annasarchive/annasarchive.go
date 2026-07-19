@@ -49,6 +49,7 @@ func Def() indexer.NativeDef {
 		// The key is optional: downloads are free by default (Anna's slow
 		// servers + open mirrors); a key only adds a paid fast-path fallback.
 		NeedsAPIKey: false,
+		WIP:         true,
 		New: func(ind *indexer.Indexer, httpc *http.Client) indexer.Searcher {
 			return &searcher{ind: ind, bases: parseBases(ind.BaseURL), httpc: httpc}
 		},

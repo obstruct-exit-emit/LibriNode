@@ -39,6 +39,10 @@ type NativeDef struct {
 	DefaultBaseURL string
 	// NeedsAPIKey marks sources that require a key (e.g. a membership token).
 	NeedsAPIKey bool
+	// WIP flags an experimental source — scraped sites that are fragile and
+	// need more work; the UI surfaces a "work in progress" warning so a user
+	// knows what they're enabling.
+	WIP bool
 	// New builds a searcher from the stored indexer config and a shared client.
 	New func(ind *Indexer, httpc *http.Client) Searcher
 }
