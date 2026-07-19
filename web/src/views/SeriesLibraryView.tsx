@@ -58,9 +58,13 @@ export default function SeriesLibraryView({
     setBusy(true);
     setNotice("");
     api
-      .scan()
+      .scan(mediaType)
       .then((r) => {
-        setNotice(`Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched.`);
+        setNotice(
+          r.roots === 0
+            ? `No ${libraryLabels[mediaType] ?? mediaType} root folders to scan — add one under Settings.`
+            : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched.`,
+        );
         reload();
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
