@@ -36,7 +36,9 @@ indexers it owns.
 **AudioBook Bay** (audiobooks) is the first: it scrapes the public listings and
 assembles a magnet from the page's info hash and tracker list, producing an
 ordinary torrent that goes through qBittorrent like any other. Its domain
-rotates, so the indexer takes an optional **Site URL** override.
+rotates and it runs several mirrors, so the indexer takes an optional **Site
+URL** override plus an optional **fallback site URL** — searches try the main
+site first and fail over to the mirror when it doesn't answer.
 
 These are dual-use shadow-library sources: **nothing is bundled or enabled by
 default** — you add one deliberately, and its use is your responsibility. Being

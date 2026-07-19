@@ -66,12 +66,23 @@ func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 	}
 
 	// A native source: no Newznab/Torznab URL or categories — the built-in
-	// implementation owns all of that. An optional base URL (for sources whose
-	// domain rotates) and API key pass through untouched.
+	// implementation owns all of that. The base-URL field optionally carries a
+	// primary site URL plus comma-separated fallbacks (rotating-domain sites
+	// run mirrors); each entry must be a real http(s) URL. The API key passes
+	// through untouched.
 	if def, ok := indexer.NativeDefFor(in.Type); ok {
-		if in.BaseURL != "" && !strings.HasPrefix(in.BaseURL, "http://") && !strings.HasPrefix(in.BaseURL, "https://") {
-			return nil, "baseUrl must be an http(s) URL"
+		cleaned := []string{}
+		for _, part := range strings.Split(in.BaseURL, ",") {
+			p := strings.TrimRight(strings.TrimSpace(part), "/")
+			if p == "" {
+				continue
+			}
+			if !strings.HasPrefix(p, "http://") && !strings.HasPrefix(p, "https://") {
+				return nil, "every site URL must be an http(s) URL"
+			}
+			cleaned = append(cleaned, p)
 		}
+		in.BaseURL = strings.Join(cleaned, ",")
 		if def.NeedsAPIKey && in.APIKey == "" {
 			return nil, def.DisplayName + " needs an API key"
 		}

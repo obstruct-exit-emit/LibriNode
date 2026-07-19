@@ -49,46 +49,88 @@ func Def() indexer.NativeDef {
 		MediaTypes:     []string{"audiobook"},
 		DefaultBaseURL: DefaultBaseURL,
 		New: func(ind *indexer.Indexer, httpc *http.Client) indexer.Searcher {
-			base := strings.TrimRight(strings.TrimSpace(ind.BaseURL), "/")
-			if base == "" {
-				base = DefaultBaseURL
-			}
-			return &searcher{ind: ind, base: base, httpc: httpc}
+			return &searcher{ind: ind, bases: ParseBases(ind.BaseURL), httpc: httpc}
 		},
 	}
 }
 
+// ParseBases splits the indexer's base-URL field — a primary site URL plus
+// optional comma-separated fallbacks (ABB runs several mirror domains) — into
+// a cleaned, ordered list. Empty input yields the default site.
+func ParseBases(raw string) []string {
+	bases := []string{}
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimRight(strings.TrimSpace(part), "/"); p != "" {
+			bases = append(bases, p)
+		}
+	}
+	if len(bases) == 0 {
+		bases = []string{DefaultBaseURL}
+	}
+	return bases
+}
+
 type searcher struct {
 	ind   *indexer.Indexer
-	base  string
+	bases []string // site URLs, tried in order (primary first, then fallbacks)
 	httpc *http.Client
 }
 
-// Test confirms the site is reachable.
+// Test confirms the site is reachable on at least one configured URL.
 func (s *searcher) Test(ctx context.Context) error {
-	_, err := s.fetch(ctx, s.base+"/")
-	return err
+	var err error
+	for _, base := range s.bases {
+		if _, err = s.fetch(ctx, base+"/"); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
 }
 
 // Search finds audiobook torrents: scrape the listing for release pages, then
-// each page for its info hash + trackers, and assemble a magnet.
+// each page for its info hash + trackers, and assemble a magnet. The listing is
+// tried on each configured site URL in order — the primary, then fallbacks —
+// and the first that answers serves the whole search (detail links point at
+// the host that produced them).
 func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]indexer.Release, error) {
 	if mediaType != "audiobook" {
 		return nil, nil
 	}
-	listing, err := s.fetch(ctx, s.base+"/?s="+url.QueryEscape(query))
-	if err != nil {
-		return nil, err
+	var listing, base string
+	var err error
+	for _, b := range s.bases {
+		if listing, err = s.fetch(ctx, b+"/?s="+url.QueryEscape(query)); err == nil {
+			base = b
+			break
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
+	if base == "" {
+		return nil, fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
 	}
 
 	releases := []indexer.Release{}
-	for _, post := range parseListing(listing, s.base) {
-		if len(releases) >= maxDetails {
+	fetched := 0
+	for _, post := range parseListing(listing, base) {
+		// Cap detail-page REQUESTS, not successes — a listing full of hash-less
+		// pages must not turn into an unbounded crawl.
+		if fetched >= maxDetails {
 			break
+		}
+		if fetched > 0 {
+			// Politeness delay between detail fetches, honoring cancellation.
+			select {
+			case <-ctx.Done():
+				return releases, nil
+			case <-time.After(detailPause):
+			}
 		}
 		if ctx.Err() != nil {
 			break
 		}
+		fetched++
 		page, err := s.fetch(ctx, post.URL)
 		if err != nil {
 			continue // one dead post shouldn't sink the search
@@ -109,7 +151,6 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 			Seeders:     -1, // ABB doesn't report swarm health; unknown, not dead
 			Peers:       -1,
 		})
-		time.Sleep(detailPause)
 	}
 	return releases, nil
 }
@@ -159,15 +200,20 @@ var (
 	sizeRe = regexp.MustCompile(`(?i)(?:file\s*)?size:?\s*([0-9][0-9.,]*)\s*(kb|mb|gb|tb)`)
 )
 
+// navPath marks hrefs that are site navigation, not release pages — ABB's
+// category/tag/pagination links live under these segments and would otherwise
+// slip through the fallback link matcher as bogus "posts".
+var navPath = regexp.MustCompile(`(?i)/(?:type|tag|cat|category|page|member|profile)/`)
+
 // parseListing extracts release-page links (absolute URLs) and titles from a
-// search results page. Duplicate URLs are collapsed.
+// search results page. Duplicate URLs and navigation links are dropped.
 func parseListing(html, base string) []post {
 	seen := map[string]bool{}
 	out := []post{}
 	add := func(href, title string) {
 		u := absURL(base, href)
 		title = cleanText(title)
-		if u == "" || title == "" || seen[u] {
+		if u == "" || title == "" || seen[u] || navPath.MatchString(u) {
 			return
 		}
 		seen[u] = true
@@ -220,12 +266,19 @@ func buildMagnet(hash, title string, trackers []string) string {
 	b.WriteString("magnet:?xt=urn:btih:")
 	b.WriteString(strings.ToLower(hash))
 	b.WriteString("&dn=")
-	b.WriteString(url.QueryEscape(title))
+	b.WriteString(magnetEscape(title))
 	for _, tr := range trackers {
 		b.WriteString("&tr=")
-		b.WriteString(url.QueryEscape(tr))
+		b.WriteString(magnetEscape(tr))
 	}
 	return b.String()
+}
+
+// magnetEscape percent-encodes a magnet parameter. QueryEscape's '+' for
+// spaces is form-encoding, which not every torrent client decodes inside a
+// magnet URI — %20 is the universally-parsed form (what the *arr stack emits).
+func magnetEscape(s string) string {
+	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }
 
 func parseSize(html string) int64 {

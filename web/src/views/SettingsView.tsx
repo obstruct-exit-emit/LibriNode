@@ -1566,7 +1566,13 @@ function IndexersCard({
   const draftValid = nativeDef
     ? draft.name.trim() !== "" &&
       (!nativeDef.needsApiKey || draft.apiKey.trim() !== "") &&
-      (draft.baseUrl.trim() === "" || /^https?:\/\//.test(draft.baseUrl.trim()))
+      // Site URLs are optional, but every entered one (primary + fallbacks,
+      // comma-separated) must be a real http(s) URL.
+      draft.baseUrl
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .every((u) => /^https?:\/\//.test(u))
     : draft.name.trim() !== "" && /^https?:\/\//.test(draft.baseUrl.trim());
 
   return (
@@ -1693,16 +1699,36 @@ function IndexersCard({
               user-configured, and yours to use responsibly; it stays hidden from
               Prowlarr. Serves: {nativeDef.mediaTypes.join(", ") || "all media"}.
             </p>
-            {nativeDef.defaultBaseUrl !== "" && (
-              <label>
-                Site URL (override — its domain rotates)
-                <input
-                  placeholder={nativeDef.defaultBaseUrl}
-                  value={draft.baseUrl}
-                  onChange={(e) => set({ baseUrl: e.target.value })}
-                />
-              </label>
-            )}
+            {nativeDef.defaultBaseUrl !== "" &&
+              (() => {
+                // The base-URL field stores "primary,fallback"; the form edits
+                // them as two inputs (the site runs mirror domains).
+                const parts = draft.baseUrl.split(",").map((s) => s.trim());
+                const primary = parts[0] ?? "";
+                const fallback = parts[1] ?? "";
+                const join = (p: string, f: string) =>
+                  set({ baseUrl: [p.trim(), f.trim()].filter(Boolean).join(",") });
+                return (
+                  <>
+                    <label>
+                      Site URL (its domain rotates — override when it moves)
+                      <input
+                        placeholder={nativeDef.defaultBaseUrl}
+                        value={primary}
+                        onChange={(e) => join(e.target.value, fallback)}
+                      />
+                    </label>
+                    <label>
+                      Fallback site URL (optional — a mirror, tried when the main site fails)
+                      <input
+                        placeholder="https://mirror.example"
+                        value={fallback}
+                        onChange={(e) => join(primary, e.target.value)}
+                      />
+                    </label>
+                  </>
+                );
+              })()}
             {nativeDef.needsApiKey && (
               <label>
                 API key / membership token
