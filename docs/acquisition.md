@@ -40,6 +40,18 @@ rotates and it runs several mirrors, so the indexer takes an optional **Site
 URL** override plus an optional **fallback site URL** — searches try the main
 site first and fail over to the mirror when it doesn't answer.
 
+**Anna's Archive** (ebooks) is the second, and it brings a third release
+protocol with it: **direct** — plain HTTP file downloads, handled by a built-in
+**Direct fetcher** download client (Settings → Download Clients: pick *Direct
+fetcher*, point it at a local download folder). LibriNode streams the file
+itself — no external program — shows progress in the Activity queue, and
+Completed Download Handling imports the result like any other grab. Anna's
+search works without any key; **downloads need a paid AA membership key**
+entered on the indexer — without one the source is search-only and release
+candidates are marked "no download link" with the reason. The fetcher takes
+mirror lists in stride (URLs tried in order), so other direct-link sources can
+ride the same client later.
+
 These are dual-use shadow-library sources: **nothing is bundled or enabled by
 default** — you add one deliberately, and its use is your responsibility. Being
 scraped, a native source is inherently more fragile than an API indexer (a site

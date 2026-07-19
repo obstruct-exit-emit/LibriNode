@@ -1,0 +1,171 @@
+package download
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+// waitDone polls the direct client until the item leaves the active states.
+func waitDone(t *testing.T, d *direct, id string) Item {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		items, err := d.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, it := range items {
+			if it.ID == id && it.Status != "queued" && it.Status != "downloading" {
+				return it
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("download never finished")
+	return Item{}
+}
+
+func newTestDirect(t *testing.T) *direct {
+	t.Helper()
+	return newDirect(&ClientConfig{ID: 1, Name: "Fetcher", Type: TypeDirect, Host: t.TempDir()})
+}
+
+// TestDirectDownloadsFile: a plain URL streams to the folder, completes with
+// the file's path, and Remove(deleteData) deletes it.
+func TestDirectDownloadsFile(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/epub+zip")
+		_, _ = w.Write([]byte("epub-bytes"))
+	}))
+	defer srv.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), srv.URL+"/book", "A Book Title")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "completed" {
+		t.Fatalf("status = %q, want completed", it.Status)
+	}
+	if !strings.HasSuffix(it.Path, "A Book Title.epub") {
+		t.Errorf("path = %q, want .epub named after the title", it.Path)
+	}
+	body, err := os.ReadFile(it.Path)
+	if err != nil || string(body) != "epub-bytes" {
+		t.Fatalf("file contents = %q, %v", body, err)
+	}
+
+	if err := d.Remove(context.Background(), id, true); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, err := os.Stat(it.Path); !os.IsNotExist(err) {
+		t.Error("Remove(deleteData) should have deleted the file")
+	}
+}
+
+// TestDirectMirrorFailover: the first mirror 503s; the second delivers.
+func TestDirectMirrorFailover(t *testing.T) {
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer dead.Close()
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("pdf-bytes"))
+	}))
+	defer good.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), dead.URL+"/a.pdf|"+good.URL+"/b.pdf", "Mirrored Book")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "completed" || !strings.HasSuffix(it.Path, ".pdf") {
+		t.Fatalf("item = %+v, want completed .pdf via mirror", it)
+	}
+}
+
+// TestDirectFollowsJSONDownloadURL: a membership-API answer (JSON naming the
+// real file) is followed one hop.
+func TestDirectFollowsJSONDownloadURL(t *testing.T) {
+	var fileURL string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/file") {
+			_, _ = w.Write([]byte("the-actual-book"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"download_url": "` + fileURL + `"}`))
+	}))
+	defer api.Close()
+	fileURL = api.URL + "/file/book.epub"
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), api.URL+"/dyn/api/fast_download.json?md5=x&key=secret", "Keyed Book")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "completed" || !strings.HasSuffix(it.Path, ".epub") {
+		t.Fatalf("item = %+v, want completed .epub via JSON hop", it)
+	}
+	body, _ := os.ReadFile(it.Path)
+	if string(body) != "the-actual-book" {
+		t.Errorf("file = %q, want the real file, not the JSON envelope", body)
+	}
+}
+
+// TestDirectJSONErrorAndSecretRedaction: a JSON error answer fails the
+// download, and the membership key never appears in the failure message.
+func TestDirectJSONErrorAndSecretRedaction(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"error": "Invalid secret key"}`))
+	}))
+	defer api.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), api.URL+"/fast_download.json?md5=x&key=super-secret-key", "No Luck")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "failed" {
+		t.Fatalf("status = %q, want failed", it.Status)
+	}
+	d.mu.Lock()
+	msg := d.items[id].err
+	d.mu.Unlock()
+	if strings.Contains(msg, "super-secret-key") {
+		t.Errorf("failure message leaks the key: %q", msg)
+	}
+}
+
+// TestDirectEmptyURLRejected: an empty download URL errors immediately with
+// the needs-a-key hint.
+func TestDirectEmptyURLRejected(t *testing.T) {
+	d := newTestDirect(t)
+	if _, err := d.Add(context.Background(), "", "No URL"); err == nil ||
+		!strings.Contains(err.Error(), "membership") {
+		t.Errorf("Add(\"\") = %v, want a needs-key error", err)
+	}
+}
+
+// TestDirectProtocolRouting: the config reports the direct protocol, and the
+// grab path routes direct releases to it.
+func TestDirectProtocolRouting(t *testing.T) {
+	cfg := &ClientConfig{Type: TypeDirect}
+	if cfg.Protocol() != ProtocolDirect {
+		t.Errorf("Protocol() = %q, want direct", cfg.Protocol())
+	}
+	c, err := New(cfg)
+	if err != nil || c == nil {
+		t.Fatalf("New(direct) = %v", err)
+	}
+}

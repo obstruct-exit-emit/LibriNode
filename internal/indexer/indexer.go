@@ -11,10 +11,13 @@ const (
 	TypeTorznab = "torznab"
 )
 
-// Protocols derived from the indexer type.
+// Protocols derived from the indexer type. Direct releases are plain HTTP
+// file links (possibly a "|"-separated mirror list), downloaded by the
+// LibriNode-side direct download client rather than an external program.
 const (
 	ProtocolUsenet  = "usenet"
 	ProtocolTorrent = "torrent"
+	ProtocolDirect  = "direct"
 )
 
 // Indexer is one configured indexer endpoint.

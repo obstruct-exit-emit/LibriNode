@@ -11,6 +11,17 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **Anna's Archive** + a general **`direct` download protocol**. `direct` is a
+  third release protocol beside torrent and usenet: a built-in download client
+  (type `direct`, its "host" a local download folder) where **LibriNode streams
+  the file itself** — mirror-list failover, a JSON `download_url` hop for
+  membership APIs, live progress in the queue, and Completed Download Handling
+  importing the result like any other grab. Anna's Archive rides it as the
+  first source: keyless search (scraped), downloads gated on a paid AA
+  membership key entered on the indexer — without one the source is search-only
+  and candidates say so instead of failing at grab. Membership keys are
+  scrubbed from every error and log line. Same dual-use posture as AudioBook
+  Bay: never bundled or enabled by default, user-added, user-responsible.
 - Native indexer framework + **AudioBook Bay**. A new `type: native` indexer
   kind sits beside Newznab/Torznab: a built-in Go source, selected as the
   indexer's type (no URL), feeding the same search/scoring/grab pipeline as the

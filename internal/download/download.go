@@ -18,9 +18,15 @@ import (
 const (
 	TypeQBittorrent = "qbittorrent"
 	TypeSABnzbd     = "sabnzbd"
+	// TypeDirect is LibriNode's own HTTP fetcher — no external program; see
+	// direct.go.
+	TypeDirect = "direct"
 
 	ProtocolTorrent = "torrent"
 	ProtocolUsenet  = "usenet"
+	// ProtocolDirect marks releases that are plain HTTP file links (possibly a
+	// "|"-separated mirror list) downloaded by the direct client.
+	ProtocolDirect = "direct"
 )
 
 // ErrNotFound is returned when a requested client config does not exist.
@@ -46,8 +52,11 @@ type ClientConfig struct {
 
 // Protocol reports which release protocol this client downloads.
 func (c *ClientConfig) Protocol() string {
-	if c.Type == TypeQBittorrent {
+	switch c.Type {
+	case TypeQBittorrent:
 		return ProtocolTorrent
+	case TypeDirect:
+		return ProtocolDirect
 	}
 	return ProtocolUsenet
 }
@@ -85,6 +94,8 @@ func New(cfg *ClientConfig) (Client, error) {
 		return newQBittorrent(cfg), nil
 	case TypeSABnzbd:
 		return newSABnzbd(cfg), nil
+	case TypeDirect:
+		return newDirect(cfg), nil
 	}
 	return nil, fmt.Errorf("unknown download client type %q", cfg.Type)
 }

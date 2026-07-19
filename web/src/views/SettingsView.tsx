@@ -676,9 +676,13 @@ function DownloadClientsCard({
 
   // The SABnzbd API key is optional — SABnzbd-compatible endpoints like
   // Real-Debrid's need no key (real SABnzbd rejects unauthenticated calls,
-  // which the Test button surfaces).
+  // which the Test button surfaces). The direct fetcher's "host" is a local
+  // download folder, not a URL.
   const draftValid =
-    draft.name.trim() !== "" && /^https?:\/\//.test(draft.host.trim());
+    draft.name.trim() !== "" &&
+    (draft.type === "direct"
+      ? draft.host.trim() !== ""
+      : /^https?:\/\//.test(draft.host.trim()));
 
   const startEdit = (c: DownloadClient) => {
     setEditing(c);
@@ -725,7 +729,11 @@ function DownloadClientsCard({
                   <span className="saved-head">
                     <strong>{c.name}</strong>
                     <span className="pill" title={c.type}>
-                      {c.type === "qbittorrent" ? "🧲 qBittorrent" : "📡 SABnzbd"}
+                      {c.type === "qbittorrent"
+                        ? "🧲 qBittorrent"
+                        : c.type === "direct"
+                          ? "⬇️ Direct fetcher"
+                          : "📡 SABnzbd"}
                     </span>
                     <span className="pill" title="Priority — lower wins ties">
                       prio {c.priority}
@@ -804,17 +812,36 @@ function DownloadClientsCard({
           >
             <option value="qbittorrent">qBittorrent (torrents)</option>
             <option value="sabnzbd">SABnzbd (usenet)</option>
+            <option value="direct">Direct fetcher (built-in — plain HTTP downloads)</option>
           </select>
         </label>
-        <label>
-          Host
-          <input
-            placeholder="http://localhost:8080"
-            value={draft.host}
-            onChange={(e) => set({ host: e.target.value })}
-          />
-        </label>
-        {draft.type === "qbittorrent" ? (
+        {draft.type === "direct" ? (
+          <>
+            <p className="muted field-note">
+              LibriNode downloads the file itself — no external program. Needed
+              only for <em>direct</em>-protocol sources (e.g. Anna&apos;s
+              Archive); torrents and usenet keep using the clients above.
+            </p>
+            <label>
+              Download folder (on this server; finished files import from here)
+              <input
+                placeholder="/downloads/librinode"
+                value={draft.host}
+                onChange={(e) => set({ host: e.target.value })}
+              />
+            </label>
+          </>
+        ) : (
+          <label>
+            Host
+            <input
+              placeholder="http://localhost:8080"
+              value={draft.host}
+              onChange={(e) => set({ host: e.target.value })}
+            />
+          </label>
+        )}
+        {draft.type === "qbittorrent" && (
           <>
             <label>
               Username
@@ -832,7 +859,8 @@ function DownloadClientsCard({
               />
             </label>
           </>
-        ) : (
+        )}
+        {draft.type === "sabnzbd" && (
           <label>
             API key
             <input
@@ -1729,12 +1757,12 @@ function IndexersCard({
                   </>
                 );
               })()}
-            {nativeDef.needsApiKey && (
-              <label>
-                API key / membership token
-                <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
-              </label>
-            )}
+            <label>
+              {nativeDef.needsApiKey
+                ? "API key / membership token"
+                : "API key / membership token (optional — some sources are search-only without one)"}
+              <input value={draft.apiKey} onChange={(e) => set({ apiKey: e.target.value })} />
+            </label>
           </>
         ) : (
           <>

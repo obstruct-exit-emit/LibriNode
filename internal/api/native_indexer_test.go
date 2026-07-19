@@ -72,3 +72,34 @@ func hasIndexerType(list []map[string]any, typ string) bool {
 	}
 	return false
 }
+
+// TestDirectDownloadClientPersists: a direct-type client saves to the store
+// (migration 017 dropped the type CHECK) and round-trips through the API.
+func TestDirectDownloadClientPersists(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	dir := t.TempDir()
+	var created map[string]any
+	a.want(a.call("POST", "/api/v1/downloadclient",
+		map[string]any{"name": "Fetcher", "type": "direct", "host": dir, "enabled": true},
+		&created), http.StatusCreated)
+	if created["type"] != "direct" {
+		t.Fatalf("created = %+v", created)
+	}
+
+	var list []map[string]any
+	a.want(a.call("GET", "/api/v1/downloadclient", nil, &list), http.StatusOK)
+	found := false
+	for _, c := range list {
+		if c["type"] == "direct" && c["host"] == dir {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("direct client missing from list: %+v", list)
+	}
+
+	// Its connection test (folder writable) passes.
+	a.want(a.call("POST", "/api/v1/downloadclient/test",
+		map[string]any{"name": "Fetcher", "type": "direct", "host": dir}, nil), http.StatusOK)
+}

@@ -142,7 +142,7 @@ export interface NativeIndexer {
 export interface DownloadClient {
   id: number;
   name: string;
-  type: "qbittorrent" | "sabnzbd";
+  type: "qbittorrent" | "sabnzbd" | "direct";
   host: string;
   username: string;
   password: string;

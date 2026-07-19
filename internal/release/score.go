@@ -270,6 +270,13 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 		c.Score += 10
 	}
 
+	// A release without a download link can never be grabbed — surface why
+	// instead of failing at the grab (e.g. a membership-gated direct source
+	// searched without its key).
+	if rel.DownloadURL == "" {
+		c.reject("no download link (the source may need a membership/API key)")
+	}
+
 	if book != nil {
 		c.matchBook(book, author)
 	}

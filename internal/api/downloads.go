@@ -38,11 +38,19 @@ func decodeDownloadClient(r *http.Request) (*download.ClientConfig, string) {
 	if c.Name == "" {
 		return nil, "name is required"
 	}
-	if c.Type != download.TypeQBittorrent && c.Type != download.TypeSABnzbd {
-		return nil, "type must be qbittorrent or sabnzbd"
-	}
-	if !strings.HasPrefix(c.Host, "http://") && !strings.HasPrefix(c.Host, "https://") {
-		return nil, "host must be an http(s) URL"
+	switch c.Type {
+	case download.TypeQBittorrent, download.TypeSABnzbd:
+		if !strings.HasPrefix(c.Host, "http://") && !strings.HasPrefix(c.Host, "https://") {
+			return nil, "host must be an http(s) URL"
+		}
+	case download.TypeDirect:
+		// The direct client is LibriNode's own fetcher: its "host" is the
+		// local folder downloads land in, not a URL.
+		if c.Host == "" {
+			return nil, "a download folder is required"
+		}
+	default:
+		return nil, "type must be qbittorrent, sabnzbd, or direct"
 	}
 	// A SABnzbd API key is optional: SABnzbd-compatible endpoints such as
 	// Real-Debrid's (which downloads NZBs behind a fake-SABnzbd interface)
@@ -170,11 +178,14 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 		MediaType   string `json:"mediaType"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DownloadURL == "" {
-		writeError(w, http.StatusBadRequest, "downloadUrl is required")
+		writeError(w, http.StatusBadRequest,
+			"this release has no download URL — the source may require a membership/API key for downloads")
 		return
 	}
-	if req.Protocol != download.ProtocolTorrent && req.Protocol != download.ProtocolUsenet {
-		writeError(w, http.StatusBadRequest, "protocol must be torrent or usenet")
+	switch req.Protocol {
+	case download.ProtocolTorrent, download.ProtocolUsenet, download.ProtocolDirect:
+	default:
+		writeError(w, http.StatusBadRequest, "protocol must be torrent, usenet, or direct")
 		return
 	}
 	if req.MediaType == "" {

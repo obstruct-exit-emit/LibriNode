@@ -76,7 +76,10 @@ func TestParse(t *testing.T) {
 func rel(title string, protocol string, size int64, seeders int) indexer.Release {
 	return indexer.Release{
 		Indexer: "mock", Protocol: protocol, Title: title,
-		Size: size, Seeders: seeders, Peers: seeders,
+		// Real indexer releases always carry a download link; a release
+		// without one is rejected as ungrabbable (see Score).
+		DownloadURL: "https://mock.example/get/" + title,
+		Size:        size, Seeders: seeders, Peers: seeders,
 	}
 }
 

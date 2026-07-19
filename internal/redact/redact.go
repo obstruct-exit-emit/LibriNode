@@ -18,7 +18,7 @@ import (
 // sensitiveParams are the query-string keys every client in this codebase
 // uses to carry a secret. Matched case-sensitively against how each client
 // actually sets them (see indexer.apiURL, sabnzbd's params, comicvine.get).
-var sensitiveParams = []string{"apikey", "api_key", "token", "password"}
+var sensitiveParams = []string{"apikey", "api_key", "token", "password", "key"}
 
 // URLError redacts any sensitive query parameters from a *url.Error's
 // embedded URL, returning a new error with the same cause but a safe
