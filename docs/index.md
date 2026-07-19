@@ -1,8 +1,8 @@
 # LibriNode
 
-A self-hosted media automation server for **written media** — the
-Readarr/LazyLibrarian successor that treats ebooks, audiobooks, manga,
-comics, and magazines as first-class citizens.
+A self-hosted media automation server for **written media** — an
+alternative to tools like Readarr and LazyLibrarian that manages ebooks,
+audiobooks, manga, comics, and magazines in one app.
 
 LibriNode monitors your wanted list, searches your indexers, sends releases
 to your download client, then imports, renames, and organizes files into

@@ -4,7 +4,7 @@
 
 **Self-hosted automation for written media — ebooks, audiobooks, manga, comics, and magazines.**
 
-The Readarr / LazyLibrarian successor: monitor what you want, search your indexers, hand releases to your download client, and import everything into clean, reader-ready libraries — automatically.
+An alternative in the *arr tradition: monitor what you want, search your indexers, hand releases to your download client, and import everything into clean, reader-ready libraries — automatically.
 
 [![Release](https://img.shields.io/github/v/release/obstruct-exit-emit/LibriNode?include_prereleases&label=release)](https://github.com/obstruct-exit-emit/LibriNode/releases)
 [![CI](https://github.com/obstruct-exit-emit/LibriNode/actions/workflows/ci.yml/badge.svg)](https://github.com/obstruct-exit-emit/LibriNode/actions/workflows/ci.yml)
@@ -20,7 +20,7 @@ The Readarr / LazyLibrarian successor: monitor what you want, search your indexe
 
 ## Why LibriNode?
 
-Readarr is retired. LazyLibrarian is aging. Mylar does comics only, and Kavita/Komga are readers, not automation. **Nothing automates all five written-media types in one app** with modern metadata and clean *arr-style integrations — that's the gap LibriNode fills.
+LibriNode is an **alternative** to tools like Readarr (books; development has ended), LazyLibrarian (books and magazines), and Mylar (comics), with a different scope: **all five written-media types managed in one app**, in the familiar *arr style. It sits alongside readers like Kavita, Komga, Calibre, and Audiobookshelf — it feeds them organized libraries rather than replacing them.
 
 ## Features
 
