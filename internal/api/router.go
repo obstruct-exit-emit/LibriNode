@@ -59,6 +59,9 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	org := organize.New(store, cfg)
 	downloads := download.NewService(download.NewStore(db))
 	indexers := indexer.NewService(indexer.NewStore(db))
+	// Native sources that resolve their download URL lazily (AudioBook Bay's
+	// release page → magnet) do so at grab time, for the one release grabbed.
+	downloads.SetURLResolver(indexers.ResolveGrabURL)
 	s := &server{
 		cfg:       cfg,
 		db:        db,

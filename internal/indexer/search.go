@@ -3,7 +3,9 @@ package indexer
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -58,6 +60,53 @@ func (s *Service) Test(ctx context.Context, ind *Indexer) error {
 		return def.New(ind, s.client.httpc).Test(ctx)
 	}
 	return s.client.Test(ctx, ind)
+}
+
+// ResolveGrabURL turns a release's download URL into the real downloadable one
+// at grab time. Most URLs (magnets, direct links, Newznab guids) pass straight
+// through; a native source that defers resolution (implements Resolver) and
+// owns the URL's host gets to rewrite it — e.g. AudioBook Bay turning its
+// release-page URL into an assembled magnet. Best-effort: any failure to look
+// up an owner returns the URL unchanged so a grab is never blocked on this.
+func (s *Service) ResolveGrabURL(ctx context.Context, downloadURL string) (string, error) {
+	u, err := url.Parse(downloadURL)
+	if err != nil || u.Host == "" {
+		return downloadURL, nil
+	}
+	indexers, err := s.store.ListEnabled()
+	if err != nil {
+		return downloadURL, nil
+	}
+	for i := range indexers {
+		ind := indexers[i]
+		def, ok := NativeDefFor(ind.Type)
+		if !ok || !nativeOwnsHost(&ind, def, u.Host) {
+			continue
+		}
+		if r, ok := def.New(&ind, s.client.httpc).(Resolver); ok {
+			return r.Resolve(ctx, downloadURL)
+		}
+	}
+	return downloadURL, nil
+}
+
+// nativeOwnsHost reports whether a URL host belongs to one of a native
+// indexer's configured site URLs (or its default).
+func nativeOwnsHost(ind *Indexer, def NativeDef, host string) bool {
+	raw := strings.TrimSpace(ind.BaseURL)
+	if raw == "" {
+		raw = def.DefaultBaseURL
+	}
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		if u, err := url.Parse(p); err == nil && strings.EqualFold(u.Host, host) {
+			return true
+		}
+	}
+	return false
 }
 
 // resting reports whether an indexer is in backoff, without mutating state.

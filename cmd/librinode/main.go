@@ -196,7 +196,11 @@ func run(dataDir string) error {
 	go refresh.New(store, providers).RunPeriodic(bgCtx, timings.RefreshInterval())
 	imp := importer.New(store, downloads, organize.New(store, cfg), cfg.ImportSettings)
 	imp.SetPathMappings(cfg.PathMappings)
-	search := autosearch.New(store, indexer.NewService(indexer.NewStore(db)), downloads)
+	bgIndexers := indexer.NewService(indexer.NewStore(db))
+	// Grabs from the background auto-search resolve native lazy download URLs
+	// the same way API grabs do (see download.Service.SetURLResolver).
+	downloads.SetURLResolver(bgIndexers.ResolveGrabURL)
+	search := autosearch.New(store, bgIndexers, downloads)
 	// After the importer blocklists a junk/spam download, search for a
 	// replacement right away instead of waiting for the next periodic sweep.
 	imp.OnJunkBlocklist(func(bookID int64, mediaType string) {

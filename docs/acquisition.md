@@ -40,8 +40,12 @@ indexers it owns.
 The built-in sources today:
 
 - **AudioBook Bay** (audiobooks) scrapes the public listings and assembles a
-  magnet from the page's info hash and tracker list, producing an ordinary
-  torrent that goes through qBittorrent like any other.
+  magnet from a release page's info hash and tracker list, producing an ordinary
+  torrent that goes through qBittorrent like any other. AudioBook Bay temp-bans
+  IPs that crawl, so a **search makes a single listing request** and the
+  per-release detail fetch is deferred — the magnet is assembled only when you
+  grab a result. Requests use a warmed-up, browser-like session, and a search
+  bounced to the homepage is reported as rate-limited rather than retried.
 - **Anna's Archive** (ebooks) searches without an account and — importantly —
   **downloads without one too**: its releases use the `direct` protocol
   (below), leading with Anna's own free "slow" partner servers and the open

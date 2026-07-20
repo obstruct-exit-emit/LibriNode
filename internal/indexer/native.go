@@ -28,6 +28,18 @@ type Searcher interface {
 	Test(ctx context.Context) error
 }
 
+// Resolver is an optional capability: a source whose search results carry a
+// stand-in download URL (e.g. a release page) that must be turned into the real
+// downloadable URL only at grab time. Deferring this keeps search cheap — one
+// request instead of one per result — which is what keeps a scraped source from
+// tripping rate limits and IP bans. AudioBook Bay uses it: search returns the
+// release-page URL, and Resolve fetches that one page to assemble the magnet.
+type Resolver interface {
+	// Resolve turns a search result's download URL into the real one (a magnet,
+	// a file URL, ...). It is called for exactly the release the user grabs.
+	Resolve(ctx context.Context, downloadURL string) (string, error)
+}
+
 // NativeDef describes a registered native implementation.
 type NativeDef struct {
 	Name        string   // registry key AND the stored indexer type (e.g. "audiobookbay")

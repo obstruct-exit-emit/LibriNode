@@ -127,6 +127,77 @@ func TestParseListingSkipsNavLinks(t *testing.T) {
 	}
 }
 
+// abbServer serves ABB's shape: a homepage (session warm-up), a search listing,
+// and detail pages. It counts requests by kind so tests can assert search never
+// crawls detail pages.
+type abbServer struct {
+	*httptest.Server
+	homeHits, searchHits, detailHits int
+}
+
+func newABBServer(t *testing.T, listing string) *abbServer {
+	t.Helper()
+	a := &abbServer{}
+	a.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Query().Get("s") != "":
+			a.searchHits++
+			_, _ = w.Write([]byte(listing))
+		case strings.Contains(r.URL.Path, "/audio-books/"):
+			a.detailHits++
+			_, _ = w.Write([]byte(detailHTML))
+		default:
+			a.homeHits++
+			_, _ = w.Write([]byte("<html>abb home</html>"))
+		}
+	}))
+	t.Cleanup(a.Close)
+	return a
+}
+
+const oneResultListing = `<div class="postTitle"><a href="/audio-books/the-hobbit/">The Hobbit</a></div>`
+
+// TestSearchDefersDetailFetch: a search returns releases whose download URL is
+// the release page (not a magnet), and it never fetches a detail page — the
+// magnet is assembled only when Resolve is called at grab time.
+func TestSearchDefersDetailFetch(t *testing.T) {
+	srv := newABBServer(t, oneResultListing)
+
+	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
+	releases, err := s.Search(context.Background(), "hobbit", "audiobook")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(releases) != 1 {
+		t.Fatalf("releases = %+v, want 1", releases)
+	}
+	if releases[0].DownloadURL != srv.URL+"/audio-books/the-hobbit" {
+		t.Errorf("download URL = %q, want the release page", releases[0].DownloadURL)
+	}
+	if srv.detailHits != 0 {
+		t.Errorf("search fetched %d detail page(s); it must fetch none", srv.detailHits)
+	}
+	if srv.homeHits == 0 {
+		t.Error("search should warm up the session by hitting the homepage")
+	}
+
+	// Resolve (grab time) fetches exactly the one detail page and builds the magnet.
+	r, ok := s.(indexer.Resolver)
+	if !ok {
+		t.Fatal("ABB searcher must implement indexer.Resolver")
+	}
+	magnet, err := r.Resolve(context.Background(), releases[0].DownloadURL)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !strings.HasPrefix(magnet, "magnet:?xt=urn:btih:0123456789abcdef") {
+		t.Errorf("resolved magnet = %q", magnet)
+	}
+	if srv.detailHits != 1 {
+		t.Errorf("Resolve fetched %d detail page(s), want 1", srv.detailHits)
+	}
+}
+
 // TestSearchFailsOverToFallbackURL: the primary site is down; the search must
 // succeed transparently through the fallback mirror.
 func TestSearchFailsOverToFallbackURL(t *testing.T) {
@@ -134,16 +205,7 @@ func TestSearchFailsOverToFallbackURL(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer dead.Close()
-
-	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("s") != "" {
-			// Listing with one post pointing back at this mirror.
-			_, _ = w.Write([]byte(`<div class="postTitle"><a href="/audio-books/the-hobbit/">The Hobbit</a></div>`))
-			return
-		}
-		_, _ = w.Write([]byte(detailHTML))
-	}))
-	defer mirror.Close()
+	mirror := newABBServer(t, oneResultListing)
 
 	def := Def()
 	s := def.New(&indexer.Indexer{Name: "ABB", BaseURL: dead.URL + "," + mirror.URL}, mirror.Client())
@@ -151,11 +213,9 @@ func TestSearchFailsOverToFallbackURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with fallback: %v", err)
 	}
-	if len(releases) != 1 || !strings.HasPrefix(releases[0].DownloadURL, "magnet:?xt=urn:btih:0123456789abcdef") {
+	if len(releases) != 1 || releases[0].DownloadURL != mirror.URL+"/audio-books/the-hobbit" {
 		t.Fatalf("releases = %+v", releases)
 	}
-	// Test() succeeds too (the mirror answers), and fails when only the dead
-	// site is configured.
 	if err := s.Test(context.Background()); err != nil {
 		t.Errorf("Test with fallback: %v", err)
 	}
@@ -165,35 +225,22 @@ func TestSearchFailsOverToFallbackURL(t *testing.T) {
 	}
 }
 
-// TestSearchCapsDetailFetches: a listing full of hash-less pages must stop at
-// the request cap instead of crawling every post.
-func TestSearchCapsDetailFetches(t *testing.T) {
-	var listing strings.Builder
-	for i := 0; i < 40; i++ {
-		listing.WriteString(`<div class="postTitle"><a href="/audio-books/book-` +
-			strings.Repeat("x", i+1) + `/">Book</a></div>`)
-	}
-	detailHits := 0
+// TestSearchDetectsHomepageBlock: a search redirected to the homepage (ABB's
+// rate-limit/block behaviour) surfaces as an error, not empty success.
+func TestSearchDetectsHomepageBlock(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("s") != "" {
-			_, _ = w.Write([]byte(listing.String()))
+			http.Redirect(w, r, "/", http.StatusFound) // block → bounce to home
 			return
 		}
-		detailHits++
-		_, _ = w.Write([]byte("<html>no info hash on this page</html>"))
+		_, _ = w.Write([]byte("<html>abb home</html>"))
 	}))
 	defer srv.Close()
 
 	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
-	releases, err := s.Search(context.Background(), "anything", "audiobook")
-	if err != nil {
-		t.Fatalf("Search: %v", err)
-	}
-	if len(releases) != 0 {
-		t.Errorf("hash-less pages produced releases: %+v", releases)
-	}
-	if detailHits > maxDetails {
-		t.Errorf("detail fetches = %d, want capped at %d", detailHits, maxDetails)
+	_, err := s.Search(context.Background(), "blocked", "audiobook")
+	if err == nil || !strings.Contains(err.Error(), "homepage") {
+		t.Errorf("expected a homepage-block error, got %v", err)
 	}
 }
 

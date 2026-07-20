@@ -203,6 +203,16 @@ type Service struct {
 	// sweepMu serializes cold queue sweeps: concurrent callers wait for the
 	// one in flight and then read its snapshot instead of re-hitting clients.
 	sweepMu sync.Mutex
+	// urlResolver, if set, rewrites a release's download URL just before it's
+	// handed to a client — for native sources that resolve lazily at grab time
+	// (main wires this to the indexer service). Opaque here to avoid a
+	// dependency on the indexer package.
+	urlResolver func(ctx context.Context, downloadURL string) (string, error)
+}
+
+// SetURLResolver registers a grab-time download-URL rewriter (see urlResolver).
+func (s *Service) SetURLResolver(fn func(ctx context.Context, downloadURL string) (string, error)) {
+	s.urlResolver = fn
 }
 
 // clientEntry is a connected Client kept for reuse — a fresh qBittorrent
@@ -267,6 +277,15 @@ type GrabResult struct {
 // Grab sends a release to the best enabled client for its protocol
 // (lowest priority number wins).
 func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabResult, error) {
+	// Resolve lazily-deferred URLs (e.g. an AudioBook Bay release page →
+	// assembled magnet) at the moment of grab, for exactly this release.
+	if s.urlResolver != nil {
+		resolved, err := s.urlResolver(ctx, url)
+		if err != nil {
+			return nil, err
+		}
+		url = resolved
+	}
 	configs, err := s.store.List()
 	if err != nil {
 		return nil, err

@@ -5,6 +5,17 @@
 // (the exact step that breaks a Prowlarr→Jackett definition). The result is an
 // ordinary torrent Release that rides LibriNode's existing qBittorrent path.
 //
+// Ban avoidance is the whole game with ABB, and mirrors how a browser behaves:
+//   - Search hits the site ONCE (the results listing). It does NOT crawl every
+//     result's detail page — that per-search fan-out is what earns an IP ban.
+//     Each release's magnet is assembled lazily at grab time (Resolve), for the
+//     one release actually grabbed.
+//   - Every request rides a warmed-up session (a PHPSESSID cookie fetched from
+//     the homepage first) with full browser headers; ABB serves reliable
+//     search pages only to an initialized, browser-like session.
+//   - A search redirected to the homepage means ABB is rate-limiting/blocking;
+//     that surfaces as a clear error instead of a retry storm.
+//
 // This is a dual-use shadow-library source: it is never bundled or enabled by
 // default; a user adds it deliberately and is responsible for its use. HTML
 // selectors target ABB's known layout and may need updating if the site
@@ -17,11 +28,11 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/librinode/librinode/internal/indexer"
 )
@@ -33,12 +44,22 @@ const (
 	// user can override it on the indexer (Settings → Indexers → Site URL).
 	DefaultBaseURL = "https://audiobookbay.lu"
 
-	maxDetails  = 12                     // detail pages fetched per search (each is a request)
-	detailPause = 200 * time.Millisecond // politeness delay between detail fetches
-	// A real browser UA — ABB sits behind anti-bot filtering that rejects
-	// obvious scrapers; this is best-effort, not a guarantee.
-	userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+	// A current desktop-Chrome UA — ABB filters obvious scrapers.
+	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+	// legacyCategory is the category query ABB's search expects (already
+	// percent-encoded); shelfmark found it necessary for reliable results.
+	legacyCategory = "undefined%2Cundefined"
 )
+
+// defaultTrackers back-fill a magnet when a release page lists none, so the
+// torrent can still find peers.
+var defaultTrackers = []string{
+	"udp://tracker.openbittorrent.com:80/announce",
+	"udp://tracker.opentrackr.org:1337/announce",
+	"udp://tracker.coppersurfer.tk:6969/announce",
+	"udp://exodus.desync.com:6969/announce",
+	"udp://tracker.internetwarriors.net:1337/announce",
+}
 
 // Def is the native-indexer definition; register it with indexer.RegisterNative.
 func Def() indexer.NativeDef {
@@ -77,104 +98,170 @@ type searcher struct {
 	httpc *http.Client
 }
 
+// session returns a client that shares the pooled transport but carries its own
+// fresh cookie jar, so a search's homepage warm-up + listing (and, separately, a
+// grab's warm-up + detail) share one PHPSESSID like a browser tab would.
+func (s *searcher) session() *http.Client {
+	c := *s.httpc
+	if jar, err := cookiejar.New(nil); err == nil {
+		c.Jar = jar
+	}
+	return &c
+}
+
 // Test confirms the site is reachable on at least one configured URL.
 func (s *searcher) Test(ctx context.Context) error {
 	var err error
 	for _, base := range s.bases {
-		if _, err = s.fetch(ctx, base+"/"); err == nil {
+		if _, _, err = fetch(ctx, s.session(), base+"/"); err == nil {
 			return nil
 		}
 	}
 	return fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
 }
 
-// Search finds audiobook torrents: scrape the listing for release pages, then
-// each page for its info hash + trackers, and assemble a magnet. The listing is
-// tried on each configured site URL in order — the primary, then fallbacks —
-// and the first that answers serves the whole search (detail links point at
-// the host that produced them).
+// Search finds audiobook torrents from ONE listing request per site (after a
+// session warm-up). Each result's magnet is deferred to Resolve (grab time),
+// so a search never crawls detail pages — the behaviour that gets ABB to ban an
+// IP. The first configured site that answers serves the search; a homepage
+// redirect means the search was blocked/rate-limited.
 func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]indexer.Release, error) {
 	if mediaType != "audiobook" {
 		return nil, nil
 	}
-	var listing, base string
-	var err error
-	for _, b := range s.bases {
-		if listing, err = s.fetch(ctx, b+"/?s="+url.QueryEscape(query)); err == nil {
-			base = b
-			break
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-	}
-	if base == "" {
-		return nil, fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
-	}
-
-	releases := []indexer.Release{}
-	fetched := 0
-	for _, post := range parseListing(listing, base) {
-		// Cap detail-page REQUESTS, not successes — a listing full of hash-less
-		// pages must not turn into an unbounded crawl.
-		if fetched >= maxDetails {
-			break
-		}
-		if fetched > 0 {
-			// Politeness delay between detail fetches, honoring cancellation.
-			select {
-			case <-ctx.Done():
-				return releases, nil
-			case <-time.After(detailPause):
+	var lastErr error
+	for _, base := range s.bases {
+		client := s.session()
+		// Warm up the PHPSESSID cookie from the homepage first.
+		if _, _, err := fetch(ctx, client, base+"/"); err != nil {
+			lastErr = err
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
+			continue
 		}
-		if ctx.Err() != nil {
-			break
-		}
-		fetched++
-		page, err := s.fetch(ctx, post.URL)
+		listing, finalURL, err := fetch(ctx, client, base+"/?s="+url.QueryEscape(query)+"&cat="+legacyCategory)
 		if err != nil {
-			continue // one dead post shouldn't sink the search
+			lastErr = err
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			continue
 		}
-		hash, trackers, size, ok := parseDetail(page)
-		if !ok {
-			continue // no info hash — nothing to build a magnet from
+		if isHomepageRedirect(finalURL, base) {
+			lastErr = fmt.Errorf("AudioBook Bay redirected the search to its homepage — it is likely rate-limiting or temporarily blocking this IP; try again later")
+			continue
 		}
-		releases = append(releases, indexer.Release{
-			IndexerID:   s.ind.ID,
-			Indexer:     s.ind.Name,
-			Protocol:    indexer.ProtocolTorrent,
-			Title:       post.Title,
-			GUID:        post.URL,
-			InfoURL:     post.URL,
-			DownloadURL: buildMagnet(hash, post.Title, trackers),
-			Size:        size,
-			Seeders:     -1, // ABB doesn't report swarm health; unknown, not dead
-			Peers:       -1,
-		})
+
+		releases := []indexer.Release{}
+		for _, p := range parseListing(listing, base) {
+			releases = append(releases, indexer.Release{
+				IndexerID: s.ind.ID,
+				Indexer:   s.ind.Name,
+				Protocol:  indexer.ProtocolTorrent,
+				Title:     p.Title,
+				GUID:      p.URL,
+				InfoURL:   p.URL,
+				// The release page itself — Resolve turns it into a magnet at
+				// grab time (one request, only when grabbed).
+				DownloadURL: p.URL,
+				Seeders:     -1, // ABB doesn't report swarm health; unknown, not dead
+				Peers:       -1,
+			})
+		}
+		return releases, nil
 	}
-	return releases, nil
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no configured site URL answered")
+	}
+	return nil, lastErr
 }
 
-func (s *searcher) fetch(ctx context.Context, rawURL string) (string, error) {
+// Resolve turns a release-page URL into an assembled magnet — called at grab
+// time for exactly the release the user grabbed. It warms a fresh session, then
+// fetches that one page for its info hash + trackers.
+func (s *searcher) Resolve(ctx context.Context, downloadURL string) (string, error) {
+	if strings.HasPrefix(downloadURL, "magnet:") {
+		return downloadURL, nil // already resolved
+	}
+	u, err := url.Parse(downloadURL)
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("invalid AudioBook Bay release URL")
+	}
+	client := s.session()
+	_, _, _ = fetch(ctx, client, u.Scheme+"://"+u.Host+"/") // best-effort warm-up
+	page, _, err := fetch(ctx, client, downloadURL)
+	if err != nil {
+		return "", fmt.Errorf("fetching AudioBook Bay release page: %w", err)
+	}
+	hash, trackers, _, ok := parseDetail(page)
+	if !ok {
+		return "", fmt.Errorf("no info hash on the AudioBook Bay release page (its layout may have changed)")
+	}
+	if len(trackers) == 0 {
+		trackers = defaultTrackers
+	}
+	return buildMagnet(hash, titleFromURL(u), trackers), nil
+}
+
+// fetch GETs a URL on the given session client with browser-like headers and
+// returns the body plus the final URL (after redirects), for homepage-redirect
+// detection.
+func fetch(ctx context.Context, client *http.Client, rawURL string) (body, finalURL string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("User-Agent", userAgent)
-	resp, err := s.httpc.Do(req)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+
+	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
 	if err != nil {
-		return "", fmt.Errorf("reading response: %w", err)
+		return "", "", fmt.Errorf("reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d from %s", resp.StatusCode, rawURL)
+		return "", "", fmt.Errorf("HTTP %d from %s", resp.StatusCode, rawURL)
 	}
-	return string(body), nil
+	final := rawURL
+	if resp.Request != nil && resp.Request.URL != nil {
+		final = resp.Request.URL.String()
+	}
+	return string(b), final, nil
+}
+
+// isHomepageRedirect reports whether a search landed back on the site's
+// homepage — ABB's tell for a blocked or rate-limited search.
+func isHomepageRedirect(finalURL, base string) bool {
+	fu, err := url.Parse(finalURL)
+	if err != nil {
+		return false
+	}
+	bu, err := url.Parse(base)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(fu.Host, bu.Host) && (fu.Path == "" || fu.Path == "/") && fu.RawQuery == ""
+}
+
+// titleFromURL derives a magnet display name from a release page's slug.
+func titleFromURL(u *url.URL) string {
+	seg := strings.Trim(u.Path, "/")
+	if i := strings.LastIndex(seg, "/"); i >= 0 {
+		seg = seg[i+1:]
+	}
+	seg = strings.ReplaceAll(seg, "-", " ")
+	if seg == "" {
+		return "audiobook"
+	}
+	return seg
 }
 
 // --- Parsing (pure functions; fixture-tested) ---
