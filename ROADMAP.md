@@ -127,16 +127,16 @@ Extending past what the standard *arr APIs can see:
 - **AudioBook Bay** (audiobooks): scrapes listings and assembles the magnet
   from the on-page info hash + trackers; rides the normal torrent path;
   primary + fallback site URLs for its rotating domains
-- **Anna's Archive** (ebooks): keyless search *and* keyless downloads —
-  free-first by design, routing through Anna's own free "slow" servers and
-  the open mirror network by MD5, no account needed; an optional membership
-  key only appends the paid fast-download API as a last-resort fallback
-- **Library Genesis** (ebooks): both indexes (non-fiction + fiction)
-  searched and merged; downloads via the same open-mirror failover — the
-  general shadow-library layer, not tied to any one site
+- **Library Genesis** (ebooks): searches libgen.li and downloads by MD5 via
+  its `ads.php` → `get.php` mirror, no account needed. Each result carries its
+  author, year, language, and format, so search keeps only the book you asked
+  for in the language and format your quality profile wants. (Anna's Archive
+  was tried and dropped: it renders search behind a JS/anti-bot wall that needs
+  a browser/bypasser LibriNode doesn't ship — and Libgen is what it aggregates.)
 - **`direct` download protocol**: LibriNode's own HTTP fetcher — mirror-list
-  failover, membership-API and landing-page awareness, progress in the
-  queue, imported like any other grab; any direct-link source can ride it
+  failover, landing-page awareness (follows `ads.php` → `get.php` to the file),
+  progress in the queue, imported like any other grab; any direct-link source
+  can ride it
 - **Metadata fallbacks**: Open Library and Google Books (both keyless) answer
   only when the primary draws a blank; records remember their source so
   refreshes route back to it

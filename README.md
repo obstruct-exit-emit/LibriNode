@@ -36,7 +36,7 @@ LibriNode is an **alternative** to tools like Readarr (books; development has en
 
 **🔍 One acquisition pipeline**
 - **Prowlarr application sync** — add LibriNode as a *Readarr* app and Prowlarr pushes its indexers automatically; manual Newznab/Torznab entry works too
-- **Native indexers** for sources Prowlarr can't reach (AudioBook Bay, Anna's Archive) — built-in, off by default, user-enabled
+- **Native indexers** for sources Prowlarr can't reach (AudioBook Bay, Library Genesis) — built-in, off by default, user-enabled
 - Release parsing and scoring that understands formats, retail editions, narrators, volume ranges, and whole-series packs
 - Quality profiles with upgrade handling, a failed-release blocklist, and per-indexer failure backoff
 

@@ -44,19 +44,31 @@ func TestParseResults(t *testing.T) {
 	if len(res) != 2 {
 		t.Fatalf("parsed %d rows, want 2: %+v", len(res), res)
 	}
+	r0 := res[0]
 	// Title is the edition.php text, NOT the author anchor.
-	if res[0].Title != "Hunters of Dune" {
-		t.Errorf("row0 title = %q, want Hunters of Dune", res[0].Title)
+	if r0.Title != "Hunters of Dune" {
+		t.Errorf("row0 title = %q, want Hunters of Dune", r0.Title)
 	}
-	if res[0].MD5 != "8fdb106f421adb411735aa99d746a037" {
-		t.Errorf("row0 md5 = %q", res[0].MD5)
+	if r0.MD5 != "8fdb106f421adb411735aa99d746a037" {
+		t.Errorf("row0 md5 = %q", r0.MD5)
 	}
-	if res[0].Size != int64(990*1024) {
-		t.Errorf("row0 size = %d, want 990 kB", res[0].Size)
+	if r0.Size != int64(990*1024) {
+		t.Errorf("row0 size = %d, want 990 kB", r0.Size)
+	}
+	// Structured columns: authors (role suffix stripped), year, language, format.
+	if r0.Authors != "Herbert, Brian; Kevin, J. Anderson" {
+		t.Errorf("row0 authors = %q", r0.Authors)
+	}
+	if r0.Year != "2006" || r0.Language != "english" || r0.Format != "fb2" {
+		t.Errorf("row0 year/lang/format = %q/%q/%q", r0.Year, r0.Language, r0.Format)
+	}
+	// The scene-like name carries everything the scorer needs.
+	if got := r0.releaseName(); got != "Herbert, Brian; Kevin, J. Anderson - Hunters of Dune (2006) english fb2" {
+		t.Errorf("row0 releaseName = %q", got)
 	}
 	// Second row: title is the first edition.php link, not the ISBN one.
-	if res[1].Title != "A Wizard of Earthsea" {
-		t.Errorf("row1 title = %q, want A Wizard of Earthsea", res[1].Title)
+	if res[1].Title != "A Wizard of Earthsea" || res[1].Format != "epub" || res[1].Language != "english" {
+		t.Errorf("row1 = %+v", res[1])
 	}
 	if res[1].Size != 1258291 { // 1.2 MB truncated
 		t.Errorf("row1 size = %d, want ~1.2 MB", res[1].Size)

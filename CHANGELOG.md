@@ -20,18 +20,18 @@ in progress. Highlights from the hardening period, newest first:
   empty folder. Matched files, unmatched media, `.opf` sidecars, artwork,
   and `ComicInfo.xml` are always kept; deletions are re-validated
   server-side against the library's own roots.
-- **Library Genesis** + keyless **Anna's Archive** downloads — the general
-  shadow-library layer. Both sources identify files by MD5, the key the open
-  mirror network serves by: every release now carries a mirror list the direct
-  fetcher fails over across, so downloads work **without any account**. Anna's
-  is **free-first** — its download chain leads with Anna's own free "slow"
-  partner servers and the open mirrors; an optional membership key only appends
-  the paid fast-download API as a last-resort fallback, never required and
-  never prioritized over the free path. The fetcher learned to follow
-  open-mirror landing pages (the "GET" page shapes) to the real file, alongside
-  the existing membership-API JSON hop. Libgen searches its non-fiction and
-  fiction indexes and merges the results. Same posture as every native source:
-  off by default, user-added, user-responsible.
+- **Library Genesis** ebook source (native indexer, `direct` protocol).
+  Searches libgen.li and downloads by MD5 through its `ads.php` → `get.php`
+  mirror — the direct fetcher follows the landing page to the real file — so
+  downloads work **without any account**. Each result carries its author, year,
+  language, and file format from the results table, so an interactive or
+  automatic search keeps only the book you asked for in the language and format
+  your quality profile wants (a wrong-language edition, wrong-author book, or an
+  unwanted format is filtered out; the release scorer's author check is now
+  order-independent so "Last, First" listings match). Off by default,
+  user-added, user-responsible. (Anna's Archive was evaluated and dropped — it
+  renders search behind a JS/anti-bot wall needing a browser/bypasser LibriNode
+  doesn't ship, and Libgen is the catalog it aggregates.)
 - **Light theme** with a sidebar theme control: Auto (follows your OS, live),
   Light, or Dark — a per-browser preference applied before first paint, so
   there's no flash. The whole UI runs on one CSS-variable contract; the light
@@ -42,17 +42,13 @@ in progress. Highlights from the hardening period, newest first:
   round-trip through library-wide organize or the API.
 - Mobile: sidebar group labels now render as row headers at the narrow
   breakpoint instead of disappearing.
-- **Anna's Archive** + a general **`direct` download protocol**. `direct` is a
-  third release protocol beside torrent and usenet: a built-in download client
-  (type `direct`, its "host" a local download folder) where **LibriNode streams
-  the file itself** — mirror-list failover, a JSON `download_url` hop for
-  membership APIs, live progress in the queue, and Completed Download Handling
-  importing the result like any other grab. Anna's Archive rides it as the
-  first source: keyless search (scraped), downloads gated on a paid AA
-  membership key entered on the indexer — without one the source is search-only
-  and candidates say so instead of failing at grab. Membership keys are
-  scrubbed from every error and log line. Same dual-use posture as AudioBook
-  Bay: never bundled or enabled by default, user-added, user-responsible.
+- A general **`direct` download protocol** — a third release protocol beside
+  torrent and usenet: a built-in download client (type `direct`, its "host" a
+  local download folder) where **LibriNode streams the file itself** —
+  mirror-list failover, following an open-mirror landing page (or a membership
+  API's JSON answer) one hop to the real file, live progress in the queue, and
+  Completed Download Handling importing the result like any other grab. Library
+  Genesis rides it; any direct-link source can.
 - Native indexer framework + **AudioBook Bay**. A new `type: native` indexer
   kind sits beside Newznab/Torznab: a built-in Go source, selected as the
   indexer's type (no URL), feeding the same search/scoring/grab pipeline as the
@@ -63,7 +59,7 @@ in progress. Highlights from the hardening period, newest first:
   torrent that rides the existing qBittorrent path. These are dual-use
   shadow-library sources — **nothing is bundled or enabled by default**; a user
   adds one deliberately and is responsible for its use. (A general `direct`
-  HTTP-download protocol and Anna's Archive are the still-open next step.)
+  HTTP-download protocol and Library Genesis followed.)
 - ISBN / embedded-metadata / fuzzy file matching for library scans. On top of
   the existing exact author/title matching, a file now also matches by **ISBN or
   ASIN** — parsed from the filename or read from an epub's embedded OPF metadata

@@ -46,19 +46,16 @@ The built-in sources today:
   per-release detail fetch is deferred — the magnet is assembled only when you
   grab a result. Requests use a warmed-up, browser-like session, and a search
   bounced to the homepage is reported as rate-limited rather than retried.
-- **Library Genesis** (ebooks) is the reliable ebook source: it searches
+- **Library Genesis** (ebooks) is the built-in ebook source: it searches
   libgen.li and downloads through its `ads.php` → `get.php` mirror by each
   file's MD5, using the `direct` protocol (below). No account needed. Its
   domain rotates, so set the **Site URL** to a live mirror if the default
-  stops answering.
-- **Anna's Archive** (ebooks) is best-effort only. Anna's renders its search
-  client-side behind a JavaScript/anti-bot wall, so a plain HTTP fetch returns
-  no scrapable results — searching it needs a real browser or a Cloudflare
-  bypasser, which LibriNode doesn't ship. Its download path (the `direct`
-  protocol, leading with Anna's free "slow" partner servers and the open Libgen
-  mirror by MD5, with an optional paid membership key as a last-resort
-  fast-path) still works if you have a file's MD5, but for finding books use
-  **Library Genesis** — which is exactly what Anna's aggregates.
+  stops answering. Each result carries its **author, year, language, and file
+  format** from the results table, so an interactive or automatic search keeps
+  only the book you asked for in the language and format your quality profile
+  wants — a Spanish edition, a wrong-author book, or an `fb2` when your profile
+  lists only epub/mobi/azw3/pdf are all filtered out. (Libgen has many `fb2`
+  scans; add `fb2` to your ebook quality profile if you want them.)
 
 Each rotating-domain source takes an optional **Site URL** override plus an
 optional **fallback site URL** (comma-separated); searches try them in order.
@@ -73,21 +70,16 @@ membership-API JSON answer or an open-mirror landing page one hop to the real
 file, and Completed Download Handling imports the result like any other grab.
 It's source-agnostic: any direct-link source can ride it.
 
-**Anna's Archive** and **Library Genesis** (ebooks) ride a third release
-protocol: **direct** — plain HTTP file downloads, handled by a built-in
-**Direct fetcher** download client (Settings → Download Clients: pick *Direct
-fetcher*, point it at a local download folder). LibriNode streams the file
-itself — no external program — follows mirror landing pages and
-membership-API answers to the real file, shows progress in the Activity
-queue, and Completed Download Handling imports the result like any other
-grab. Every release carries a **mirror list**: hosts are tried in order and
-a dead one fails over to the next.
-
-Both sources identify files by **MD5**, the key the open mirror network
-serves by — so downloads work **without any account**. On Anna's Archive, an
-optional paid **membership key** adds its fast-download API as the first,
-fastest hop (and covers collections the open mirrors don't carry); the open
-mirrors remain the failover either way.
+**Library Genesis** (ebooks) rides a third release protocol: **direct** —
+plain HTTP file downloads, handled by a built-in **Direct fetcher** download
+client (Settings → Download Clients: pick *Direct fetcher*, point it at a local
+download folder). LibriNode streams the file itself — no external program —
+follows the mirror's landing page (`ads.php` → `get.php`) to the real file,
+shows progress in the Activity queue, and Completed Download Handling imports
+the result like any other grab. A release can carry a `|`-separated **mirror
+list**: hosts are tried in order and a dead one fails over to the next. Files
+are keyed by **MD5**, the key the open mirror network serves by — so downloads
+work **without any account**.
 
 These are dual-use shadow-library sources: **nothing is bundled or enabled by
 default** — you add one deliberately, and its use is your responsibility. Being

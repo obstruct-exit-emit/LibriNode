@@ -22,7 +22,6 @@ import (
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/indexer"
-	"github.com/librinode/librinode/internal/indexer/annasarchive"
 	"github.com/librinode/librinode/internal/indexer/audiobookbay"
 	"github.com/librinode/librinode/internal/indexer/libgen"
 	"github.com/librinode/librinode/internal/library"
@@ -167,7 +166,6 @@ func run(dataDir string) error {
 	// Nothing is bundled or enabled by default — registering only makes the
 	// implementation selectable when a user deliberately adds it.
 	indexer.RegisterNative(audiobookbay.Def())
-	indexer.RegisterNative(annasarchive.Def())
 	indexer.RegisterNative(libgen.Def())
 
 	providers := metadata.NewManager()

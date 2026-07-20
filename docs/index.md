@@ -33,7 +33,7 @@ added it to (or own).
   Prowlarr sync), release parsing and scoring, quality profiles with
   upgrades, qBittorrent and SABnzbd, Completed Download Handling.
 - **Native indexers** for sources Prowlarr can't reach (AudioBook Bay,
-  Anna's Archive) plus a built-in **direct** HTTP fetcher — all off by
+  Library Genesis) plus a built-in **direct** HTTP fetcher — all off by
   default, user-enabled, hidden from Prowlarr. See
   [Acquisition](acquisition.md).
 - Reader-friendly layouts: Audiobookshelf folders for audio, Kavita/Komga

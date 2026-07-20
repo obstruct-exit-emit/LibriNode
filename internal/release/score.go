@@ -20,6 +20,32 @@ var titleStopwords = map[string]bool{
 	"or": true, "in": true, "to": true, "vs": true, "versus": true, "for": true,
 }
 
+// authorMatches reports whether a release mentions the author: either the
+// full normalized name as a contiguous run, or — for "Last, First" style
+// sources like Libgen where the words are present but reordered — every
+// significant (2+ char) word of the name somewhere in the release. Single-char
+// initials are ignored so "Kevin J. Anderson" matches "Kevin, J. Anderson".
+func authorMatches(relNorm, authorNorm string) bool {
+	if strings.Contains(relNorm, authorNorm) {
+		return true
+	}
+	have := map[string]bool{}
+	for _, w := range strings.Fields(relNorm) {
+		have[w] = true
+	}
+	matched := 0
+	for _, w := range strings.Fields(authorNorm) {
+		if len(w) < 2 {
+			continue
+		}
+		if !have[w] {
+			return false
+		}
+		matched++
+	}
+	return matched > 0
+}
+
 // titleMatches reports whether any normalized title key appears in the
 // normalized release title as a whole-word run not immediately continued by a
 // stopword. Matching whole words (not substrings) avoids "Saga" hitting "Saga
@@ -379,7 +405,7 @@ func (c *Candidate) matchBook(book *library.Book, author *library.Author) {
 
 	if author != nil {
 		authorNorm := scanner.Normalize(author.Name)
-		if authorNorm != "" && !strings.Contains(relNorm, authorNorm) {
+		if authorNorm != "" && !authorMatches(relNorm, authorNorm) {
 			c.reject("does not mention the author")
 		}
 	}

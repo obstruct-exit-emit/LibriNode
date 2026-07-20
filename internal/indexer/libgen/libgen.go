@@ -127,9 +127,13 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 			IndexerID: s.ind.ID,
 			Indexer:   s.ind.Name,
 			Protocol:  indexer.ProtocolDirect,
-			Title:     res.Title,
-			GUID:      res.MD5,
-			InfoURL:   base + "/file.php?md5=" + res.MD5,
+			// A scene-like name so the shared release scorer can do its job:
+			// the author (for the author check), the title, the year, the
+			// language (so a wrong-language edition is rejected), and the file
+			// format (so it's kept only when the quality profile wants it).
+			Title:   res.releaseName(),
+			GUID:    res.MD5,
+			InfoURL: base + "/file.php?md5=" + res.MD5,
 			// ads.php on the serving host → get.php → file (the direct client
 			// follows the landing page).
 			DownloadURL: base + "/ads.php?md5=" + res.MD5,
@@ -165,9 +169,34 @@ func (s *searcher) fetch(ctx context.Context, rawURL string) (string, error) {
 // --- Parsing (pure functions; fixture-tested) ---
 
 type result struct {
-	MD5   string
-	Title string
-	Size  int64
+	MD5      string
+	Title    string
+	Authors  string // "Last, First; …" as libgen.li lists them
+	Year     string
+	Language string
+	Format   string // file extension: epub, pdf, fb2, …
+	Size     int64
+}
+
+// releaseName renders a result as a scene-like release name the shared scorer
+// understands: "Author - Title (Year) language ext". The author lets the
+// book-match's author check pass, the language lets a wrong-language edition be
+// rejected, and the extension lets the quality profile keep only wanted formats.
+func (r result) releaseName() string {
+	name := r.Title
+	if r.Authors != "" {
+		name = r.Authors + " - " + r.Title
+	}
+	if r.Year != "" {
+		name += " (" + r.Year + ")"
+	}
+	if r.Language != "" {
+		name += " " + r.Language
+	}
+	if r.Format != "" {
+		name += " " + r.Format
+	}
+	return name
 }
 
 var (
@@ -179,13 +208,19 @@ var (
 	// Anchored on href= (not the opening <a) because libgen.li's anchors carry
 	// a title="…<br>" attribute whose literal '>' would otherwise truncate an
 	// [^>]* attribute scan before it reaches href.
-	titleRe = regexp.MustCompile(`(?is)href="edition\.php[^"]*"[^>]*>(.*?)</a>`)
-	tagRe   = regexp.MustCompile(`(?s)<[^>]+>`)
+	titleRe  = regexp.MustCompile(`(?is)href="edition\.php[^"]*"[^>]*>(.*?)</a>`)
+	authorRe = regexp.MustCompile(`(?is)href="author\.php[^"]*"[^>]*>(.*?)</a>`)
+	cellRe   = regexp.MustCompile(`(?is)<td[^>]*>(.*?)</td>`)
+	tagRe    = regexp.MustCompile(`(?s)<[^>]+>`)
 	// Sizes render like "990 kB", "1.2 MB" in the file.php cell.
 	sizeRe = regexp.MustCompile(`(?i)\b([0-9][0-9.,]*)\s*(kb|mb|gb)\b`)
+	// Per-cell classifiers for the language, format, and year columns.
+	langCell = regexp.MustCompile(`(?i)^(english|german|french|spanish|italian|dutch|russian|portuguese|polish|japanese|chinese|korean|swedish|norwegian|danish|finnish|czech|greek|turkish|arabic|hindi|latin|hungarian|romanian|ukrainian)$`)
+	extCell  = regexp.MustCompile(`(?i)^(epub|pdf|mobi|azw3?|fb2|djvu?|txt|rtf|lit|doc|docx|cbz|cbr)$`)
+	yearCell = regexp.MustCompile(`^(1[4-9]\d\d|20\d\d)$`)
 )
 
-// parseResults extracts (md5, title, size) from a libgen.li results table.
+// parseResults extracts one result per libgen.li table row.
 func parseResults(page string) []result {
 	out := []result{}
 	for _, row := range rowRe.FindAllStringSubmatch(page, -1) {
@@ -202,9 +237,38 @@ func parseResults(page string) []result {
 		if title == "" {
 			continue
 		}
-		out = append(out, result{MD5: strings.ToLower(m[1]), Title: title, Size: parseSize(block)})
+		res := result{MD5: strings.ToLower(m[1]), Title: title, Size: parseSize(block)}
+
+		var authors []string
+		for _, a := range authorRe.FindAllStringSubmatch(block, -1) {
+			if name := cleanAuthor(a[1]); name != "" {
+				authors = append(authors, name)
+			}
+		}
+		res.Authors = strings.Join(authors, "; ")
+
+		// Year, language, and format each live in their own single-value cell.
+		for _, c := range cellRe.FindAllStringSubmatch(block, -1) {
+			txt := cleanText(c[1])
+			switch {
+			case res.Year == "" && yearCell.MatchString(txt):
+				res.Year = txt
+			case res.Language == "" && langCell.MatchString(txt):
+				res.Language = strings.ToLower(txt)
+			case res.Format == "" && extCell.MatchString(txt):
+				res.Format = strings.ToLower(txt)
+			}
+		}
+		out = append(out, res)
 	}
 	return out
+}
+
+// cleanAuthor strips libgen.li's "(Author)" role suffix from an author name.
+func cleanAuthor(s string) string {
+	name := cleanText(s)
+	name = strings.TrimSpace(strings.TrimSuffix(name, "(Author)"))
+	return strings.TrimSpace(strings.TrimSuffix(name, " (Author)"))
 }
 
 func parseSize(block string) int64 {
