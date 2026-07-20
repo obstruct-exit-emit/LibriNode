@@ -64,7 +64,7 @@ docker run -d --name librinode -p 7845:7845 \
   -e PUID=1000 -e PGID=1000 \
   -v /path/to/config:/config \
   -v /path/to/media:/media \
-  ghcr.io/obstruct-exit-emit/librinode:0.9.0-rc.2
+  ghcr.io/obstruct-exit-emit/librinode:0.9.0-rc.3
 ```
 
 Or use the [compose example](docker-compose.example.yml). Images are published per release; `:latest` arrives with the first stable tag.

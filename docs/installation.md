@@ -9,11 +9,11 @@ on Windows, `~/.config/librinode` on Linux, or wherever `--data <dir>` points.
 Images are published per release to
 `ghcr.io/obstruct-exit-emit/librinode`. `:latest` tracks stable releases and
 arrives with the first non-rc tag; pre-release builds are pullable by their
-exact version tag (e.g. `:0.9.0-rc.2`). Or build the image yourself from a
+exact version tag (e.g. `:0.9.0-rc.3`). Or build the image yourself from a
 repo checkout — the example below tags a local build `librinode`.
 
 ```sh
-docker build -t librinode .   # or: docker pull ghcr.io/obstruct-exit-emit/librinode:0.9.0-rc.2
+docker build -t librinode .   # or: docker pull ghcr.io/obstruct-exit-emit/librinode:0.9.0-rc.3
 docker run -d --name librinode -p 7845:7845 \
   -e PUID=1000 -e PGID=1000 \
   -v /path/to/config:/config \

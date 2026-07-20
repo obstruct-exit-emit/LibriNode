@@ -204,6 +204,22 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- Series links now reconcile on every metadata refresh: a book's series
+  membership is set to exactly what the provider currently reports, so a stale
+  or wrong link (e.g. a standalone the provider once mislabeled as part of a
+  series) is dropped instead of sticking forever and corrupting the organized
+  path via `{Series Title}`. Previously links were only ever added.
+- **Scan** is now scoped like organize already was: scanning from a specific
+  library (or author/series) page walks only that library's roots, not every
+  root on the server.
+- **AudioBook Bay** stopped hammering the site into IP bans: a search now makes
+  a single listing request and defers each result's per-page magnet assembly to
+  grab time (for the one release grabbed), riding a warmed-up browser-like
+  session; a search bounced to the homepage is reported as rate-limited rather
+  than retried.
+- An unmatched-file row whose path was long no longer collapses into a
+  one-character-per-line vertical strip — the path takes its own line with the
+  actions below.
 - Performance: a scan used to write every file as its own autocommit SQLite
   transaction, so a library scan of a few thousand files took 30+ seconds
   (a no-op rescan barely faster). Ebook/audiobook/manga/comic scans now
@@ -265,6 +281,14 @@ in progress. Highlights from the hardening period, newest first:
   covering clients that ignore the delete-files flag.
 
 ### Changed
+- **Library visibility is membership, not monitoring.** A prose title shows up
+  in its Ebooks/Audiobooks library exactly when it's a member of that library;
+  unmonitoring a book stops it from being auto-grabbed but no longer hides it
+  from the grid. The owned-vs-total progress meter that implied "monitored =
+  should own" is gone.
+- Native sources still under real-world burn-in (AudioBook Bay, Library Genesis)
+  are now flagged **WIP** in the indexer UI so their off-by-default, use-at-your-
+  own-risk status is visible where you enable them.
 - The metadata refresh sweep defaults to every **30 days** (was 24 hours) —
   metadata rarely changes and a monthly re-sync is kinder to providers.
   Per-item and manual refreshes are unaffected; tune it under Settings →

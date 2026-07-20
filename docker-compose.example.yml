@@ -2,7 +2,7 @@
 services:
   librinode:
     build: . # from a repo checkout; or swap in a published image (see below)
-    # image: ghcr.io/obstruct-exit-emit/librinode:0.9.0-rc.2
+    # image: ghcr.io/obstruct-exit-emit/librinode:0.9.0-rc.3
     # Published per release on GHCR; :latest arrives with the first stable
     # (non-rc) release. Pre-release builds are pullable by their version tag.
     container_name: librinode
