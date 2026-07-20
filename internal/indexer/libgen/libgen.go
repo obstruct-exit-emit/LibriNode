@@ -28,25 +28,22 @@ import (
 const (
 	// Name is both the registry key and the stored indexer type.
 	Name = "libgen"
-	// DefaultBaseURL is the classic mirror; the site runs several (libgen.is,
-	// libgen.rs, libgen.st), so the indexer's site URLs can override it.
-	DefaultBaseURL = "https://libgen.is"
+	// DefaultBaseURL is libgen.li — the live fork at time of writing (the older
+	// libgen.is/rs mirrors are frequently down). The site runs several domains,
+	// so the indexer's site URLs can override it.
+	DefaultBaseURL = "https://libgen.li"
 
-	maxResults = 50
-	userAgent  = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+	maxResults = 100
+	userAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 )
 
 // MirrorDownloadURLs builds the "|"-separated direct-protocol download URL for
 // a file known by MD5: the open mirror hosts that serve Libgen content, tried
-// in order by the direct client (each is a landing page it knows how to
-// follow). Shared with Anna's Archive, whose keyless downloads resolve through
-// these same mirrors.
+// in order by the direct client (each is a landing page it knows how to follow
+// — libgen.li's ads.php leads to a get.php link). Shared with Anna's Archive,
+// whose downloads-by-MD5 resolve through the same mirror.
 func MirrorDownloadURLs(md5 string) string {
-	md5 = strings.ToLower(md5)
-	return strings.Join([]string{
-		"https://library.lol/main/" + md5,
-		"https://libgen.li/ads.php?md5=" + md5,
-	}, "|")
+	return "https://libgen.li/ads.php?md5=" + strings.ToLower(md5)
 }
 
 // Def is the native-indexer definition; register it with indexer.RegisterNative.
@@ -94,17 +91,16 @@ func (s *searcher) Test(ctx context.Context) error {
 	return fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
 }
 
-// Search queries both Libgen indexes — non-fiction (search.php) and fiction
-// (/fiction/?q=) — on the first site URL that answers, and merges the results.
+// Search queries libgen.li's combined index (books + fiction) on the first
+// configured site URL that answers.
 func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]indexer.Release, error) {
 	if mediaType != "ebook" {
 		return nil, nil
 	}
-	var base string
-	var nonFiction string
+	var base, page string
 	var err error
 	for _, b := range s.bases {
-		nonFiction, err = s.fetch(ctx, b+"/search.php?req="+url.QueryEscape(query)+"&res=50&view=simple&phrase=1&column=def")
+		page, err = s.fetch(ctx, b+"/index.php?req="+url.QueryEscape(query)+"&res=100")
 		if err == nil {
 			base = b
 			break
@@ -117,15 +113,9 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 		return nil, fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
 	}
 
-	results := parseResults(nonFiction)
-	// Fiction lives in its own index; a failure here shouldn't sink the search.
-	if fiction, ferr := s.fetch(ctx, base+"/fiction/?q="+url.QueryEscape(query)); ferr == nil {
-		results = append(results, parseResults(fiction)...)
-	}
-
 	seen := map[string]bool{}
 	releases := []indexer.Release{}
-	for _, res := range results {
+	for _, res := range parseResults(page) {
 		if len(releases) >= maxResults {
 			break
 		}
@@ -134,13 +124,15 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 		}
 		seen[res.MD5] = true
 		releases = append(releases, indexer.Release{
-			IndexerID:   s.ind.ID,
-			Indexer:     s.ind.Name,
-			Protocol:    indexer.ProtocolDirect,
-			Title:       res.Title,
-			GUID:        res.MD5,
-			InfoURL:     base + "/book/index.php?md5=" + res.MD5,
-			DownloadURL: MirrorDownloadURLs(res.MD5),
+			IndexerID: s.ind.ID,
+			Indexer:   s.ind.Name,
+			Protocol:  indexer.ProtocolDirect,
+			Title:     res.Title,
+			GUID:      res.MD5,
+			InfoURL:   base + "/file.php?md5=" + res.MD5,
+			// ads.php on the serving host → get.php → file (the direct client
+			// follows the landing page).
+			DownloadURL: base + "/ads.php?md5=" + res.MD5,
 			Size:        res.Size,
 			Seeders:     -1,
 			Peers:       -1,
@@ -179,22 +171,21 @@ type result struct {
 }
 
 var (
-	// A result row's md5: both indexes link through it — md5.php?..., an
-	// ads/landing href, or a plain md5= query on the row's links.
+	// A result row's md5 rides its /ads.php?md5=<hash> download link.
 	md5Re = regexp.MustCompile(`(?i)md5=([0-9a-f]{32})`)
-	// Row-splitting: results are table rows in both indexes.
+	// Results are table rows.
 	rowRe = regexp.MustCompile(`(?is)<tr[^>]*>(.*?)</tr>`)
-	// The title cell links to the book page; grab the anchor text with the
-	// longest cleaned form in the row (author links are shorter).
-	anchorTextRe = regexp.MustCompile(`(?is)<a\s+[^>]*>(.*?)</a>`)
-	tagRe        = regexp.MustCompile(`(?s)<[^>]+>`)
-	// Sizes render like "1 MB", "435 KB", "1.2Mb" in the row text.
+	// The title is the row's first edition.php link text ("Hunters of Dune").
+	// Anchored on href= (not the opening <a) because libgen.li's anchors carry
+	// a title="…<br>" attribute whose literal '>' would otherwise truncate an
+	// [^>]* attribute scan before it reaches href.
+	titleRe = regexp.MustCompile(`(?is)href="edition\.php[^"]*"[^>]*>(.*?)</a>`)
+	tagRe   = regexp.MustCompile(`(?s)<[^>]+>`)
+	// Sizes render like "990 kB", "1.2 MB" in the file.php cell.
 	sizeRe = regexp.MustCompile(`(?i)\b([0-9][0-9.,]*)\s*(kb|mb|gb)\b`)
 )
 
-// parseResults extracts (md5, title, size) from a Libgen results table —
-// either index, since both render rows whose links carry md5= and whose cells
-// carry a size.
+// parseResults extracts (md5, title, size) from a libgen.li results table.
 func parseResults(page string) []result {
 	out := []result{}
 	for _, row := range rowRe.FindAllStringSubmatch(page, -1) {
@@ -203,12 +194,11 @@ func parseResults(page string) []result {
 		if m == nil {
 			continue
 		}
-		title := ""
-		for _, a := range anchorTextRe.FindAllStringSubmatch(block, -1) {
-			if t := cleanText(a[1]); len(t) > len(title) && !md5Re.MatchString(t) {
-				title = t
-			}
+		t := titleRe.FindStringSubmatch(block)
+		if t == nil {
+			continue
 		}
+		title := cleanText(t[1])
 		if title == "" {
 			continue
 		}

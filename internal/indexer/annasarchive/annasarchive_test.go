@@ -72,12 +72,11 @@ func TestDefAndSearchKeyedVsKeyless(t *testing.T) {
 
 	srv := serveResults(t)
 	md5 := "0123456789abcdef0123456789abcdef"
-	// Free-first chain: Anna's own slow servers, then the open Libgen mirrors.
+	// Free-first chain: Anna's own slow servers, then the open Libgen mirror.
 	free := func(base string) string {
 		return base + "/slow_download/" + md5 + "/0/0" +
 			"|" + base + "/slow_download/" + md5 + "/0/1" +
 			"|" + base + "/slow_download/" + md5 + "/0/2" +
-			"|https://library.lol/main/" + md5 +
 			"|https://libgen.li/ads.php?md5=" + md5
 	}
 

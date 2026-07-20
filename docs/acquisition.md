@@ -46,15 +46,19 @@ The built-in sources today:
   per-release detail fetch is deferred — the magnet is assembled only when you
   grab a result. Requests use a warmed-up, browser-like session, and a search
   bounced to the homepage is reported as rate-limited rather than retried.
-- **Anna's Archive** (ebooks) searches without an account and — importantly —
-  **downloads without one too**: its releases use the `direct` protocol
-  (below), leading with Anna's own free "slow" partner servers and the open
-  mirror network, keyed by each file's MD5. A paid Anna's membership key is
-  optional; it only appends the fast-download API as a last-resort fallback,
-  so the free path is always primary.
-- **Library Genesis** (ebooks) searches both the non-fiction and fiction
-  indexes and downloads through the same open mirrors — the general
-  shadow-library layer, not tied to any single site.
+- **Library Genesis** (ebooks) is the reliable ebook source: it searches
+  libgen.li and downloads through its `ads.php` → `get.php` mirror by each
+  file's MD5, using the `direct` protocol (below). No account needed. Its
+  domain rotates, so set the **Site URL** to a live mirror if the default
+  stops answering.
+- **Anna's Archive** (ebooks) is best-effort only. Anna's renders its search
+  client-side behind a JavaScript/anti-bot wall, so a plain HTTP fetch returns
+  no scrapable results — searching it needs a real browser or a Cloudflare
+  bypasser, which LibriNode doesn't ship. Its download path (the `direct`
+  protocol, leading with Anna's free "slow" partner servers and the open Libgen
+  mirror by MD5, with an optional paid membership key as a last-resort
+  fast-path) still works if you have a file's MD5, but for finding books use
+  **Library Genesis** — which is exactly what Anna's aggregates.
 
 Each rotating-domain source takes an optional **Site URL** override plus an
 optional **fallback site URL** (comma-separated); searches try them in order.
@@ -83,8 +87,7 @@ Both sources identify files by **MD5**, the key the open mirror network
 serves by — so downloads work **without any account**. On Anna's Archive, an
 optional paid **membership key** adds its fast-download API as the first,
 fastest hop (and covers collections the open mirrors don't carry); the open
-mirrors remain the failover either way. Libgen searches both its non-fiction
-and fiction indexes and merges the results.
+mirrors remain the failover either way.
 
 These are dual-use shadow-library sources: **nothing is bundled or enabled by
 default** — you add one deliberately, and its use is your responsibility. Being

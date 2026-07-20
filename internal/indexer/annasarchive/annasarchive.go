@@ -30,12 +30,17 @@ import (
 const (
 	// Name is both the registry key and the stored indexer type.
 	Name = "annas-archive"
-	// DefaultBaseURL is AA's main domain; it runs mirrors, so the indexer's
-	// site URLs (primary + comma-separated fallbacks) can override it.
-	DefaultBaseURL = "https://annas-archive.org"
+	// DefaultBaseURL is an Anna's Archive mirror that resolves where the main
+	// annas-archive.org domain is commonly DNS/network-blocked. It runs several
+	// mirrors, so the indexer's site URLs (primary + comma-separated fallbacks)
+	// can override it. NOTE: Anna's renders search results client-side behind a
+	// JS/anti-bot wall, so a plain HTTP fetch returns no scrapable results —
+	// search here is best-effort and effectively needs a browser/bypasser.
+	// Library Genesis (which Anna's aggregates) is the reliable ebook source.
+	DefaultBaseURL = "https://annas-archive.li"
 
 	maxResults = 50
-	userAgent  = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+	userAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 )
 
 // Def is the native-indexer definition; register it with indexer.RegisterNative.
