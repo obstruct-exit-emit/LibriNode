@@ -188,6 +188,34 @@ func TestSyncBookCreatesStubAuthorAndEditions(t *testing.T) {
 	}
 }
 
+// TestRefreshReconcilesStaleSeriesLink reproduces the "Artemis in Chance
+// Assassin" bug: a book once linked to a series keeps that link forever, even
+// after the provider corrects its data to a standalone — corrupting the
+// organized path via {Series Title}. A refresh must drop the stale link.
+func TestRefreshReconcilesStaleSeriesLink(t *testing.T) {
+	svc, store, provider := newFixture(t)
+	ctx := context.Background()
+
+	// The book initially reports a (wrong) series membership.
+	provider.books["1"].Series = []metadata.SeriesLink{{ForeignID: "7", Title: "Discworld", Position: 1}}
+	book, err := svc.SyncBook(ctx, "1", true)
+	if err != nil {
+		t.Fatalf("SyncBook: %v", err)
+	}
+	if links, _ := store.ListSeriesForBook(book.ID); len(links) != 1 {
+		t.Fatalf("expected 1 initial series link, got %+v", links)
+	}
+
+	// Provider corrects its data: the book is a standalone after all.
+	provider.books["1"].Series = nil
+	if err := svc.RefreshBook(ctx, book.ID); err != nil {
+		t.Fatalf("RefreshBook: %v", err)
+	}
+	if links, _ := store.ListSeriesForBook(book.ID); len(links) != 0 {
+		t.Errorf("stale series link not reconciled after refresh: %+v", links)
+	}
+}
+
 func TestRefreshBookUpdatesEditions(t *testing.T) {
 	svc, store, provider := newFixture(t)
 	ctx := context.Background()

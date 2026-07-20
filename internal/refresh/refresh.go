@@ -231,6 +231,7 @@ func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, author
 	if err := s.store.UpsertBook(book); err != nil {
 		return err
 	}
+	keepSeries := make([]int64, 0, len(remote.Series))
 	for _, sl := range remote.Series {
 		series := &library.Series{
 			Source:      source,
@@ -244,6 +245,13 @@ func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, author
 		if err := s.store.LinkBookSeries(book.ID, series.ID, sl.Position); err != nil {
 			return err
 		}
+		keepSeries = append(keepSeries, series.ID)
+	}
+	// Reconcile: drop any stale series link the provider no longer reports, so
+	// a refresh heals a wrong link (e.g. a standalone once mislabeled as part of
+	// a series) instead of leaving it to corrupt the organized file path.
+	if err := s.store.SetBookSeries(book.ID, keepSeries); err != nil {
+		return err
 	}
 	for _, ed := range remote.Editions {
 		edition := &library.Edition{

@@ -789,6 +789,29 @@ func (s *Store) LinkBookSeries(bookID, seriesID int64, position float64) error {
 	return err
 }
 
+// SetBookSeries makes a prose book's series links exactly match the provider's
+// current set: it removes any series_books row for the book whose series isn't
+// in keep. Called after (re)linking so a metadata refresh self-heals a stale or
+// wrong link — e.g. a standalone that a provider once mislabeled as part of a
+// series, or a link left behind after the provider corrected its data. An empty
+// keep removes all of the book's series links. (Only prose books flow through
+// here; manga/comic volumes are linked on a separate path.)
+func (s *Store) SetBookSeries(bookID int64, keep []int64) error {
+	if len(keep) == 0 {
+		_, err := s.db.Exec(`DELETE FROM series_books WHERE book_id = ?`, bookID)
+		return err
+	}
+	placeholders := strings.Repeat(",?", len(keep))[1:]
+	args := make([]any, 0, len(keep)+1)
+	args = append(args, bookID)
+	for _, id := range keep {
+		args = append(args, id)
+	}
+	_, err := s.db.Exec(
+		`DELETE FROM series_books WHERE book_id = ? AND series_id NOT IN (`+placeholders+`)`, args...)
+	return err
+}
+
 func (s *Store) ListSeriesForBook(bookID int64) ([]SeriesLink, error) {
 	rows, err := s.db.Query(`
 		SELECT sb.series_id, s.title, sb.position
