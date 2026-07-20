@@ -206,6 +206,16 @@ naming templates (**Settings → Media Management**) — all five media types,
 multi-file audiobooks moving as whole folders with their sidecars. Emptied
 folders are swept up to (never including) the root.
 
+Organize **scans first** (scoped to the same level) so the plan always
+reflects what's actually on disk — no separate Scan click needed. On a
+library page, the preview also includes a **cleanup**: files that don't
+belong in the library — download junk (`.nfo`, `.torrent`) or another
+type's media dumped in this root — listed with a checkbox to delete them
+and prune every empty folder on apply. Matched files, unmatched media (the
+import flow's domain), `.opf` sidecars, artwork images, and `ComicInfo.xml`
+are always kept, and every deletion is re-validated server-side against the
+library's own roots — nothing outside them is ever touched.
+
 ## Wanted, Home, and Calendar
 
 Every acquiring library page has a **Wanted** card (monitored but missing

@@ -360,6 +360,12 @@ export interface RenameMove {
 export interface RenameResult {
   moves: RenameMove[];
   skips: string[];
+  // Library-scope organize also cleans: files that don't belong in the
+  // library (previewed; deleted on apply with deleteUnwanted) and, on apply,
+  // how many were deleted and how many empty folders were pruned.
+  cleanups?: { path: string; size: number }[];
+  deleted?: number;
+  prunedDirs?: number;
 }
 
 // Metadata provider search results (not yet in the library).
@@ -675,7 +681,13 @@ export const api = {
                 : ""
       }`,
     ),
-  renameApply: (authorId?: number, seriesId?: number, mediaType?: string, bookId?: number) =>
+  renameApply: (
+    authorId?: number,
+    seriesId?: number,
+    mediaType?: string,
+    bookId?: number,
+    deleteUnwanted?: boolean,
+  ) =>
     request<RenameResult>("/api/v1/library/rename", {
       ...json(
         bookId
@@ -685,7 +697,7 @@ export const api = {
             : authorId
               ? { authorId }
               : mediaType
-                ? { mediaType }
+                ? { mediaType, deleteUnwanted: !!deleteUnwanted }
                 : {},
       ),
       method: "POST",

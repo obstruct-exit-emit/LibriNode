@@ -43,6 +43,12 @@ func (s *server) handleScan(w http.ResponseWriter, r *http.Request) {
 type renameResponse struct {
 	Moves []organizeMove `json:"moves"`
 	Skips []string       `json:"skips"`
+	// Library-scope organize also cleans: files that don't belong in the
+	// library (previewed here, deleted on apply with deleteUnwanted) and
+	// empty-folder pruning (apply reports how many).
+	Cleanups   []organize.Cleanup `json:"cleanups,omitempty"`
+	Deleted    int                `json:"deleted,omitempty"`
+	PrunedDirs int                `json:"prunedDirs,omitempty"`
 }
 
 // organizeMove aliases organize.Move for JSON without importing it here twice.
@@ -119,18 +125,34 @@ func (s *server) handleRenamePreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, renameResponse{Moves: moves, Skips: skips})
+	resp := renameResponse{Moves: moves, Skips: skips}
+	// Library-scope organize also previews the cleanup: unwanted files and
+	// (on apply) empty-folder pruning.
+	if mediaType != "" && bookID == 0 && authorID == 0 && seriesID == 0 {
+		cleanups, cleanupSkips, err := s.organize.PlanCleanup(mediaType)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		resp.Cleanups = cleanups
+		resp.Skips = append(resp.Skips, cleanupSkips...)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleRenameApply plans and executes the moves. The body may scope with
 // {"bookId": N}, {"authorId": N}, {"seriesId": N}, or {"mediaType": "…"}
-// (one library); empty organizes all.
+// (one library); empty organizes all. With a mediaType scope,
+// {"deleteUnwanted": true} additionally deletes the library's unwanted files
+// (recomputed server-side at apply time — never a client-supplied list) and
+// prunes empty folders.
 func (s *server) handleRenameApply(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BookID    int64  `json:"bookId"`
-		AuthorID  int64  `json:"authorId"`
-		SeriesID  int64  `json:"seriesId"`
-		MediaType string `json:"mediaType"`
+		BookID         int64  `json:"bookId"`
+		AuthorID       int64  `json:"authorId"`
+		SeriesID       int64  `json:"seriesId"`
+		MediaType      string `json:"mediaType"`
+		DeleteUnwanted bool   `json:"deleteUnwanted"`
 	}
 	// Body is optional.
 	_ = json.NewDecoder(r.Body).Decode(&req)
@@ -150,7 +172,28 @@ func (s *server) handleRenameApply(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, renameResponse{Moves: applied, Skips: append(skips, applySkips...)})
+	resp := renameResponse{Moves: applied, Skips: append(skips, applySkips...)}
+
+	if req.DeleteUnwanted && mediaType != "" && req.BookID == 0 && req.AuthorID == 0 && req.SeriesID == 0 {
+		cleanups, cleanupSkips, err := s.organize.PlanCleanup(mediaType)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		paths := make([]string, 0, len(cleanups))
+		for _, c := range cleanups {
+			paths = append(paths, c.Path)
+		}
+		deleted, pruned, delSkips, err := s.organize.ApplyCleanup(mediaType, paths)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		resp.Deleted = deleted
+		resp.PrunedDirs = pruned
+		resp.Skips = append(resp.Skips, append(cleanupSkips, delSkips...)...)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // adoptFile is the existing-file import core: assign an unmatched file to a

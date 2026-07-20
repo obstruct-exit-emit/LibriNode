@@ -98,17 +98,21 @@ export default function AuthorDetailView({
         : `Scanned ${r.scanned} file(s): ${r.matched} matched, ${r.unmatched} unmatched.`;
     });
 
-  const previewRenames = () => {
+  const previewRenames = async () => {
     setBusy(true);
     setNotice("");
-    api
-      .renamePreview(author.id)
-      .then((r) => {
-        setRenamePlan(r.moves);
-        if (r.moves.length === 0) setNotice("This author's files already match the naming templates.");
-      })
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setBusy(false));
+    try {
+      // Scan this library first (scoped — never every library) so the plan
+      // reflects what's actually on disk.
+      await api.scan(library);
+      const r = await api.renamePreview(author.id);
+      setRenamePlan(r.moves);
+      if (r.moves.length === 0) setNotice("This author's files already match the naming templates.");
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const applyRenames = () => {

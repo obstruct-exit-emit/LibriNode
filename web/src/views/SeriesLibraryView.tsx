@@ -27,6 +27,9 @@ export default function SeriesLibraryView({
   const [filter, setFilter] = useState("");
   const [visible, setVisible] = useState(60);
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
+  // Library-scope organize also previews unwanted files it can delete.
+  const [cleanupPlan, setCleanupPlan] = useState<{ path: string; size: number }[]>([]);
+  const [deleteUnwanted, setDeleteUnwanted] = useState(true);
 
   const reload = useCallback(() => {
     api
@@ -81,26 +84,38 @@ export default function SeriesLibraryView({
       .finally(() => setBusy(false));
   };
 
-  const previewRenames = () => {
+  const previewRenames = async () => {
     setBusy(true);
     setNotice("");
-    api
-      .renamePreview(undefined, undefined, mediaType)
-      .then((r) => {
-        setRenamePlan(r.moves);
-        if (r.moves.length === 0) setNotice("All files already match the naming templates.");
-      })
-      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
-      .finally(() => setBusy(false));
+    try {
+      // Scan this library first so the plan reflects what's actually on disk.
+      await api.scan(mediaType);
+      const r = await api.renamePreview(undefined, undefined, mediaType);
+      setRenamePlan(r.moves);
+      setCleanupPlan(r.cleanups ?? []);
+      setDeleteUnwanted(true);
+      if (r.moves.length === 0 && (r.cleanups ?? []).length === 0) {
+        setNotice("All files already match the naming templates — nothing to clean up.");
+      }
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const applyRenames = () => {
     setBusy(true);
     api
-      .renameApply(undefined, undefined, mediaType)
+      .renameApply(undefined, undefined, mediaType, undefined, deleteUnwanted && cleanupPlan.length > 0)
       .then((r) => {
-        setNotice(`Moved ${r.moves.length} file(s)${r.skips.length ? `, ${r.skips.length} skipped` : ""}.`);
+        const bits = [`Moved ${r.moves.length} file(s)`];
+        if (r.deleted) bits.push(`deleted ${r.deleted} unwanted`);
+        if (r.prunedDirs) bits.push(`pruned ${r.prunedDirs} empty folder(s)`);
+        if (r.skips.length) bits.push(`${r.skips.length} skipped`);
+        setNotice(bits.join(", ") + ".");
         setRenamePlan(null);
+        setCleanupPlan([]);
         reload();
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
@@ -138,22 +153,61 @@ export default function SeriesLibraryView({
       </div>
       {notice && <p className="muted">{notice}</p>}
 
-      {renamePlan && renamePlan.length > 0 && (
+      {renamePlan && (renamePlan.length > 0 || cleanupPlan.length > 0) && (
         <div className="rename-plan">
-          <p>{renamePlan.length} file(s) would move to match the naming templates:</p>
-          <ul className="rows">
-            {renamePlan.map((m) => (
-              <li key={m.fileId}>
-                <div className="move">
-                  <span className="file-path muted">{m.from}</span>
-                  <span className="file-path">→ {m.to}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {renamePlan.length > 0 && (
+            <>
+              <p>{renamePlan.length} file(s) would move to match the naming templates:</p>
+              <ul className="rows">
+                {renamePlan.map((m) => (
+                  <li key={m.fileId}>
+                    <div className="move">
+                      <span className="file-path muted">{m.from}</span>
+                      <span className="file-path">→ {m.to}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {cleanupPlan.length > 0 && (
+            <>
+              <p>
+                {cleanupPlan.length} file(s) don't belong in this library (junk or
+                another type's media — matched files, sidecars, and artwork are kept):
+              </p>
+              <ul className="rows">
+                {cleanupPlan.map((c) => (
+                  <li key={c.path}>
+                    <div className="move">
+                      <span className="file-path muted">🗑 {c.path}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <label className="check">
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={deleteUnwanted}
+                    onChange={(e) => setDeleteUnwanted(e.target.checked)}
+                  />{" "}
+                  Delete these {cleanupPlan.length} file(s) from disk and prune empty folders
+                </span>
+              </label>
+            </>
+          )}
           <div className="settings-actions">
             <button disabled={busy} onClick={applyRenames}>Apply</button>
-            <button className="toggle" onClick={() => setRenamePlan(null)}>Cancel</button>
+            <button
+              className="toggle"
+              onClick={() => {
+                setRenamePlan(null);
+                setCleanupPlan([]);
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

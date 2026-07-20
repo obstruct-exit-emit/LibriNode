@@ -11,6 +11,15 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- Organize now **scans first** (scoped to its level — a library page scans
+  only that library's roots, an author/series page its own format) so the
+  move plan always reflects what's actually on disk, and library-level
+  organize gained a **cleanup**: files that don't belong in the library
+  (download junk like `.nfo`/`.torrent`, or another type's media dumped in
+  the root) are previewed with a delete checkbox, and applying prunes every
+  empty folder. Matched files, unmatched media, `.opf` sidecars, artwork,
+  and `ComicInfo.xml` are always kept; deletions are re-validated
+  server-side against the library's own roots.
 - **Library Genesis** + keyless **Anna's Archive** downloads — the general
   shadow-library layer. Both sources identify files by MD5, the key the open
   mirror network serves by: every release now carries a mirror list the direct

@@ -145,17 +145,21 @@ export default function SeriesDetailView({
       .finally(() => setBusy(false));
   };
 
-  const previewRenames = () => {
+  const previewRenames = async () => {
     setBusy(true);
     setNotice("");
-    api
-      .renamePreview(undefined, series.id)
-      .then((r) => {
-        setRenamePlan(r.moves);
-        if (r.moves.length === 0) setNotice("This series' files already match the naming templates.");
-      })
-      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
-      .finally(() => setBusy(false));
+    try {
+      // Scan this library first (scoped — never every library) so the plan
+      // reflects what's actually on disk.
+      await api.scan(mediaType);
+      const r = await api.renamePreview(undefined, series.id);
+      setRenamePlan(r.moves);
+      if (r.moves.length === 0) setNotice("This series' files already match the naming templates.");
+    } catch (err) {
+      setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const applyRenames = () => {
