@@ -37,7 +37,9 @@ func TestParseListing(t *testing.T) {
 	if len(posts) != 2 {
 		t.Fatalf("parsed %d posts, want 2: %+v", len(posts), posts)
 	}
-	if posts[0].URL != "https://audiobookbay.lu/audio-books/the-hobbit-unabridged" {
+	// ABB's canonical permalinks keep their trailing slash — the slash-less form
+	// 301s with no Location header, breaking the grab-time Resolve fetch.
+	if posts[0].URL != "https://audiobookbay.lu/audio-books/the-hobbit-unabridged/" {
 		t.Errorf("post[0].URL = %q", posts[0].URL)
 	}
 	if posts[0].Title != "The Hobbit (Unabridged) [MP3]" {
@@ -47,7 +49,7 @@ func TestParseListing(t *testing.T) {
 	if posts[1].Title != "Dune – Frank Herbert" {
 		t.Errorf("post[1].Title = %q", posts[1].Title)
 	}
-	if posts[1].URL != "https://audiobookbay.lu/audio-books/dune-frank-herbert" {
+	if posts[1].URL != "https://audiobookbay.lu/audio-books/dune-frank-herbert/" {
 		t.Errorf("post[1].URL = %q", posts[1].URL)
 	}
 }
@@ -171,7 +173,7 @@ func TestSearchDefersDetailFetch(t *testing.T) {
 	if len(releases) != 1 {
 		t.Fatalf("releases = %+v, want 1", releases)
 	}
-	if releases[0].DownloadURL != srv.URL+"/audio-books/the-hobbit" {
+	if releases[0].DownloadURL != srv.URL+"/audio-books/the-hobbit/" {
 		t.Errorf("download URL = %q, want the release page", releases[0].DownloadURL)
 	}
 	if srv.detailHits != 0 {
@@ -213,7 +215,7 @@ func TestSearchFailsOverToFallbackURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search with fallback: %v", err)
 	}
-	if len(releases) != 1 || releases[0].DownloadURL != mirror.URL+"/audio-books/the-hobbit" {
+	if len(releases) != 1 || releases[0].DownloadURL != mirror.URL+"/audio-books/the-hobbit/" {
 		t.Fatalf("releases = %+v", releases)
 	}
 	if err := s.Test(context.Background()); err != nil {

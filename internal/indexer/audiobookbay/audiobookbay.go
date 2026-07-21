@@ -391,19 +391,23 @@ func parseSize(html string) int64 {
 	return int64(n)
 }
 
-// absURL resolves a possibly-relative href against the site base.
+// absURL resolves a possibly-relative href against the site base. It preserves
+// the href's trailing slash: ABB's canonical release permalinks end in "/", and
+// requesting the slash-less form returns a 301 with NO Location header — an
+// unfollowable dead-end redirect — so the grab-time Resolve fetch of that URL
+// would fail with "HTTP 301" and no magnet would ever be assembled.
 func absURL(base, href string) string {
 	href = strings.TrimSpace(href)
 	if href == "" {
 		return ""
 	}
 	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
-		return strings.TrimRight(href, "/")
+		return href
 	}
 	if !strings.HasPrefix(href, "/") {
 		href = "/" + href
 	}
-	return strings.TrimRight(base, "/") + strings.TrimRight(href, "/")
+	return strings.TrimRight(base, "/") + href
 }
 
 // cleanText strips tags, decodes HTML entities, and collapses whitespace from a
