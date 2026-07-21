@@ -99,6 +99,14 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 		return metadata.ErrNotFound
 	}
 	if resp.StatusCode != http.StatusOK {
+		// Keyless access shares one global anonymous daily quota that is often
+		// already exhausted; the fix is a (free) API key for a private quota.
+		// Say so, instead of a bare "HTTP 429", so the cause is actionable.
+		if resp.StatusCode == http.StatusTooManyRequests && c.apiKey == "" {
+			return fmt.Errorf("googlebooks: %w: shared anonymous daily quota exhausted — "+
+				"add a free Google Books API key (Settings → Metadata) for your own quota",
+				metadata.ErrUnreachable)
+		}
 		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
 			return fmt.Errorf("googlebooks: %w: HTTP %d", metadata.ErrUnreachable, resp.StatusCode)
 		}
