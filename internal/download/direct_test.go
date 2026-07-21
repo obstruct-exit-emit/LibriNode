@@ -218,6 +218,88 @@ func TestDirectHTMLWithoutFileLinkFails(t *testing.T) {
 	}
 }
 
+// TestDirectNamesFileByContentNotPhpURL reproduces the libgen get.php chain: the
+// file is served from a ".../get.php?..." URL as application/octet-stream, but
+// its bytes are a real epub. The saved file must be named ".epub" from the
+// content sniff — never ".php" from the URL path, the bug that made a perfectly
+// good ebook unimportable.
+func TestDirectNamesFileByContentNotPhpURL(t *testing.T) {
+	epub := append([]byte("PK\x03\x04\x14\x00\x00\x00\x00\x00"),
+		[]byte("________________mimetypeapplication/epub+zip then the book bytes")...)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(epub)
+	}))
+	defer srv.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), srv.URL+"/get.php?md5=abc&key=xyz", "Php Named Book")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "completed" {
+		t.Fatalf("status = %q, want completed", it.Status)
+	}
+	if strings.HasSuffix(it.Path, ".php") {
+		t.Fatalf("saved as .php — the URL-path extension bug is back: %q", it.Path)
+	}
+	if !strings.HasSuffix(it.Path, ".epub") {
+		t.Errorf("path = %q, want .epub from the content sniff", it.Path)
+	}
+}
+
+// TestDirectDispositionBeatsPhpURL: when the content isn't sniffable, the
+// Content-Disposition filename names the file — the get.php URL's ".php" is
+// rejected by the media-extension allowlist rather than becoming the extension.
+func TestDirectDispositionBeatsPhpURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="Some Book (2016) - libgen.li.epub"`)
+		_, _ = w.Write([]byte("just some bytes with no recognizable magic header"))
+	}))
+	defer srv.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), srv.URL+"/get.php?md5=abc", "Disp Book")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "completed" || !strings.HasSuffix(it.Path, ".epub") {
+		t.Fatalf("item = %+v, want completed .epub from Content-Disposition", it)
+	}
+	if strings.HasSuffix(it.Path, ".php") {
+		t.Errorf("saved as .php: %q", it.Path)
+	}
+}
+
+// TestDirectRejectsWebPageServedAsFile: a mirror that answers an error/landing
+// page but labels it application/octet-stream (slipping past the Content-Type
+// guard) must be rejected — not saved as a bogus "book" the importer can't use.
+func TestDirectRejectsWebPageServedAsFile(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("<!DOCTYPE html><html><body>Rate limited, try later</body></html>"))
+	}))
+	defer srv.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), srv.URL+"/get.php?md5=abc", "Sneaky Page")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	it := waitDone(t, d, id)
+	if it.Status != "failed" {
+		t.Errorf("status = %q, want failed (web page rejected)", it.Status)
+	}
+	if it.Path != "" {
+		if _, err := os.Stat(it.Path); err == nil {
+			t.Errorf("a rejected web page was saved to disk at %q", it.Path)
+		}
+	}
+}
+
 // TestDirectEmptyURLRejected: an empty download URL errors immediately with
 // the needs-a-key hint.
 func TestDirectEmptyURLRejected(t *testing.T) {

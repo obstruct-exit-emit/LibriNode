@@ -208,10 +208,9 @@ var (
 	// Anchored on href= (not the opening <a) because libgen.li's anchors carry
 	// a title="…<br>" attribute whose literal '>' would otherwise truncate an
 	// [^>]* attribute scan before it reaches href.
-	titleRe  = regexp.MustCompile(`(?is)href="edition\.php[^"]*"[^>]*>(.*?)</a>`)
-	authorRe = regexp.MustCompile(`(?is)href="author\.php[^"]*"[^>]*>(.*?)</a>`)
-	cellRe   = regexp.MustCompile(`(?is)<td[^>]*>(.*?)</td>`)
-	tagRe    = regexp.MustCompile(`(?s)<[^>]+>`)
+	titleRe = regexp.MustCompile(`(?is)href="edition\.php[^"]*"[^>]*>(.*?)</a>`)
+	cellRe  = regexp.MustCompile(`(?is)<td[^>]*>(.*?)</td>`)
+	tagRe   = regexp.MustCompile(`(?s)<[^>]+>`)
 	// Sizes render like "990 kB", "1.2 MB" in the file.php cell.
 	sizeRe = regexp.MustCompile(`(?i)\b([0-9][0-9.,]*)\s*(kb|mb|gb)\b`)
 	// Per-cell classifiers for the language, format, and year columns.
@@ -220,7 +219,12 @@ var (
 	yearCell = regexp.MustCompile(`^(1[4-9]\d\d|20\d\d)$`)
 )
 
-// parseResults extracts one result per libgen.li table row.
+// parseResults extracts one result per libgen.li table row. The columns are
+// title, Author(s), Publisher, Year, Language, Pages, Size, Ext, Mirrors — so
+// the author is the plain <td> immediately after the title cell. (libgen.li no
+// longer wraps authors in author.php links, so there is nothing to match on but
+// column position — an author never reaches the release name otherwise, and the
+// scorer then rejects every result for "not mentioning the author".)
 func parseResults(page string) []result {
 	out := []result{}
 	for _, row := range rowRe.FindAllStringSubmatch(page, -1) {
@@ -229,26 +233,35 @@ func parseResults(page string) []result {
 		if m == nil {
 			continue
 		}
-		t := titleRe.FindStringSubmatch(block)
-		if t == nil {
-			continue
+		cells := cellRe.FindAllStringSubmatch(block, -1)
+
+		// The title is the first cell carrying an edition.php link.
+		titleIdx, title := -1, ""
+		for i, c := range cells {
+			if t := titleRe.FindStringSubmatch(c[1]); t != nil {
+				if title = cleanText(t[1]); title != "" {
+					titleIdx = i
+					break
+				}
+			}
 		}
-		title := cleanText(t[1])
 		if title == "" {
 			continue
 		}
 		res := result{MD5: strings.ToLower(m[1]), Title: title, Size: parseSize(block)}
 
-		var authors []string
-		for _, a := range authorRe.FindAllStringSubmatch(block, -1) {
-			if name := cleanAuthor(a[1]); name != "" {
-				authors = append(authors, name)
-			}
+		// Author(s): the cell right after the title cell.
+		if titleIdx+1 < len(cells) {
+			res.Authors = cleanAuthor(cells[titleIdx+1][1])
 		}
-		res.Authors = strings.Join(authors, "; ")
 
-		// Year, language, and format each live in their own single-value cell.
-		for _, c := range cellRe.FindAllStringSubmatch(block, -1) {
+		// Year, language, and format each live in their own single-value cell —
+		// skip the title and author cells so their free text can't be misread as
+		// one of these.
+		for i, c := range cells {
+			if i == titleIdx || i == titleIdx+1 {
+				continue
+			}
 			txt := cleanText(c[1])
 			switch {
 			case res.Year == "" && yearCell.MatchString(txt):

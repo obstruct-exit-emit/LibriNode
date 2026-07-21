@@ -10,15 +10,16 @@ import (
 	"github.com/librinode/librinode/internal/indexer"
 )
 
-// resultsHTML is a real libgen.li results table row: the title is the first
-// edition.php anchor, authors are separate anchors, size lives in the file.php
-// cell, and the md5 rides the /ads.php download link.
+// resultsHTML mirrors the current libgen.li results table: the title is the
+// first edition.php anchor, and the author is the plain <td> right after the
+// title cell (the site no longer wraps authors in author.php links). Size lives
+// in the file.php cell and the md5 rides the /ads.php download link.
 const resultsHTML = `<table id="tablelibgen"><tbody>
 <tr>
   <td><b>Dune Chronicles <br>Dune Universe 7</b><br>
     <a title="Add/Edit" href="edition.php?id=2719411">Hunters of Dune <i></i></a>
     <nobr><span class="badge badge-primary">b</span></nobr></td>
-  <td><a href="author.php?id=226301">Herbert, Brian (Author)</a>; <a href="author.php?id=228252">Kevin, J. Anderson(Author)</a></td>
+  <td>Herbert, Brian; Anderson, Kevin J</td>
   <td>Herbert Properties LLC</td>
   <td><nobr>2006</nobr></td>
   <td>English</td>
@@ -31,7 +32,7 @@ const resultsHTML = `<table id="tablelibgen"><tbody>
   <td><b><a href="series.php?id=1">Earthsea</a> №1</b><br>
     <a href="edition.php?id=999">A Wizard of Earthsea <i></i></a>
     <a href="edition.php?id=999"><i><font color="green">9780553380163</font></i></a></td>
-  <td><a href="author.php?id=1">Le Guin, Ursula K.(Author)</a></td>
+  <td>Le Guin, Ursula K. (Author)</td>
   <td>Parnassus</td><td>1968</td><td>English</td><td>0</td>
   <td><nobr><a href="/file.php?id=999">1.2 MB</a></nobr></td>
   <td>epub</td>
@@ -55,16 +56,21 @@ func TestParseResults(t *testing.T) {
 	if r0.Size != int64(990*1024) {
 		t.Errorf("row0 size = %d, want 990 kB", r0.Size)
 	}
-	// Structured columns: authors (role suffix stripped), year, language, format.
-	if r0.Authors != "Herbert, Brian; Kevin, J. Anderson" {
+	// Structured columns: author (from the plain cell after the title), year,
+	// language, format.
+	if r0.Authors != "Herbert, Brian; Anderson, Kevin J" {
 		t.Errorf("row0 authors = %q", r0.Authors)
 	}
 	if r0.Year != "2006" || r0.Language != "english" || r0.Format != "fb2" {
 		t.Errorf("row0 year/lang/format = %q/%q/%q", r0.Year, r0.Language, r0.Format)
 	}
 	// The scene-like name carries everything the scorer needs.
-	if got := r0.releaseName(); got != "Herbert, Brian; Kevin, J. Anderson - Hunters of Dune (2006) english fb2" {
+	if got := r0.releaseName(); got != "Herbert, Brian; Anderson, Kevin J - Hunters of Dune (2006) english fb2" {
 		t.Errorf("row0 releaseName = %q", got)
+	}
+	// The role suffix is stripped from a plain author cell too.
+	if res[1].Authors != "Le Guin, Ursula K." {
+		t.Errorf("row1 authors = %q", res[1].Authors)
 	}
 	// Second row: title is the first edition.php link, not the ISBN one.
 	if res[1].Title != "A Wizard of Earthsea" || res[1].Format != "epub" || res[1].Language != "english" {

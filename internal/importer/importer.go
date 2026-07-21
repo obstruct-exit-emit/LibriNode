@@ -369,6 +369,20 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 // client for both protocols; DeleteCompletedFiles additionally deletes the
 // downloaded files from disk.
 func (s *Service) cleanupAfterImport(ctx context.Context, item *download.Item, grab *download.GrabRecord, result *Result) {
+	// LibriNode's own direct fetcher streams a flat file into the download folder
+	// solely so it can be imported — there is no seeding and no reason to keep the
+	// source once it's in the library. Always remove the imported download
+	// (deleting the streamed file), regardless of the Completed Download Handling
+	// toggles, which exist for external clients that may keep seeding. The file is
+	// flat in the download root, so there are no leftover folders to prune.
+	if grab.Protocol == download.ProtocolDirect {
+		if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, true); err != nil {
+			result.note("removing imported %s from direct client: %v", item.Title, err)
+		}
+		deleteDownloadData(item.Path, result)
+		return
+	}
+
 	opts := s.opts()
 	if opts.RemoveCompleted || opts.DeleteCompletedFiles {
 		if err := s.downloads.Remove(ctx, item.ConfigID, item.ID, opts.DeleteCompletedFiles); err != nil {

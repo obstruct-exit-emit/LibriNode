@@ -1,6 +1,7 @@
 package download
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -208,7 +209,21 @@ func (d *direct) download(ctx context.Context, item *directItem, rawURL string) 
 		return "", fmt.Errorf("mirror kept answering with pages instead of a file")
 	}
 
-	dest := filepath.Join(d.dir(), safeFilename(item.title)+extensionFor(resp))
+	// Peek the leading bytes: they sniff the file's true type (mirror URLs end in
+	// get.php and the Content-Type is often a generic octet-stream, so neither
+	// reliably names the file) and catch an error/landing page a mirror served AS
+	// a file — one delivered with an octet-stream type slips past the guard above.
+	header := make([]byte, 512)
+	hn, herr := io.ReadFull(resp.Body, header)
+	if herr != nil && herr != io.EOF && herr != io.ErrUnexpectedEOF {
+		return "", herr
+	}
+	header = header[:hn]
+	if looksLikeWebPage(header) {
+		return "", fmt.Errorf("mirror delivered a web page, not the file")
+	}
+
+	dest := filepath.Join(d.dir(), safeFilename(item.title)+extensionFor(resp, header))
 	part := dest + ".part"
 	f, err := os.Create(part)
 	if err != nil {
@@ -217,6 +232,8 @@ func (d *direct) download(ctx context.Context, item *directItem, rawURL string) 
 
 	total := resp.ContentLength
 	var written int64
+	// The peeked header is served ahead of the rest so no bytes are lost.
+	body := io.MultiReader(bytes.NewReader(header), resp.Body)
 	buf := make([]byte, 128<<10)
 	for {
 		if ctx.Err() != nil {
@@ -224,7 +241,7 @@ func (d *direct) download(ctx context.Context, item *directItem, rawURL string) 
 			os.Remove(part)
 			return "", ctx.Err()
 		}
-		n, rerr := resp.Body.Read(buf)
+		n, rerr := body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
 				f.Close()
@@ -408,19 +425,26 @@ func safeFilename(title string) string {
 	return title
 }
 
-// extensionFor picks the downloaded file's extension: the URL path's, else the
-// Content-Disposition filename's, else one mapped from the Content-Type.
-func extensionFor(resp *http.Response) string {
-	if ext := path.Ext(resp.Request.URL.Path); plausibleExt(ext) {
-		return strings.ToLower(ext)
+// extensionFor picks the downloaded file's extension, most-reliable signal
+// first: the content sniff (what the bytes actually are), then the
+// Content-Disposition filename, then the URL path, then the Content-Type. The
+// last three are allow-listed to real media types so a file served from a
+// get.php/download.aspx link is never saved as ".php" — the bug that made a
+// perfectly good ebook unimportable.
+func extensionFor(resp *http.Response, header []byte) string {
+	if ext := sniffExt(header); ext != "" {
+		return ext
 	}
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		if i := strings.LastIndex(cd, "filename="); i >= 0 {
 			name := strings.Trim(strings.TrimSpace(cd[i+len("filename="):]), `"'`)
-			if ext := path.Ext(name); plausibleExt(ext) {
+			if ext := path.Ext(name); mediaExt(ext) {
 				return strings.ToLower(ext)
 			}
 		}
+	}
+	if ext := path.Ext(resp.Request.URL.Path); mediaExt(ext) {
+		return strings.ToLower(ext)
 	}
 	switch ct := resp.Header.Get("Content-Type"); {
 	case strings.Contains(ct, "epub"):
@@ -433,9 +457,48 @@ func extensionFor(resp *http.Response) string {
 	return ".bin" // unknown — the importer will name what it expected instead
 }
 
-// plausibleExt filters URL-path "extensions" that aren't file types.
-func plausibleExt(ext string) bool {
-	return len(ext) >= 3 && len(ext) <= 6 && !strings.ContainsAny(ext[1:], "./\\?&=")
+// sniffExt identifies a file from its leading magic bytes — the one signal a
+// mirror can't misreport. Covers the book formats whose signatures are
+// unambiguous; anything else falls through to the header/URL heuristics.
+func sniffExt(b []byte) string {
+	switch {
+	case bytes.HasPrefix(b, []byte("%PDF-")):
+		return ".pdf"
+	case bytes.HasPrefix(b, []byte("PK\x03\x04")):
+		// A ZIP container. Only epub (an OCF zip whose first stored entry is the
+		// "mimetype" file) can be named for certain; a bare zip could be cbz/cbr
+		// and is left to the other signals.
+		if bytes.Contains(b, []byte("application/epub+zip")) {
+			return ".epub"
+		}
+	case len(b) >= 68 && bytes.Contains(b[60:68], []byte("BOOKMOBI")):
+		// PalmDB header: the type/creator at offset 60 is "BOOKMOBI" for
+		// MOBI and the KF8/azw3 files that carry a MOBI-compatible header.
+		return ".mobi"
+	}
+	return ""
+}
+
+// looksLikeWebPage reports whether a downloaded body is really an HTML/XML error
+// or landing page rather than a book file. No format LibriNode accepts begins
+// with '<', so a leading angle bracket (after optional whitespace or a BOM) is a
+// reliable tell — and it catches pages a mirror serves as octet-stream, which
+// the Content-Type guard misses.
+func looksLikeWebPage(b []byte) bool {
+	b = bytes.TrimLeft(b, " \t\r\n\uFEFF")
+	return len(b) > 0 && b[0] == '<'
+}
+
+// mediaExt allow-lists the real book/comic/audio file extensions the direct
+// client may save — so a URL or filename ending in a script/page extension
+// (.php, .aspx, .cgi) never becomes the saved file's type.
+func mediaExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".epub", ".pdf", ".mobi", ".azw", ".azw3", ".fb2", ".djvu", ".txt", ".rtf",
+		".cbz", ".cbr", ".zip", ".m4b", ".m4a", ".mp3", ".flac", ".opus":
+		return true
+	}
+	return false
 }
 
 func randomID() string {
