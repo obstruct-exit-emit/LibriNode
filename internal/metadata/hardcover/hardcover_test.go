@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -175,17 +176,27 @@ func TestSearchBooksCompilations(t *testing.T) {
 // editions and box sets are dropped, but real works are kept — even ones with no
 // tagged edition in that language, as long as enough people track them.
 func TestGetAuthorDeJunks(t *testing.T) {
+	book := func(id int, title string, users, contrib int, comp, hasLang, hasForeign bool) string {
+		langEd, frnEd := "[]", "[]"
+		if hasLang {
+			langEd = `[{"id": 1}]`
+		}
+		if hasForeign {
+			frnEd = `[{"id": 2}]`
+		}
+		return fmt.Sprintf(`{"book": {"id": %d, "title": %q, "users_count": %d, "compilation": %t,
+			"contributions_aggregate": {"aggregate": {"count": %d}}, "lang_editions": %s, "foreign_editions": %s}}`,
+			id, title, users, comp, contrib, langEd, frnEd)
+	}
 	resp := map[string]string{
-		"Author": `{"data": {"authors": [{
-			"id": 1, "name": "Andy Weir", "bio": "", "cached_image": null,
-			"contributions": [
-				{"book": {"id": 10, "title": "The Martian", "users_count": 9925, "compilation": false, "lang_editions": [{"id": 1}]}},
-				{"book": {"id": 11, "title": "Марсианин", "users_count": 2, "compilation": false, "lang_editions": []}},
-				{"book": {"id": 12, "title": "Marsjanin", "users_count": 3, "compilation": false, "lang_editions": []}},
-				{"book": {"id": 13, "title": "The Egg and Other Stories", "users_count": 134, "compilation": true, "lang_editions": [{"id": 2}]}},
-				{"book": {"id": 14, "title": "Digitocracy", "users_count": 19, "compilation": false, "lang_editions": []}}
-			]
-		}]}}`,
+		"Author": `{"data": {"authors": [{"id": 1, "name": "A", "bio": "", "cached_image": null, "contributions": [` +
+			book(10, "The Martian", 9925, 1, false, true, true) + `,` + // kept: English edition
+			book(11, "Марсианин", 2, 1, false, false, false) + `,` + // dropped: no lang, few readers
+			book(12, "Incidentul Iisus", 9, 1, false, false, true) + `,` + // dropped: tagged foreign edition (despite 9 readers)
+			book(13, "The Egg and Other Stories", 134, 1, true, true, false) + `,` + // dropped: compilation
+			book(14, "Nebula Winners Fifteen", 400, 9, false, true, false) + `,` + // dropped: anthology (9 authors)
+			book(15, "Digitocracy", 19, 1, false, false, false) + // kept: no tagged language, but 19 readers
+			`]}]}}`,
 	}
 	c := mockAPI(t, resp, WithLanguage("english"))
 	a, err := c.GetAuthor(context.Background(), "1")
@@ -196,20 +207,17 @@ func TestGetAuthorDeJunks(t *testing.T) {
 	for _, b := range a.Books {
 		titles = append(titles, b.Title)
 	}
-	// Kept: The Martian (has an English edition) and Digitocracy (no tagged
-	// English edition, but 19 readers). Dropped: the Russian and Polish Martians
-	// (no English edition, few readers) and the box set.
 	want := []string{"The Martian", "Digitocracy"}
 	if len(titles) != len(want) || titles[0] != want[0] || titles[1] != want[1] {
 		t.Fatalf("de-junked bibliography = %v, want %v", titles, want)
 	}
 
-	// With no language preference, nothing is language-filtered (box set still
-	// hidden by default).
+	// With no language preference, the language filter is off — but compilations
+	// (default-hidden) and anthologies still go.
 	none := mockAPI(t, resp)
 	an, _ := none.GetAuthor(context.Background(), "1")
-	if len(an.Books) != 4 {
-		t.Fatalf("no-language-pref should keep all non-compilation books: got %d, want 4", len(an.Books))
+	if len(an.Books) != 4 { // The Martian, Марсианин, Incidentul Iisus, Digitocracy
+		t.Fatalf("no-language-pref: got %d books, want 4", len(an.Books))
 	}
 }
 

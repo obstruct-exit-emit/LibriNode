@@ -369,7 +369,9 @@ const authorQuery = `query Author($id: Int!, $lang: String!) {
         cached_image
         users_count
         compilation
+        contributions_aggregate { aggregate { count } }
         lang_editions: editions(where: {language: {language: {_eq: $lang}}}, limit: 1) { id }
+        foreign_editions: editions(where: {_and: [{language_id: {_is_null: false}}, {language: {language: {_neq: $lang}}}]}, limit: 1) { id }
         book_series {
           position
           series { id name description }
@@ -397,9 +399,15 @@ type gqlBook struct {
 	CachedImage json.RawMessage  `json:"cached_image"`
 	BookSeries  []gqlSeriesEntry `json:"book_series"`
 	// Bibliography-quality fields (author query only; absent elsewhere → zero).
-	UsersCount   int               `json:"users_count"`
-	Compilation  bool              `json:"compilation"`
-	LangEditions []json.RawMessage `json:"lang_editions"` // one entry ⇒ has an edition in the preferred language
+	UsersCount      int               `json:"users_count"`
+	Compilation     bool              `json:"compilation"`
+	LangEditions    []json.RawMessage `json:"lang_editions"`    // one entry ⇒ has an edition in the preferred language
+	ForeignEditions []json.RawMessage `json:"foreign_editions"` // one entry ⇒ has an edition in some other language
+	Contributors    struct {
+		Aggregate struct {
+			Count int `json:"count"`
+		} `json:"aggregate"`
+	} `json:"contributions_aggregate"`
 }
 
 func (b *gqlBook) toMetadata() metadata.Book {
@@ -480,14 +488,26 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 		if b.Compilation && !c.includeCompilations {
 			continue
 		}
+		// Multi-author anthologies and graphic-novel adaptations (a magazine
+		// issue, a "best of the year", a comics adaptation) are not the author's
+		// own books — the author is one of many contributors. Real novels credit
+		// one author, or a few co-authors; an anthology credits dozens. Drop the
+		// crowded ones.
+		if b.Contributors.Aggregate.Count >= anthologyContributors {
+			continue
+		}
 		// Language: Hardcover lists every translation as its own book under the
 		// same author, so a bibliography is mostly foreign-language editions of a
-		// few works. Keep a book only if it has an edition in the preferred
-		// language, OR enough readers that it's plainly a real work whose edition
-		// languages Hardcover just hasn't tagged (many editions carry no language).
-		// This drops the translations — in any script — without losing the canon.
-		if c.language != "" && len(b.LangEditions) == 0 && b.UsersCount < langFallbackReaders {
-			continue
+		// few works. With a language preference, keep a book only if it has an
+		// edition in that language; otherwise drop it when it has a *known*
+		// foreign edition, or too few readers to trust (Hardcover leaves many
+		// editions' language blank, so a well-read book with no tagged language is
+		// kept as a real work — an obscure English short — while the translations,
+		// in any script, are dropped).
+		if c.language != "" && len(b.LangEditions) == 0 {
+			if len(b.ForeignEditions) > 0 || b.UsersCount < langFallbackReaders {
+				continue
+			}
 		}
 		if tkey := normalizeKey(b.Title); tkey != "" {
 			if seenTitle[tkey] {
@@ -508,6 +528,11 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 // preferred language but which enough people track that it's clearly a real
 // work (Hardcover leaves many editions' language blank).
 const langFallbackReaders = 5
+
+// anthologyContributors is the author-credit count at which a book is treated as
+// a multi-author anthology / adaptation rather than the author's own work. Real
+// novels credit one author or a few co-authors; anthologies credit many.
+const anthologyContributors = 5
 
 // titleCaseLang upper-cases a language name's first letter to match Hardcover's
 // stored form ("english" → "English").
