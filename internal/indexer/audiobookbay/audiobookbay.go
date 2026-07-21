@@ -13,8 +13,10 @@
 //   - Every request rides a warmed-up session (a PHPSESSID cookie fetched from
 //     the homepage first) with full browser headers; ABB serves reliable
 //     search pages only to an initialized, browser-like session.
-//   - A search redirected to the homepage means ABB is rate-limiting/blocking;
-//     that surfaces as a clear error instead of a retry storm.
+//   - A search redirected to the homepage means ABB is rate-limiting/blocking
+//     (common on a shared VPN exit IP). The search retries a few times with
+//     backoff — a browser-like "try again" — and only then surfaces a clear
+//     error, so a transient bounce doesn't fail an otherwise-working source.
 //
 // This is a dual-use shadow-library source: it is never bundled or enabled by
 // default; a user adds it deliberately and is responsible for its use. HTML
@@ -33,6 +35,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/librinode/librinode/internal/indexer"
 )
@@ -49,6 +52,14 @@ const (
 	// legacyCategory is the category query ABB's search expects (already
 	// percent-encoded); shelfmark found it necessary for reliable results.
 	legacyCategory = "undefined%2Cundefined"
+
+	// searchAttempts is how many times a homepage-bounced search is retried
+	// before surfacing the rate-limit error. ABB bounces are transient —
+	// especially on a shared VPN exit IP — and a browser-like "try again"
+	// usually succeeds where the first attempt was blocked.
+	searchAttempts = 3
+	// searchBackoff scales the pause between retries: attempt N waits N× this.
+	searchBackoff = 700 * time.Millisecond
 )
 
 // defaultTrackers back-fill a magnet when a release page lists none, so the
@@ -113,7 +124,7 @@ func (s *searcher) session() *http.Client {
 func (s *searcher) Test(ctx context.Context) error {
 	var err error
 	for _, base := range s.bases {
-		if _, _, err = fetch(ctx, s.session(), base+"/"); err == nil {
+		if _, _, err = fetch(ctx, s.session(), base+"/", ""); err == nil {
 			return nil
 		}
 	}
@@ -131,16 +142,7 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 	}
 	var lastErr error
 	for _, base := range s.bases {
-		client := s.session()
-		// Warm up the PHPSESSID cookie from the homepage first.
-		if _, _, err := fetch(ctx, client, base+"/"); err != nil {
-			lastErr = err
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			continue
-		}
-		listing, finalURL, err := fetch(ctx, client, base+"/?s="+url.QueryEscape(query)+"&cat="+legacyCategory)
+		posts, err := s.searchBase(ctx, base, query)
 		if err != nil {
 			lastErr = err
 			if ctx.Err() != nil {
@@ -148,13 +150,8 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 			}
 			continue
 		}
-		if isHomepageRedirect(finalURL, base) {
-			lastErr = fmt.Errorf("AudioBook Bay redirected the search to its homepage — it is likely rate-limiting or temporarily blocking this IP; try again later")
-			continue
-		}
-
-		releases := []indexer.Release{}
-		for _, p := range parseListing(listing, base) {
+		releases := make([]indexer.Release, 0, len(posts))
+		for _, p := range posts {
 			releases = append(releases, indexer.Release{
 				IndexerID: s.ind.ID,
 				Indexer:   s.ind.Name,
@@ -177,6 +174,41 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 	return nil, lastErr
 }
 
+// searchBase warms a fresh session and runs ONE listing request against a site.
+// A homepage bounce (ABB rate-limiting/blocking, common on a shared VPN IP) is
+// retried a few times with backoff — re-warming a fresh session each time, the
+// way hitting "search" again in a browser would — before giving up. A warm-up or
+// listing transport error isn't retried here; the caller falls to the next site.
+func (s *searcher) searchBase(ctx context.Context, base, query string) ([]post, error) {
+	var lastErr error
+	for attempt := 0; attempt < searchAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * searchBackoff):
+			}
+		}
+		client := s.session()
+		// Warm up the session from the homepage first (browser-like).
+		if _, _, err := fetch(ctx, client, base+"/", ""); err != nil {
+			return nil, err
+		}
+		// The search is a same-origin navigation from the homepage — send its
+		// Referer so the request looks like a real in-site search.
+		listing, finalURL, err := fetch(ctx, client, base+"/?s="+url.QueryEscape(query)+"&cat="+legacyCategory, base+"/")
+		if err != nil {
+			return nil, err
+		}
+		if isHomepageRedirect(finalURL, base) {
+			lastErr = fmt.Errorf("AudioBook Bay redirected the search to its homepage — it is likely rate-limiting or temporarily blocking this IP; try again later")
+			continue
+		}
+		return parseListing(listing, base), nil
+	}
+	return nil, lastErr
+}
+
 // Resolve turns a release-page URL into an assembled magnet — called at grab
 // time for exactly the release the user grabbed. It warms a fresh session, then
 // fetches that one page for its info hash + trackers.
@@ -189,8 +221,10 @@ func (s *searcher) Resolve(ctx context.Context, downloadURL string) (string, err
 		return "", fmt.Errorf("invalid AudioBook Bay release URL")
 	}
 	client := s.session()
-	_, _, _ = fetch(ctx, client, u.Scheme+"://"+u.Host+"/") // best-effort warm-up
-	page, _, err := fetch(ctx, client, downloadURL)
+	home := u.Scheme + "://" + u.Host + "/"
+	_, _, _ = fetch(ctx, client, home, "") // best-effort warm-up
+	// Navigating to the release page from the site — send the Referer.
+	page, _, err := fetch(ctx, client, downloadURL, home)
 	if err != nil {
 		return "", fmt.Errorf("fetching AudioBook Bay release page: %w", err)
 	}
@@ -206,8 +240,10 @@ func (s *searcher) Resolve(ctx context.Context, downloadURL string) (string, err
 
 // fetch GETs a URL on the given session client with browser-like headers and
 // returns the body plus the final URL (after redirects), for homepage-redirect
-// detection.
-func fetch(ctx context.Context, client *http.Client, rawURL string) (body, finalURL string, err error) {
+// detection. A non-empty referer is sent as the Referer header (marking the
+// request a same-origin navigation) — ABB serves reliably to requests that look
+// like real in-site clicks.
+func fetch(ctx context.Context, client *http.Client, rawURL, referer string) (body, finalURL string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return "", "", err
@@ -217,6 +253,16 @@ func fetch(ctx context.Context, client *http.Client, rawURL string) (body, final
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	// Browser navigation fetch-metadata: a real page load in a current Chrome.
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+	} else {
+		req.Header.Set("Sec-Fetch-Site", "none")
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
