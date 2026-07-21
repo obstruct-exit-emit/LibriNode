@@ -1,8 +1,8 @@
 import type { Book, HomeItem } from "../api";
 
-// SortSelect is a compact, unobtrusive sort dropdown for a card header: a small
-// ⇅ glyph and a borderless select showing the current option. Options are
-// [key, label] pairs; the first is the section's natural/default order.
+// SortSelect is a compact sort dropdown for a card header — a plain select
+// styled like the app's other dropdowns. Options are [key, label] pairs; the
+// first is the section's natural/default order.
 export function SortSelect({
   value,
   onChange,
@@ -13,18 +13,19 @@ export function SortSelect({
   options: [key: string, label: string][];
 }) {
   return (
-    <label className="sort-select" title="Sort">
-      <span className="sort-glyph" aria-hidden>
-        ⇅
-      </span>
-      <select aria-label="Sort by" value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map(([key, label]) => (
-          <option key={key} value={key}>
-            {label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <select
+      className="sort-select"
+      aria-label="Sort by"
+      title="Sort by"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map(([key, label]) => (
+        <option key={key} value={key}>
+          {label}
+        </option>
+      ))}
+    </select>
   );
 }
 
