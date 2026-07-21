@@ -204,6 +204,29 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Library Genesis** searches keep the right book again: the author is read
+  from the results table's own column (libgen.li stopped wrapping authors in
+  links, so releases carried no author and the scorer rejected every one for
+  "not mentioning the author"). And a downloaded ebook is saved by its **real
+  type** — the direct client identifies the file from its content, so a book
+  served from a `get.php` mirror URL is written as `.epub`, not the unusable
+  `.php` the URL implied.
+- The built-in **direct downloader** now validates what it receives: a mirror
+  that answers with an error/landing page instead of the file (even one
+  mislabeled as a download) is rejected instead of saved as a bogus "book", and
+  a direct download is removed from the download folder once imported.
+- A release **grabbed from the web UI now auto-imports**. The app ran two
+  separate download services — one for the background importer, one for the API —
+  and the built-in direct client's queue is in-memory, so a UI grab finished in a
+  queue the importer never watched. The whole app now shares one download
+  service, so a UI grab and the auto-importer act on the same queue. (Remote path
+  mappings now apply to API-triggered imports too.)
+- **AudioBook Bay** grabs resolve to a real magnet again: release URLs keep their
+  trailing slash — the slash-less form returns an unfollowable 301, so no magnet
+  was ever assembled. A search bounced to the homepage (ABB rate-limiting the IP,
+  common on a shared/VPN exit IP) is now retried a few times with backoff,
+  browser-style, and requests carry full browser navigation headers, before the
+  rate-limit error is surfaced.
 - Series links now reconcile on every metadata refresh: a book's series
   membership is set to exactly what the provider currently reports, so a stale
   or wrong link (e.g. a standalone the provider once mislabeled as part of a
@@ -215,8 +238,7 @@ in progress. Highlights from the hardening period, newest first:
 - **AudioBook Bay** stopped hammering the site into IP bans: a search now makes
   a single listing request and defers each result's per-page magnet assembly to
   grab time (for the one release grabbed), riding a warmed-up browser-like
-  session; a search bounced to the homepage is reported as rate-limited rather
-  than retried.
+  session; a search bounced to the homepage surfaces as rate-limiting.
 - An unmatched-file row whose path was long no longer collapses into a
   one-character-per-line vertical strip — the path takes its own line with the
   actions below.

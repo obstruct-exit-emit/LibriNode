@@ -44,8 +44,12 @@ The built-in sources today:
   torrent that goes through qBittorrent like any other. AudioBook Bay temp-bans
   IPs that crawl, so a **search makes a single listing request** and the
   per-release detail fetch is deferred — the magnet is assembled only when you
-  grab a result. Requests use a warmed-up, browser-like session, and a search
-  bounced to the homepage is reported as rate-limited rather than retried.
+  grab a result. Requests ride a warmed-up, browser-like session (full
+  navigation headers), and a search bounced to the homepage — ABB rate-limiting
+  the IP — is retried a few times with backoff before the error is surfaced.
+  Rate-limiting is far more likely on a **shared or VPN exit IP**: expect
+  occasional homepage bounces, or a search that comes back empty, when the IP is
+  throttled — a residential IP or a quieter VPN region is much more reliable.
 - **Library Genesis** (ebooks) is the built-in ebook source: it searches
   libgen.li and downloads through its `ads.php` → `get.php` mirror by each
   file's MD5, using the `direct` protocol (below). No account needed. Its
@@ -68,6 +72,11 @@ Download Clients** with a local download folder as its "host". It streams the
 file itself, **failing over across a `|`-separated mirror list**, following a
 membership-API JSON answer or an open-mirror landing page one hop to the real
 file, and Completed Download Handling imports the result like any other grab.
+The saved file is named by its **actual content**, so a book served from a
+`get.php`-style mirror URL is written as `.epub` (not the `.php` the URL
+implies); a mirror that answers with an error or landing page instead of the
+file is rejected rather than saved as a bogus book; and because the file is
+streamed only to be imported, it's removed from the download folder afterward.
 It's source-agnostic: any direct-link source can ride it.
 
 **Library Genesis** (ebooks) rides a third release protocol: **direct** —
