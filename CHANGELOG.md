@@ -204,6 +204,15 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Hardcover search and author pages carry far less junk.** Hardcover lists many
+  near-duplicate and ghost records for one work — a film study and two authorless
+  records all titled "Dune" next to Frank Herbert's, plus reissues and
+  translations promoted to their own book. Search now collapses true duplicates
+  (same title + author) to the most-read record and drops same-title stragglers a
+  dominant work dwarfs (under 1% of its readers) along with never-read ghost
+  records; an author's bibliography drops repeated titles, keeping the canonical,
+  most-read one. Genuinely distinct same-title works, each with real readers, both
+  stay.
 - **Open Library and Google Books work as selectable metadata sources** now, not
   just names in the list. Open Library's provider test searched for a stopword
   ("the"), which Open Library rejects with HTTP 422 — so testing or activating it

@@ -15,7 +15,9 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/librinode/librinode/internal/metadata"
 )
@@ -207,12 +209,28 @@ func (c *Client) SearchAuthors(ctx context.Context, query string) ([]metadata.Au
 	return authors, nil
 }
 
+// searchDominanceRatio drives search de-junking: within one normalized title, a
+// record with fewer than 1/ratio the readers of the most-read same-title record
+// is treated as a junk/ghost/foreign duplicate and dropped. Genuinely distinct
+// same-title works — each with a real readership — both stay. Hardcover's search
+// for "dune" otherwise returns Frank Herbert's Dune (13k readers) next to a film
+// study, a French thesis, and two authorless ghost records all titled "Dune".
+const searchDominanceRatio = 100
+
 func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book, error) {
 	docs, err := c.search(ctx, query, "Book")
 	if err != nil {
 		return nil, err
 	}
-	books := []metadata.Book{}
+
+	type rec struct {
+		book     metadata.Book
+		titleKey string
+		fullKey  string // title+author — collapses reissued/alternate editions
+		users    int
+	}
+	recs := make([]rec, 0, len(docs))
+	titleMax := map[string]int{} // most readers of any record sharing a title
 	for _, doc := range docs {
 		var d struct {
 			ID          flexID          `json:"id"`
@@ -223,6 +241,7 @@ func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book
 			ReleaseDate string          `json:"release_date"`
 			ReleaseYear int             `json:"release_year"`
 			Rating      float64         `json:"rating"`
+			UsersCount  int             `json:"users_count"`
 		}
 		if err := json.Unmarshal(doc, &d); err != nil || d.ID == "" {
 			continue
@@ -238,12 +257,65 @@ func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book
 		if b.ReleaseDate == "" && d.ReleaseYear > 0 {
 			b.ReleaseDate = strconv.Itoa(d.ReleaseYear)
 		}
+		author := ""
 		if len(d.AuthorNames) > 0 {
 			b.AuthorName = d.AuthorNames[0]
+			author = d.AuthorNames[0]
 		}
-		books = append(books, b)
+		tk := normalizeKey(d.Title)
+		recs = append(recs, rec{
+			book: b, titleKey: tk, fullKey: tk + "\x00" + normalizeKey(author), users: d.UsersCount,
+		})
+		if tk != "" && d.UsersCount > titleMax[tk] {
+			titleMax[tk] = d.UsersCount
+		}
+	}
+
+	// Drop never-read ghost records and same-title stragglers a dominant work
+	// dwarfs; collapse exact title+author duplicates to their most-read record.
+	// Relevance order is otherwise preserved. When every record of a title is
+	// unread (titleMax 0), none are dropped — an obscure but real result survives.
+	books := []metadata.Book{}
+	at := map[string]int{}
+	keptUsers := map[string]int{}
+	for _, r := range recs {
+		if m := titleMax[r.titleKey]; m > 0 {
+			if r.users == 0 || r.users*searchDominanceRatio < m {
+				continue
+			}
+		}
+		if r.fullKey != "\x00" {
+			if pos, ok := at[r.fullKey]; ok {
+				if r.users > keptUsers[r.fullKey] {
+					books[pos], keptUsers[r.fullKey] = r.book, r.users
+				}
+				continue
+			}
+			at[r.fullKey] = len(books)
+			keptUsers[r.fullKey] = r.users
+		}
+		books = append(books, r.book)
 	}
 	return books, nil
+}
+
+// normalizeKey reduces a title or name to a comparison key: lower-cased, with
+// runs of non-alphanumerics collapsed to single spaces and trimmed. So "DUNE",
+// "Dune", and "Dune " map together while distinct works stay distinct.
+func normalizeKey(s string) string {
+	var b strings.Builder
+	space := false
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+			space = false
+		case !space:
+			b.WriteRune(' ')
+			space = true
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // --- Author lookup ---
@@ -354,12 +426,24 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 		Description: a.Bio,
 		ImageURL:    imageURL(a.CachedImage),
 	}
-	seen := map[string]bool{}
+	// Dedup by book id, then by title. Hardcover lists a translation, reissue, or
+	// alternate edition as its own book under the same author, so an author page
+	// otherwise shows the same title several times. Contributions arrive ordered
+	// by readership (see authorQuery), so the first record of a given title is the
+	// canonical, most-read one — keep it and drop the rest.
+	seenID := map[string]bool{}
+	seenTitle := map[string]bool{}
 	for _, con := range a.Contributions {
-		if con.Book == nil || seen[con.Book.ID.String()] {
+		if con.Book == nil || seenID[con.Book.ID.String()] {
 			continue
 		}
-		seen[con.Book.ID.String()] = true
+		seenID[con.Book.ID.String()] = true
+		if tkey := normalizeKey(con.Book.Title); tkey != "" {
+			if seenTitle[tkey] {
+				continue
+			}
+			seenTitle[tkey] = true
+		}
 		book := con.Book.toMetadata()
 		book.AuthorForeignID = author.ForeignID
 		book.AuthorName = author.Name

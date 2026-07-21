@@ -105,6 +105,44 @@ func TestSearchBooks_ResultsAsJSONString(t *testing.T) {
 	}
 }
 
+// TestSearchBooksDeJunks: Hardcover returns one canonical record next to
+// low/zero-reader same-title junk (a film study and a ghost record both titled
+// "Dune") and a true edition duplicate. Search keeps the canonical works only,
+// in relevance order.
+func TestSearchBooksDeJunks(t *testing.T) {
+	inner := `{"hits": [
+		{"document": {"id": 1, "title": "Dune", "author_names": ["Frank Herbert"], "users_count": 13575, "release_year": 1965}},
+		{"document": {"id": 2, "title": "Dune", "author_names": ["Christian McCrea"], "users_count": 4, "release_year": 2019}},
+		{"document": {"id": 3, "title": "Dune", "author_names": [], "users_count": 0}},
+		{"document": {"id": 4, "title": "DUNE", "author_names": ["Mahalia Galais"], "users_count": 0, "release_year": 2019}},
+		{"document": {"id": 5, "title": "Mistborn", "author_names": ["Brandon Sanderson"], "users_count": 9000}},
+		{"document": {"id": 6, "title": "Mistborn", "author_names": ["Brandon Sanderson"], "users_count": 200}},
+		{"document": {"id": 7, "title": "Dune Messiah", "author_names": ["Frank Herbert"], "users_count": 4501}}
+	]}`
+	c := mockAPI(t, map[string]string{
+		"Search": `{"data": {"search": {"results": ` + inner + `}}}`,
+	})
+	books, err := c.SearchBooks(context.Background(), "dune")
+	if err != nil {
+		t.Fatalf("SearchBooks: %v", err)
+	}
+	got := make([]string, len(books))
+	for i, b := range books {
+		got[i] = b.ForeignID
+	}
+	// Kept: canonical Dune (1), most-read Mistborn (5), Dune Messiah (7).
+	// Dropped: same-title stragglers/ghosts 2,3,4 and duplicate edition 6.
+	want := []string{"1", "5", "7"}
+	if len(got) != len(want) {
+		t.Fatalf("got ids %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got ids %v, want %v", got, want)
+		}
+	}
+}
+
 func TestGetAuthor(t *testing.T) {
 	c := mockAPI(t, map[string]string{
 		"Author": `{"data": {"authors": [{
