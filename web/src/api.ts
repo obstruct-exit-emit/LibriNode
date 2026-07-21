@@ -405,6 +405,7 @@ export interface MetadataSettings {
   language: string;
   country: string;
   includeAdult: boolean;
+  includeCompilations: boolean;
 }
 
 export interface ImportSettings {
@@ -916,6 +917,7 @@ export const api = {
       language?: string;
       country?: string;
       includeAdult?: boolean;
+      includeCompilations?: boolean;
     },
   ) =>
     request<MetadataSettings>("/api/v1/settings/metadata", {

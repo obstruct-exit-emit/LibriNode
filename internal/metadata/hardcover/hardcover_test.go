@@ -13,7 +13,7 @@ import (
 
 // mockAPI serves canned GraphQL responses keyed by operation name and
 // verifies auth + request shape on every call.
-func mockAPI(t *testing.T, responses map[string]string) *Client {
+func mockAPI(t *testing.T, responses map[string]string, opts ...Option) *Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
@@ -41,7 +41,7 @@ func mockAPI(t *testing.T, responses map[string]string) *Client {
 		http.Error(w, "unexpected query", http.StatusBadRequest)
 	}))
 	t.Cleanup(srv.Close)
-	return New("test-token", WithEndpoint(srv.URL))
+	return New("test-token", append([]Option{WithEndpoint(srv.URL)}, opts...)...)
 }
 
 func TestSearchAuthors(t *testing.T) {
@@ -140,6 +140,34 @@ func TestSearchBooksDeJunks(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("got ids %v, want %v", got, want)
 		}
+	}
+}
+
+// TestSearchBooksCompilations: box sets are hidden by default and shown when
+// the user opts in.
+func TestSearchBooksCompilations(t *testing.T) {
+	inner := `{"hits": [
+		{"document": {"id": 1, "title": "Dune", "author_names": ["Frank Herbert"], "users_count": 13575}},
+		{"document": {"id": 2, "title": "The Great Dune Trilogy", "author_names": ["Frank Herbert"], "users_count": 272, "compilation": true}}
+	]}`
+	resp := map[string]string{"Search": `{"data": {"search": {"results": ` + inner + `}}}`}
+
+	def := mockAPI(t, resp) // default: compilations hidden
+	books, err := def.SearchBooks(context.Background(), "dune")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(books) != 1 || books[0].ForeignID != "1" {
+		t.Fatalf("default should hide the box set: got %d books", len(books))
+	}
+
+	opted := mockAPI(t, resp, WithIncludeCompilations(true))
+	all, err := opted.SearchBooks(context.Background(), "dune")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("opt-in should include the box set: got %d books, want 2", len(all))
 	}
 }
 

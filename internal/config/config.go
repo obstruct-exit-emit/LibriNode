@@ -59,6 +59,9 @@ type MetadataSettings struct {
 	Language     string `yaml:"language,omitempty"`
 	Country      string `yaml:"country,omitempty"`
 	IncludeAdult bool   `yaml:"include_adult,omitempty"`
+	// IncludeCompilations, off by default, keeps box sets / omnibus editions /
+	// collections out of metadata search so results are individual books.
+	IncludeCompilations bool `yaml:"include_compilations,omitempty"`
 }
 
 // MangaSeriesProvider returns the configured manga provider name, defaulting
@@ -113,6 +116,14 @@ func (c *Config) IncludeAdult() bool {
 	return c.Metadata.IncludeAdult
 }
 
+// IncludeCompilations reports whether box sets / omnibus editions may appear in
+// metadata searches (default: hidden).
+func (c *Config) IncludeCompilations() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Metadata.IncludeCompilations
+}
+
 // ProviderSettings returns the providers map with the global metadata
 // preferences injected into every entry — providers are built from Settings
 // alone, so the preferences ride along to each of them, present and future.
@@ -120,6 +131,7 @@ func (c *Config) IncludeAdult() bool {
 func (c *Config) ProviderSettings() map[string]metadata.Settings {
 	ms := c.MetadataSettings()
 	lang, country, adult := c.MetadataLanguage(), c.MetadataCountry(), c.IncludeAdult()
+	comps := c.IncludeCompilations()
 	if lang == "none" {
 		lang = ""
 	}
@@ -128,6 +140,7 @@ func (c *Config) ProviderSettings() map[string]metadata.Settings {
 	}
 	for name, s := range ms.Providers {
 		s.Language, s.Country, s.IncludeAdult = lang, country, adult
+		s.IncludeCompilations = comps
 		ms.Providers[name] = s
 	}
 	return ms.Providers
@@ -678,16 +691,17 @@ func (c *Config) MetadataSettings() MetadataSettings {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := MetadataSettings{
-		Active:           c.Metadata.Active,
-		MangaProvider:    c.Metadata.MangaProvider,
-		ComicProvider:    c.Metadata.ComicProvider,
-		MangaCoverSource: c.Metadata.MangaCoverSource,
-		ComicCoverSource: c.Metadata.ComicCoverSource,
-		Language:         c.Metadata.Language,
-		Country:          c.Metadata.Country,
-		IncludeAdult:     c.Metadata.IncludeAdult,
-		Fallbacks:        append([]string(nil), c.Metadata.Fallbacks...),
-		Providers:        make(map[string]metadata.Settings, len(c.Metadata.Providers)),
+		Active:              c.Metadata.Active,
+		MangaProvider:       c.Metadata.MangaProvider,
+		ComicProvider:       c.Metadata.ComicProvider,
+		MangaCoverSource:    c.Metadata.MangaCoverSource,
+		ComicCoverSource:    c.Metadata.ComicCoverSource,
+		Language:            c.Metadata.Language,
+		Country:             c.Metadata.Country,
+		IncludeAdult:        c.Metadata.IncludeAdult,
+		IncludeCompilations: c.Metadata.IncludeCompilations,
+		Fallbacks:           append([]string(nil), c.Metadata.Fallbacks...),
+		Providers:           make(map[string]metadata.Settings, len(c.Metadata.Providers)),
 	}
 	for name, s := range c.Metadata.Providers {
 		out.Providers[name] = s

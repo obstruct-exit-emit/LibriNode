@@ -2019,6 +2019,7 @@ function MetadataCard({
   const [language, setLanguage] = useState("english");
   const [country, setCountry] = useState("united states");
   const [includeAdult, setIncludeAdult] = useState(false);
+  const [includeCompilations, setIncludeCompilations] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [cacheNotice, setCacheNotice] = useState("");
@@ -2057,6 +2058,7 @@ function MetadataCard({
         setLanguage(s.language);
         setCountry(s.country);
         setIncludeAdult(s.includeAdult);
+        setIncludeCompilations(s.includeCompilations);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
@@ -2095,6 +2097,7 @@ function MetadataCard({
         language,
         country,
         includeAdult,
+        includeCompilations,
       })
       .then((s) => {
         setSettings(s);
@@ -2108,6 +2111,7 @@ function MetadataCard({
         setLanguage(s.language);
         setCountry(s.country);
         setIncludeAdult(s.includeAdult);
+        setIncludeCompilations(s.includeCompilations);
         const hasToken = s.active && s.providers[s.active]?.token;
         setNotice(
           hasToken
@@ -2239,6 +2243,19 @@ function MetadataCard({
                 }}
               />{" "}
               Include adult content in metadata search results
+            </span>
+          </label>
+          <label className="check">
+            <span>
+              <input
+                type="checkbox"
+                checked={includeCompilations}
+                onChange={(e) => {
+                  setIncludeCompilations(e.target.checked);
+                  setNotice("");
+                }}
+              />{" "}
+              Show box sets &amp; collections in metadata search results
             </span>
           </label>
         </div>

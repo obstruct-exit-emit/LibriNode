@@ -30,6 +30,8 @@ metadata:
   language: english              # global metadata preference — providers
   country: united states         #   prefer matching editions, then fall
   include_adult: false           #   back; "none" = no preference
+  include_compilations: false    # show box sets / omnibus editions in metadata
+                                 #   search (default: hidden, individual books only)
   providers:
     hardcover: { token: "..." }
     comicvine: { token: "..." }

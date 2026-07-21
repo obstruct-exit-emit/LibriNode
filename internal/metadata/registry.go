@@ -24,6 +24,10 @@ type Settings struct {
 	Language     string `yaml:"-" json:"-"`
 	Country      string `yaml:"-" json:"-"`
 	IncludeAdult bool   `yaml:"-" json:"-"`
+	// IncludeCompilations, when false (the default), hides box sets, omnibus
+	// editions, and other collections from search so results are individual
+	// books; a provider that flags compilations honors it, others ignore it.
+	IncludeCompilations bool `yaml:"-" json:"-"`
 }
 
 // Factory builds a provider from its settings. Returning ErrNotConfigured

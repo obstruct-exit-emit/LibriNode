@@ -37,28 +37,30 @@ type metadataSettingsResponse struct {
 	MangaCoverSource string `json:"mangaCoverSource"`
 	ComicCoverSource string `json:"comicCoverSource"`
 	// Global, provider-agnostic metadata preferences (effective values).
-	Language     string `json:"language"`
-	Country      string `json:"country"`
-	IncludeAdult bool   `json:"includeAdult"`
+	Language            string `json:"language"`
+	Country             string `json:"country"`
+	IncludeAdult        bool   `json:"includeAdult"`
+	IncludeCompilations bool   `json:"includeCompilations"`
 }
 
 func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 	ms := s.cfg.MetadataSettings()
 	resp := metadataSettingsResponse{
-		Active:           ms.Active,
-		Available:        metadata.Available(),
-		SeriesAvailable:  metadata.SeriesAvailable(),
-		Fallbacks:        ms.Fallbacks,
-		Providers:        ms.Providers,
-		MangaProviders:   metadata.AvailableSeriesProviders("manga"),
-		MangaProvider:    s.cfg.MangaSeriesProvider(),
-		ComicProviders:   metadata.AvailableSeriesProviders("comic"),
-		ComicProvider:    s.cfg.ComicSeriesProvider(),
-		MangaCoverSource: s.cfg.CoverSourceFor("manga"),
-		ComicCoverSource: s.cfg.CoverSourceFor("comic"),
-		Language:         s.cfg.MetadataLanguage(),
-		Country:          s.cfg.MetadataCountry(),
-		IncludeAdult:     s.cfg.IncludeAdult(),
+		Active:              ms.Active,
+		Available:           metadata.Available(),
+		SeriesAvailable:     metadata.SeriesAvailable(),
+		Fallbacks:           ms.Fallbacks,
+		Providers:           ms.Providers,
+		MangaProviders:      metadata.AvailableSeriesProviders("manga"),
+		MangaProvider:       s.cfg.MangaSeriesProvider(),
+		ComicProviders:      metadata.AvailableSeriesProviders("comic"),
+		ComicProvider:       s.cfg.ComicSeriesProvider(),
+		MangaCoverSource:    s.cfg.CoverSourceFor("manga"),
+		ComicCoverSource:    s.cfg.CoverSourceFor("comic"),
+		Language:            s.cfg.MetadataLanguage(),
+		Country:             s.cfg.MetadataCountry(),
+		IncludeAdult:        s.cfg.IncludeAdult(),
+		IncludeCompilations: s.cfg.IncludeCompilations(),
 	}
 	if resp.Fallbacks == nil {
 		resp.Fallbacks = []string{}
@@ -84,16 +86,17 @@ func (s *server) handleGetMetadataSettings(w http.ResponseWriter, r *http.Reques
 // config.yaml, and hot-swaps the active provider — no restart needed.
 func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Active           string                       `json:"active"`
-		Fallbacks        []string                     `json:"fallbacks"`
-		Providers        map[string]metadata.Settings `json:"providers"`
-		MangaProvider    string                       `json:"mangaProvider"`
-		ComicProvider    string                       `json:"comicProvider"`
-		MangaCoverSource string                       `json:"mangaCoverSource"`
-		ComicCoverSource string                       `json:"comicCoverSource"`
-		Language         string                       `json:"language"`
-		Country          string                       `json:"country"`
-		IncludeAdult     bool                         `json:"includeAdult"`
+		Active              string                       `json:"active"`
+		Fallbacks           []string                     `json:"fallbacks"`
+		Providers           map[string]metadata.Settings `json:"providers"`
+		MangaProvider       string                       `json:"mangaProvider"`
+		ComicProvider       string                       `json:"comicProvider"`
+		MangaCoverSource    string                       `json:"mangaCoverSource"`
+		ComicCoverSource    string                       `json:"comicCoverSource"`
+		Language            string                       `json:"language"`
+		Country             string                       `json:"country"`
+		IncludeAdult        bool                         `json:"includeAdult"`
+		IncludeCompilations bool                         `json:"includeCompilations"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -137,16 +140,17 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 	}
 
 	ms := config.MetadataSettings{
-		Active:           req.Active,
-		Fallbacks:        fallbacks,
-		Providers:        req.Providers,
-		MangaProvider:    req.MangaProvider,
-		ComicProvider:    req.ComicProvider,
-		MangaCoverSource: req.MangaCoverSource,
-		ComicCoverSource: req.ComicCoverSource,
-		Language:         strings.ToLower(strings.TrimSpace(req.Language)),
-		Country:          strings.ToLower(strings.TrimSpace(req.Country)),
-		IncludeAdult:     req.IncludeAdult,
+		Active:              req.Active,
+		Fallbacks:           fallbacks,
+		Providers:           req.Providers,
+		MangaProvider:       req.MangaProvider,
+		ComicProvider:       req.ComicProvider,
+		MangaCoverSource:    req.MangaCoverSource,
+		ComicCoverSource:    req.ComicCoverSource,
+		Language:            strings.ToLower(strings.TrimSpace(req.Language)),
+		Country:             strings.ToLower(strings.TrimSpace(req.Country)),
+		IncludeAdult:        req.IncludeAdult,
+		IncludeCompilations: req.IncludeCompilations,
 	}
 	// Build with the global preferences injected (same shape ProviderSettings
 	// produces once the config is saved); "none" means no preference.
@@ -160,6 +164,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 	injected := make(map[string]metadata.Settings, len(ms.Providers))
 	for name, ps := range ms.Providers {
 		ps.Language, ps.Country, ps.IncludeAdult = lang, country, ms.IncludeAdult
+		ps.IncludeCompilations = ms.IncludeCompilations
 		injected[name] = ps
 	}
 	if err := s.metadata.ConfigureWithFallbacks(ms.Active, ms.Fallbacks, injected); err != nil {

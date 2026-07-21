@@ -11,6 +11,10 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **Box sets & collections are hidden from metadata search by default**, with an
+  opt-in under Settings → Metadata ("Show box sets & collections"). Hardcover
+  lists omnibus/box-set editions alongside the individual books — six of them for
+  a "dune" search — so results stay to single books unless you want the sets.
 - Organize now **scans first** (scoped to its level — a library page scans
   only that library's roots, an author/series page its own format) so the
   move plan always reflects what's actually on disk, and library-level

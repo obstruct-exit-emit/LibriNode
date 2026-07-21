@@ -30,13 +30,14 @@ func Factory(s metadata.Settings) (metadata.Provider, error) {
 	if s.Token == "" {
 		return nil, metadata.ErrNotConfigured
 	}
-	return New(s.Token), nil
+	return New(s.Token, WithIncludeCompilations(s.IncludeCompilations)), nil
 }
 
 type Client struct {
-	endpoint string
-	token    string
-	httpc    *http.Client
+	endpoint            string
+	token               string
+	httpc               *http.Client
+	includeCompilations bool
 }
 
 type Option func(*Client)
@@ -44,6 +45,12 @@ type Option func(*Client)
 // WithEndpoint overrides the API endpoint (used by tests).
 func WithEndpoint(url string) Option {
 	return func(c *Client) { c.endpoint = url }
+}
+
+// WithIncludeCompilations keeps box sets / omnibus editions in search results
+// when true; the default (false) hides them so results are individual books.
+func WithIncludeCompilations(v bool) Option {
+	return func(c *Client) { c.includeCompilations = v }
 }
 
 func New(token string, opts ...Option) *Client {
@@ -242,8 +249,13 @@ func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book
 			ReleaseYear int             `json:"release_year"`
 			Rating      float64         `json:"rating"`
 			UsersCount  int             `json:"users_count"`
+			Compilation bool            `json:"compilation"`
 		}
 		if err := json.Unmarshal(doc, &d); err != nil || d.ID == "" {
+			continue
+		}
+		// Box sets / omnibus editions are hidden unless the user opts in.
+		if d.Compilation && !c.includeCompilations {
 			continue
 		}
 		b := metadata.Book{
