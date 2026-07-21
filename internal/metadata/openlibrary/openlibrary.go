@@ -63,11 +63,13 @@ func (c *Client) Name() string { return providerName }
 
 // Validate does a cheap public search; a transport failure is unreachable,
 // anything that returns is proof the API is up (there is no token to reject).
+// The query term must be a real word: Open Library now rejects a stopword-only
+// query (e.g. "the") with HTTP 422, which would fail validation spuriously.
 func (c *Client) Validate(ctx context.Context) error {
 	var out struct {
 		NumFound int `json:"numFound"`
 	}
-	return c.getJSON(ctx, "/search.json?q=the&limit=1&fields=key", &out)
+	return c.getJSON(ctx, "/search.json?q=book&limit=1&fields=key", &out)
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, out any) error {
@@ -76,8 +78,9 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	// Open Library asks clients to identify themselves.
-	req.Header.Set("User-Agent", "LibriNode/1.0 (+https://github.com/librinode)")
+	// Open Library asks clients to identify themselves with an app name and a
+	// contact — an identified client gets triple the rate limit (3 req/s vs 1).
+	req.Header.Set("User-Agent", "LibriNode/1.0 (+https://github.com/obstruct-exit-emit/LibriNode)")
 
 	resp, err := c.httpc.Do(req)
 	if err != nil {
