@@ -119,7 +119,7 @@ func (s *Store) homeItems(where, order string, limit int, mediaType string) ([]H
 			books.title, COALESCE(a.name, ''), books.cover_url,
 			EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+fileMT+`'),
 			books.release_date, books.rating,
-			COALESCE((SELECT s.name FROM series_books sb JOIN series s ON s.id = sb.series_id
+			COALESCE((SELECT s.title FROM series_books sb JOIN series s ON s.id = sb.series_id
 				WHERE sb.book_id = books.id LIMIT 1), ''),
 			COALESCE((SELECT sb.position FROM series_books sb WHERE sb.book_id = books.id LIMIT 1), 0)
 		FROM books LEFT JOIN authors a ON a.id = books.author_id
