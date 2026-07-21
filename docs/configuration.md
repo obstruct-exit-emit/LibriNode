@@ -33,7 +33,10 @@ metadata:
   providers:
     hardcover: { token: "..." }
     comicvine: { token: "..." }
-    googlebooks: { token: "..." }  # optional — only lifts the rate limit
+    googlebooks: { token: "..." }  # recommended: keyless shares one global daily
+                                   #   quota that's often already spent (HTTP 429);
+                                   #   a free key gives you your own. Open Library
+                                   #   needs no key.
 naming:
   # Each ebook gets its own folder, so sidecars travel with the book.
   ebook_folder: "{Author Name}/{Book Title} ({Release Year})"

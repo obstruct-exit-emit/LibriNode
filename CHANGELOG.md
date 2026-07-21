@@ -204,6 +204,20 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Open Library and Google Books work as selectable metadata sources** now, not
+  just names in the list. Open Library's provider test searched for a stopword
+  ("the"), which Open Library rejects with HTTP 422 — so testing or activating it
+  failed with a Bad Gateway; it now queries a real word and validates cleanly
+  (and identifies itself for Open Library's higher rate limit). Google Books'
+  keyless access shares one global anonymous daily quota that is frequently spent
+  already: a 429 with no key configured now says exactly that and points you to
+  add a free API key, instead of a bare "HTTP 429". (Open Library needs no key.)
+- **AudioBook Bay** stopped intermittently returning empty results or bouncing to
+  the homepage on a long-running server: it opens a **fresh connection per
+  request** instead of reusing the app-lifetime keep-alive pool, which the site
+  throttles once one connection has served enough requests. A browser, curl, and
+  a just-started process always worked against the same site and IP — only the
+  server's reused pooled connection failed.
 - **Library Genesis** searches keep the right book again: the author is read
   from the results table's own column (libgen.li stopped wrapping authors in
   links, so releases carried no author and the scorer rejected every one for
