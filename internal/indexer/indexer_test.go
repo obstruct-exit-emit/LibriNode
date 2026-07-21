@@ -309,32 +309,40 @@ func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// First sweep: real failure recorded.
+	// The first restAfter failures are tolerated: each sweep still retries and
+	// reports a real failure, never a resting notice — a transient blip on a
+	// scraped source shouldn't hide it.
+	for i := 0; i < restAfter; i++ {
+		_, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(errs) != 1 || strings.Contains(errs[0], "resting") {
+			t.Fatalf("failure %d errs = %v, want a real failure (not resting yet)", i+1, errs)
+		}
+	}
+	// Now it rests — 5m after the restAfter-th consecutive failure.
+	if until, ok := svc.resting(dead.ID); !ok || until.Sub(now) != 5*time.Minute {
+		t.Fatalf("should rest 5m after %d failures, got %v (resting=%v)", restAfter, until.Sub(now), ok)
+	}
+
+	// A sweep inside the rest window is skipped with a resting notice.
 	_, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(errs) != 1 || strings.Contains(errs[0], "resting") {
-		t.Fatalf("first sweep errs = %v, want a real failure", errs)
-	}
-
-	// Second sweep inside the rest window: skipped, not retried.
-	_, errs, err = svc.SearchAll(context.Background(), "mort", "ebook")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if len(errs) != 1 || !strings.Contains(errs[0], "resting") {
-		t.Fatalf("second sweep errs = %v, want a resting notice", errs)
+		t.Fatalf("resting sweep errs = %v, want a resting notice", errs)
 	}
 
-	// Past the first rest (5m): retried again — failure doubles the rest.
+	// Past the rest (5m): retried again — another failure doubles the rest.
 	now = now.Add(6 * time.Minute)
 	_, errs, _ = svc.SearchAll(context.Background(), "mort", "ebook")
 	if len(errs) != 1 || strings.Contains(errs[0], "resting") {
 		t.Fatalf("post-rest sweep errs = %v, want a real failure", errs)
 	}
 	if until, ok := svc.resting(dead.ID); !ok || until.Sub(now) != 10*time.Minute {
-		t.Fatalf("second failure should rest 10m, got %v (resting=%v)", until.Sub(now), ok)
+		t.Fatalf("next failure should rest 10m, got %v (resting=%v)", until.Sub(now), ok)
 	}
 
 	// A success clears the slate. Point the indexer at a working server.

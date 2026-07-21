@@ -11,11 +11,15 @@ import (
 )
 
 // Failure backoff: an indexer that keeps erroring rests instead of being
-// hammered every sweep. Rest doubles per consecutive failure (5m, 10m, 20m,
-// …) capped at 6h; one success clears it. In-memory — a restart forgives.
+// hammered every sweep. The first restAfter consecutive failures are tolerated
+// (a scraped source like AudioBook Bay bounces intermittently on a shared/VPN
+// IP but recovers on the next try — one blip shouldn't hide it for minutes);
+// past that, rest doubles per failure (5m, 10m, 20m, …) capped at 6h. One
+// success clears it. In-memory — a restart forgives.
 const (
 	backoffBase = 5 * time.Minute
 	backoffMax  = 6 * time.Hour
+	restAfter   = 3 // consecutive failures before an indexer starts resting
 )
 
 type backoffState struct {
@@ -142,7 +146,10 @@ func (s *Service) recordResult(id int64, err error) {
 		s.backoff[id] = st
 	}
 	st.failures++
-	rest := backoffBase << (st.failures - 1)
+	if st.failures < restAfter {
+		return // still within the tolerated streak — keep trying it next time
+	}
+	rest := backoffBase << (st.failures - restAfter)
 	if rest > backoffMax || rest <= 0 {
 		rest = backoffMax
 	}
