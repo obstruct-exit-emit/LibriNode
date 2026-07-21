@@ -113,10 +113,20 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path != "" && path != "index.html" {
 			if _, err := fs.Stat(s.webFS, path); err == nil {
+				// Vite emits content-hashed asset filenames (index-ABC123.js), so
+				// a changed build is a changed URL — the bytes at one URL never
+				// change and can be cached forever.
+				if strings.HasPrefix(path, "assets/") {
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
 				http.ServeFileFS(w, r, s.webFS, path)
 				return
 			}
 		}
+		// index.html (and the SPA fallback) references those hashed assets, so it
+		// must never be cached — otherwise a deploy's new bundle is never picked
+		// up and the browser keeps loading the old one.
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		http.ServeFileFS(w, r, s.webFS, "index.html")
 		return
 	}
