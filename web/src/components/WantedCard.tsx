@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type HomeItem } from "../api";
 import { downloadPct, useQueue } from "../useQueue";
-import { SortSelect, sortItems } from "./SortControl";
+import { SortSelect, sortItems, groupBySeries } from "./SortControl";
 
 // WantedCard is the per-library Wanted page: everything monitored but
 // missing this format's file, each with its own search button (magazines
@@ -52,6 +52,32 @@ export default function WantedCard({
 
   const shown = sortItems(items, sort);
 
+  const renderRow = (item: HomeItem) => (
+    <li key={item.bookId}>
+      <div className="row">
+        <span>
+          {item.title}
+          {item.subtitle && <span className="muted"> · {item.subtitle}</span>}
+        </span>
+        <span className="row-actions">
+          {library !== "magazine" &&
+            (() => {
+              const dl = queue.activeFor(item.bookId, library);
+              return dl ? (
+                <span className="owned dl" title={`${dl.status} on ${dl.client}`}>
+                  ⬇ downloading {downloadPct(dl)}
+                </span>
+              ) : (
+                <button disabled={busyID !== null} onClick={() => grab(item)}>
+                  {busyID === item.bookId ? "Searching…" : "Auto grab"}
+                </button>
+              );
+            })()}
+        </span>
+      </div>
+    </li>
+  );
+
   return (
     <section className="card">
       <div className="card-head">
@@ -73,33 +99,18 @@ export default function WantedCard({
         indexers and sends the best release to a download client.
       </p>
       {notice && <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>}
-      <ul className="rows">
-        {shown.map((item) => (
-          <li key={item.bookId}>
-            <div className="row">
-              <span>
-                {item.title}
-                {item.subtitle && <span className="muted"> · {item.subtitle}</span>}
-              </span>
-              <span className="row-actions">
-                {library !== "magazine" &&
-                  (() => {
-                    const dl = queue.activeFor(item.bookId, library);
-                    return dl ? (
-                      <span className="owned dl" title={`${dl.status} on ${dl.client}`}>
-                        ⬇ downloading {downloadPct(dl)}
-                      </span>
-                    ) : (
-                      <button disabled={busyID !== null} onClick={() => grab(item)}>
-                        {busyID === item.bookId ? "Searching…" : "Auto grab"}
-                      </button>
-                    );
-                  })()}
-              </span>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {sort === "series" ? (
+        groupBySeries(shown, (i) => i.seriesTitle ?? "").map((g, _gi, arr) => (
+          <div key={g.title || "standalone"}>
+            {(g.title || arr.some((x) => x.title !== "")) && (
+              <h3 className="group-heading">{g.title || "Standalone"}</h3>
+            )}
+            <ul className="rows">{g.items.map(renderRow)}</ul>
+          </div>
+        ))
+      ) : (
+        <ul className="rows">{shown.map(renderRow)}</ul>
+      )}
     </section>
   );
 }

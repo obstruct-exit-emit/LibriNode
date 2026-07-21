@@ -1,5 +1,22 @@
 import type { Book, HomeItem } from "../api";
 
+// groupBySeries splits an already series-sorted list into consecutive runs by
+// series title, so a caller can render a heading before each run. Items with no
+// series collect under the "" (standalone) title. Order is preserved.
+export function groupBySeries<T>(
+  items: T[],
+  seriesTitleOf: (t: T) => string,
+): { title: string; items: T[] }[] {
+  const groups: { title: string; items: T[] }[] = [];
+  for (const it of items) {
+    const title = seriesTitleOf(it);
+    const last = groups[groups.length - 1];
+    if (last && last.title === title) last.items.push(it);
+    else groups.push({ title, items: [it] });
+  }
+  return groups;
+}
+
 // SortSelect is a compact sort dropdown for a card header — a plain select
 // styled like the app's other dropdowns. Options are [key, label] pairs; the
 // first is the section's natural/default order.

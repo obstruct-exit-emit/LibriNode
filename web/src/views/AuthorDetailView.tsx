@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import { DetailSkeleton } from "../components/Skeleton";
-import { SortSelect, sortBooks } from "../components/SortControl";
+import { SortSelect, sortBooks, groupBySeries } from "../components/SortControl";
 
 // Full-page author detail, *arr-style: header with portrait, description and
 // author-level actions, then this library's books as a cover grid — clicking
@@ -139,6 +139,26 @@ export default function AuthorDetailView({
       .finally(() => setBusy(false));
   };
 
+  const renderPoster = (b: Book) => {
+    const bookOwned = library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile;
+    const monitored = library === "ebook" ? b.ebookMonitored : b.audiobookMonitored;
+    return (
+      <button key={b.id} className="poster-card" onClick={() => onOpenBook(b.id)}>
+        {b.coverUrl ? (
+          <img className="poster" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
+        ) : (
+          <div className="poster fallback">{b.title.charAt(0)}</div>
+        )}
+        <span className="poster-title">{b.title}</span>
+        <span className="poster-sub">
+          {b.releaseDate ? b.releaseDate.slice(0, 4) + " · " : ""}
+          {bookOwned ? "owned" : "wanted"}
+          {!monitored && " · unmonitored"}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <>
       <button className="link back" onClick={onBack}>
@@ -262,28 +282,17 @@ export default function AuthorDetailView({
             <strong>Missing</strong> below, or scan a root folder with their
             files.
           </p>
+        ) : booksSort === "series" ? (
+          groupBySeries(sortBooks(books, "series"), (b) => b.series?.[0]?.title ?? "").map((g, _gi, arr) => (
+            <div key={g.title || "standalone"}>
+              {(g.title || arr.some((x) => x.title !== "")) && (
+                <h3 className="group-heading">{g.title || "Standalone"}</h3>
+              )}
+              <div className="poster-grid">{g.items.map(renderPoster)}</div>
+            </div>
+          ))
         ) : (
-          <div className="poster-grid">
-            {sortBooks(books, booksSort).map((b) => {
-              const bookOwned = library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile;
-              const monitored = library === "ebook" ? b.ebookMonitored : b.audiobookMonitored;
-              return (
-                <button key={b.id} className="poster-card" onClick={() => onOpenBook(b.id)}>
-                  {b.coverUrl ? (
-                    <img className="poster" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
-                  ) : (
-                    <div className="poster fallback">{b.title.charAt(0)}</div>
-                  )}
-                  <span className="poster-title">{b.title}</span>
-                  <span className="poster-sub">
-                    {b.releaseDate ? b.releaseDate.slice(0, 4) + " · " : ""}
-                    {bookOwned ? "owned" : "wanted"}
-                    {!monitored && " · unmonitored"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <div className="poster-grid">{sortBooks(books, booksSort).map(renderPoster)}</div>
         )}
       </section>
 
