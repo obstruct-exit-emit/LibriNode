@@ -285,6 +285,8 @@ export interface HomeItem {
   hasFile: boolean;
   releaseDate?: string;
   rating?: number;
+  seriesTitle?: string;
+  seriesPosition?: number;
 }
 
 export interface CalendarItem {

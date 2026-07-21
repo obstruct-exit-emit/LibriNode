@@ -35,6 +35,15 @@ export function SortSelect({
 export function sortBooks(books: Book[], key: string): Book[] {
   const by = [...books];
   switch (key) {
+    case "series": // by series name, then position; standalones last, by title
+      return by.sort((a, b) => {
+        const sa = a.series?.[0];
+        const sb = b.series?.[0];
+        if (!sa && !sb) return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+        if (!sa) return 1;
+        if (!sb) return -1;
+        return sa.title.localeCompare(sb.title) || (sa.position || 0) - (sb.position || 0);
+      });
     case "title":
       return by.sort((a, b) => (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title));
     case "date": // newest first
@@ -52,6 +61,15 @@ export function sortBooks(books: Book[], key: string): Book[] {
 export function sortItems(items: HomeItem[], key: string): HomeItem[] {
   const by = [...items];
   switch (key) {
+    case "series":
+      return by.sort((a, b) => {
+        const ta = a.seriesTitle || "";
+        const tb = b.seriesTitle || "";
+        if (!ta && !tb) return a.title.localeCompare(b.title);
+        if (!ta) return 1;
+        if (!tb) return -1;
+        return ta.localeCompare(tb) || (a.seriesPosition || 0) - (b.seriesPosition || 0);
+      });
     case "title":
       return by.sort((a, b) => a.title.localeCompare(b.title));
     case "date":

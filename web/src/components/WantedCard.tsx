@@ -62,6 +62,7 @@ export default function WantedCard({
           options={[
             ["default", "Recently added"],
             ["title", "Title"],
+            ["series", "Series"],
             ["date", "Release date"],
             ["rating", "Rating"],
           ]}

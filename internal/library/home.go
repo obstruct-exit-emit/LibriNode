@@ -88,15 +88,17 @@ func (s *Store) LibraryStatuses() ([]LibraryStatus, error) {
 // link the tile to its detail page: prose books open the book page (which
 // needs the author for its back-navigation), volumes/issues open their series.
 type HomeItem struct {
-	BookID      int64   `json:"bookId"`
-	AuthorID    int64   `json:"authorId,omitempty"`
-	SeriesID    int64   `json:"seriesId,omitempty"`
-	Title       string  `json:"title"`
-	Subtitle    string  `json:"subtitle,omitempty"` // author or series
-	CoverURL    string  `json:"coverUrl,omitempty"`
-	HasFile     bool    `json:"hasFile"`
-	ReleaseDate string  `json:"releaseDate,omitempty"`
-	Rating      float64 `json:"rating,omitempty"`
+	BookID         int64   `json:"bookId"`
+	AuthorID       int64   `json:"authorId,omitempty"`
+	SeriesID       int64   `json:"seriesId,omitempty"`
+	Title          string  `json:"title"`
+	Subtitle       string  `json:"subtitle,omitempty"` // author or series
+	CoverURL       string  `json:"coverUrl,omitempty"`
+	HasFile        bool    `json:"hasFile"`
+	ReleaseDate    string  `json:"releaseDate,omitempty"`
+	Rating         float64 `json:"rating,omitempty"`
+	SeriesTitle    string  `json:"seriesTitle,omitempty"`
+	SeriesPosition float64 `json:"seriesPosition,omitempty"`
 }
 
 // HomeSection is one library's block on the Home page — rows never mix
@@ -116,7 +118,10 @@ func (s *Store) homeItems(where, order string, limit int, mediaType string) ([]H
 			COALESCE((SELECT sb.series_id FROM series_books sb WHERE sb.book_id = books.id LIMIT 1), 0),
 			books.title, COALESCE(a.name, ''), books.cover_url,
 			EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+fileMT+`'),
-			books.release_date, books.rating
+			books.release_date, books.rating,
+			COALESCE((SELECT s.name FROM series_books sb JOIN series s ON s.id = sb.series_id
+				WHERE sb.book_id = books.id LIMIT 1), ''),
+			COALESCE((SELECT sb.position FROM series_books sb WHERE sb.book_id = books.id LIMIT 1), 0)
 		FROM books LEFT JOIN authors a ON a.id = books.author_id
 		WHERE `+where+` ORDER BY `+order+` LIMIT ?`, limit)
 	if err != nil {
@@ -128,7 +133,7 @@ func (s *Store) homeItems(where, order string, limit int, mediaType string) ([]H
 	for rows.Next() {
 		var it HomeItem
 		if err := rows.Scan(&it.BookID, &it.AuthorID, &it.SeriesID, &it.Title, &it.Subtitle, &it.CoverURL, &it.HasFile,
-			&it.ReleaseDate, &it.Rating); err != nil {
+			&it.ReleaseDate, &it.Rating, &it.SeriesTitle, &it.SeriesPosition); err != nil {
 			return nil, err
 		}
 		items = append(items, it)

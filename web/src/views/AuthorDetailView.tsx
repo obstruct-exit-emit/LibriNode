@@ -249,6 +249,7 @@ export default function AuthorDetailView({
               onChange={setBooksSort}
               options={[
                 ["title", "Title"],
+                ["series", "Series"],
                 ["date", "Release date"],
                 ["rating", "Rating"],
               ]}
