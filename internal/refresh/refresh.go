@@ -103,6 +103,31 @@ func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, forei
 			return nil, err
 		}
 	}
+
+	// Reconcile: drop bibliography entries the provider no longer returns — e.g.
+	// foreign-language editions or box sets it now filters out — so a refresh
+	// clears stale junk from the author's "missing" list instead of accumulating
+	// it forever (the sync only ever upserts). Only books the user never enrolled
+	// in a library and owns no file for are removed; anything owned or added is
+	// always kept. Guarded by a non-empty fresh bibliography so a provider hiccup
+	// returning nothing can never wipe the shelf.
+	if len(remote.Books) > 0 {
+		fresh := make(map[string]bool, len(remote.Books))
+		for i := range remote.Books {
+			fresh[remote.Books[i].ForeignID] = true
+		}
+		if existing, err := s.store.ListBooks(author.ID); err == nil {
+			for _, b := range existing {
+				if fresh[b.ForeignID] || b.InEbookLibrary || b.InAudiobookLibrary || b.HasFile {
+					continue
+				}
+				if err := s.store.DeleteBook(b.ID); err != nil {
+					slog.Warn("reconcile: removing stale bibliography book",
+						"book", b.Title, "author", author.Name, "error", err)
+				}
+			}
+		}
+	}
 	return author, nil
 }
 

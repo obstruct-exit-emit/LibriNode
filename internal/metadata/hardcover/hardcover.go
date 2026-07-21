@@ -30,7 +30,10 @@ func Factory(s metadata.Settings) (metadata.Provider, error) {
 	if s.Token == "" {
 		return nil, metadata.ErrNotConfigured
 	}
-	return New(s.Token, WithIncludeCompilations(s.IncludeCompilations)), nil
+	return New(s.Token,
+		WithIncludeCompilations(s.IncludeCompilations),
+		WithLanguage(s.Language),
+	), nil
 }
 
 type Client struct {
@@ -38,6 +41,7 @@ type Client struct {
 	token               string
 	httpc               *http.Client
 	includeCompilations bool
+	language            string // preferred metadata language ("" = no preference)
 }
 
 type Option func(*Client)
@@ -51,6 +55,13 @@ func WithEndpoint(url string) Option {
 // when true; the default (false) hides them so results are individual books.
 func WithIncludeCompilations(v bool) Option {
 	return func(c *Client) { c.includeCompilations = v }
+}
+
+// WithLanguage sets the preferred metadata language (e.g. "english"); an
+// author's bibliography then drops foreign-language editions the author never
+// wrote in that language. Empty ("" / "none") means no preference.
+func WithLanguage(v string) Option {
+	return func(c *Client) { c.language = v }
 }
 
 func New(token string, opts ...Option) *Client {
@@ -338,7 +349,7 @@ func normalizeKey(s string) string {
 // rows (largely junk) and misses the canon entirely. Order by readership and
 // skip never-read entries so the single 100-row page holds the canonical
 // bibliography: the books people actually track, each with its description.
-const authorQuery = `query Author($id: Int!) {
+const authorQuery = `query Author($id: Int!, $lang: String!) {
   authors(where: {id: {_eq: $id}}, limit: 1) {
     id
     name
@@ -356,6 +367,9 @@ const authorQuery = `query Author($id: Int!) {
         release_date
         rating
         cached_image
+        users_count
+        compilation
+        lang_editions: editions(where: {language: {language: {_eq: $lang}}}, limit: 1) { id }
         book_series {
           position
           series { id name description }
@@ -382,6 +396,10 @@ type gqlBook struct {
 	Rating      float64          `json:"rating"`
 	CachedImage json.RawMessage  `json:"cached_image"`
 	BookSeries  []gqlSeriesEntry `json:"book_series"`
+	// Bibliography-quality fields (author query only; absent elsewhere → zero).
+	UsersCount   int               `json:"users_count"`
+	Compilation  bool              `json:"compilation"`
+	LangEditions []json.RawMessage `json:"lang_editions"` // one entry ⇒ has an edition in the preferred language
 }
 
 func (b *gqlBook) toMetadata() metadata.Book {
@@ -424,7 +442,13 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 			} `json:"contributions"`
 		} `json:"authors"`
 	}
-	if err := c.do(ctx, authorQuery, map[string]any{"id": id}, &env); err != nil {
+	// $lang must be a value even with no preference (String!); the filter below
+	// is simply skipped then. Hardcover names languages title-cased ("English").
+	langParam := "English"
+	if c.language != "" {
+		langParam = titleCaseLang(c.language)
+	}
+	if err := c.do(ctx, authorQuery, map[string]any{"id": id, "lang": langParam}, &env); err != nil {
 		return nil, err
 	}
 	if len(env.Authors) == 0 {
@@ -446,23 +470,52 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 	seenID := map[string]bool{}
 	seenTitle := map[string]bool{}
 	for _, con := range a.Contributions {
-		if con.Book == nil || seenID[con.Book.ID.String()] {
+		b := con.Book
+		if b == nil || seenID[b.ID.String()] {
 			continue
 		}
-		seenID[con.Book.ID.String()] = true
-		if tkey := normalizeKey(con.Book.Title); tkey != "" {
+		seenID[b.ID.String()] = true
+
+		// Box sets / omnibus editions are hidden unless the user opts in.
+		if b.Compilation && !c.includeCompilations {
+			continue
+		}
+		// Language: Hardcover lists every translation as its own book under the
+		// same author, so a bibliography is mostly foreign-language editions of a
+		// few works. Keep a book only if it has an edition in the preferred
+		// language, OR enough readers that it's plainly a real work whose edition
+		// languages Hardcover just hasn't tagged (many editions carry no language).
+		// This drops the translations — in any script — without losing the canon.
+		if c.language != "" && len(b.LangEditions) == 0 && b.UsersCount < langFallbackReaders {
+			continue
+		}
+		if tkey := normalizeKey(b.Title); tkey != "" {
 			if seenTitle[tkey] {
 				continue
 			}
 			seenTitle[tkey] = true
 		}
-		book := con.Book.toMetadata()
+		book := b.toMetadata()
 		book.AuthorForeignID = author.ForeignID
 		book.AuthorName = author.Name
 		author.Books = append(author.Books, book)
 	}
 	author.BookCount = len(author.Books)
 	return author, nil
+}
+
+// langFallbackReaders keeps a book whose editions have no tagged copy in the
+// preferred language but which enough people track that it's clearly a real
+// work (Hardcover leaves many editions' language blank).
+const langFallbackReaders = 5
+
+// titleCaseLang upper-cases a language name's first letter to match Hardcover's
+// stored form ("english" → "English").
+func titleCaseLang(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 // --- Book lookup ---

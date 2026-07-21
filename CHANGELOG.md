@@ -208,6 +208,19 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **An author's "missing" list drops foreign-language editions and box sets.**
+  Hardcover catalogs every translation as its own book under the same author, so
+  a bibliography was mostly foreign editions of a few works — Andy Weir's ran to
+  ~50 entries with a dozen Martians in Cyrillic, Hebrew, Greek, Polish, etc. A
+  book is now kept only when it has an edition in your metadata language *or*
+  enough readers to be plainly a real work (Hardcover leaves many editions'
+  language blank), which drops the translations in any script without losing the
+  canon — Andy Weir now lists 25 actual works (novels + short stories). Box sets
+  honor the same "Show box sets & collections" toggle as search. And a metadata
+  refresh now **reconciles**: a bibliography entry the provider stops returning
+  is removed, so this cleanup reaches libraries already full of the old junk —
+  but only books you never added to a library and own no file for are ever
+  removed.
 - **Hardcover search and author pages carry far less junk.** Hardcover lists many
   near-duplicate and ghost records for one work — a film study and two authorless
   records all titled "Dune" next to Frank Herbert's, plus reissues and
