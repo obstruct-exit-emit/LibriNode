@@ -109,11 +109,25 @@ type searcher struct {
 	httpc *http.Client
 }
 
-// session returns a client that shares the pooled transport but carries its own
-// fresh cookie jar, so a search's homepage warm-up + listing (and, separately, a
-// grab's warm-up + detail) share one PHPSESSID like a browser tab would.
+// session returns a client with its own fresh cookie jar (so a search's homepage
+// warm-up + listing, and a grab's warm-up + detail, share one PHPSESSID like a
+// browser tab) AND its own connection — keep-alives are disabled.
+//
+// The app-wide indexer client pools keep-alive connections for its whole
+// lifetime. AudioBook Bay (Cloudflare-fronted) throttles a connection once it
+// has served enough requests: the reused connection then quietly returns empty
+// result pages or bounces the search to the homepage, while a *fresh* connection
+// keeps working — which is why a browser, curl, and a just-started process all
+// succeed against the exact same site and IP where a long-running server fails.
+// Opening a fresh connection per request sidesteps that entirely; a scraped
+// source is low-volume, so the extra handshakes cost nothing that matters.
 func (s *searcher) session() *http.Client {
 	c := *s.httpc
+	c.Transport = &http.Transport{
+		Proxy:             http.ProxyFromEnvironment,
+		DisableKeepAlives: true,
+		ForceAttemptHTTP2: true,
+	}
 	if jar, err := cookiejar.New(nil); err == nil {
 		c.Jar = jar
 	}
