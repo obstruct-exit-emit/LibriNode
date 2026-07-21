@@ -283,6 +283,8 @@ export interface HomeItem {
   subtitle?: string;
   coverUrl?: string;
   hasFile: boolean;
+  releaseDate?: string;
+  rating?: number;
 }
 
 export interface CalendarItem {

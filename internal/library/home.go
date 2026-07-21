@@ -88,13 +88,15 @@ func (s *Store) LibraryStatuses() ([]LibraryStatus, error) {
 // link the tile to its detail page: prose books open the book page (which
 // needs the author for its back-navigation), volumes/issues open their series.
 type HomeItem struct {
-	BookID   int64  `json:"bookId"`
-	AuthorID int64  `json:"authorId,omitempty"`
-	SeriesID int64  `json:"seriesId,omitempty"`
-	Title    string `json:"title"`
-	Subtitle string `json:"subtitle,omitempty"` // author or series
-	CoverURL string `json:"coverUrl,omitempty"`
-	HasFile  bool   `json:"hasFile"`
+	BookID      int64   `json:"bookId"`
+	AuthorID    int64   `json:"authorId,omitempty"`
+	SeriesID    int64   `json:"seriesId,omitempty"`
+	Title       string  `json:"title"`
+	Subtitle    string  `json:"subtitle,omitempty"` // author or series
+	CoverURL    string  `json:"coverUrl,omitempty"`
+	HasFile     bool    `json:"hasFile"`
+	ReleaseDate string  `json:"releaseDate,omitempty"`
+	Rating      float64 `json:"rating,omitempty"`
 }
 
 // HomeSection is one library's block on the Home page — rows never mix
@@ -113,7 +115,8 @@ func (s *Store) homeItems(where, order string, limit int, mediaType string) ([]H
 		SELECT books.id, COALESCE(books.author_id, 0),
 			COALESCE((SELECT sb.series_id FROM series_books sb WHERE sb.book_id = books.id LIMIT 1), 0),
 			books.title, COALESCE(a.name, ''), books.cover_url,
-			EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+fileMT+`')
+			EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '`+fileMT+`'),
+			books.release_date, books.rating
 		FROM books LEFT JOIN authors a ON a.id = books.author_id
 		WHERE `+where+` ORDER BY `+order+` LIMIT ?`, limit)
 	if err != nil {
@@ -124,7 +127,8 @@ func (s *Store) homeItems(where, order string, limit int, mediaType string) ([]H
 	items := []HomeItem{}
 	for rows.Next() {
 		var it HomeItem
-		if err := rows.Scan(&it.BookID, &it.AuthorID, &it.SeriesID, &it.Title, &it.Subtitle, &it.CoverURL, &it.HasFile); err != nil {
+		if err := rows.Scan(&it.BookID, &it.AuthorID, &it.SeriesID, &it.Title, &it.Subtitle, &it.CoverURL, &it.HasFile,
+			&it.ReleaseDate, &it.Rating); err != nil {
 			return nil, err
 		}
 		items = append(items, it)

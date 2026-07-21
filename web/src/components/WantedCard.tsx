@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type HomeItem } from "../api";
 import { downloadPct, useQueue } from "../useQueue";
+import { SortSelect, sortItems } from "./SortControl";
 
 // WantedCard is the per-library Wanted page: everything monitored but
 // missing this format's file, each with its own search button (magazines
@@ -15,6 +16,7 @@ export default function WantedCard({
   const [items, setItems] = useState<HomeItem[]>([]);
   const [busyID, setBusyID] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
+  const [sort, setSort] = useState("default");
   // Shared queue poll: wanted rows with an active download show its progress
   // instead of another grab button.
   const queue = useQueue();
@@ -48,16 +50,30 @@ export default function WantedCard({
       .finally(() => setBusyID(null));
   };
 
+  const shown = sortItems(items, sort);
+
   return (
     <section className="card">
-      <h2>Wanted ({items.length})</h2>
+      <div className="card-head">
+        <h2>Wanted ({items.length})</h2>
+        <SortSelect
+          value={sort}
+          onChange={setSort}
+          options={[
+            ["default", "Recently added"],
+            ["title", "Title"],
+            ["date", "Release date"],
+            ["rating", "Rating"],
+          ]}
+        />
+      </div>
       <p className="muted">
         Monitored but not owned in this library. Auto grab searches the
         indexers and sends the best release to a download client.
       </p>
       {notice && <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>}
       <ul className="rows">
-        {items.map((item) => (
+        {shown.map((item) => (
           <li key={item.bookId}>
             <div className="row">
               <span>

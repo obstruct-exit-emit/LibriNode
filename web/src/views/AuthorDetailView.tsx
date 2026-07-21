@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import { DetailSkeleton } from "../components/Skeleton";
+import { SortSelect, sortBooks } from "../components/SortControl";
 
 // Full-page author detail, *arr-style: header with portrait, description and
 // author-level actions, then this library's books as a cover grid — clicking
@@ -27,6 +28,7 @@ export default function AuthorDetailView({
   const [notice, setNotice] = useState("");
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [providerOptions, setProviderOptions] = useState<string[]>([]);
+  const [booksSort, setBooksSort] = useState("title");
 
   // The provider-override selector lists the registered book providers.
   useEffect(() => {
@@ -239,7 +241,20 @@ export default function AuthorDetailView({
       </section>
 
       <section className="card">
-        <h2>Books ({books.length})</h2>
+        <div className="card-head">
+          <h2>Books ({books.length})</h2>
+          {books.length > 1 && (
+            <SortSelect
+              value={booksSort}
+              onChange={setBooksSort}
+              options={[
+                ["title", "Title"],
+                ["date", "Release date"],
+                ["rating", "Rating"],
+              ]}
+            />
+          )}
+        </div>
         {books.length === 0 ? (
           <p className="muted">
             Nothing here yet — pick books to monitor from{" "}
@@ -248,7 +263,7 @@ export default function AuthorDetailView({
           </p>
         ) : (
           <div className="poster-grid">
-            {books.map((b) => {
+            {sortBooks(books, booksSort).map((b) => {
               const bookOwned = library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile;
               const monitored = library === "ebook" ? b.ebookMonitored : b.audiobookMonitored;
               return (
@@ -299,6 +314,7 @@ function MissingCard({
   const [busyID, setBusyID] = useState<number | null>(null);
   const [busyAll, setBusyAll] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [sort, setSort] = useState("series");
 
   useEffect(() => {
     api
@@ -355,19 +371,77 @@ function MissingCard({
   }
   const hasSeries = groups.some((g) => g.title !== "");
 
+  const renderRow = (b: Book) => (
+    <li key={b.id}>
+      <div className="row">
+        <span className="row-select">
+          <input
+            type="checkbox"
+            aria-label={`Select ${b.title}`}
+            checked={selected.has(b.id)}
+            onChange={() => toggleSelect(b.id)}
+          />
+          <button className="link" onClick={() => setOpen(open === b.id ? null : b.id)}>
+            {open === b.id ? "▾" : "▸"} {b.title}
+            <span className="muted">
+              {b.series?.[0] ? ` #${b.series[0].position}` : ""}
+              {b.releaseDate ? ` (${b.releaseDate.slice(0, 4)})` : ""}
+            </span>
+          </button>
+        </span>
+        <span className="row-actions">
+          {b.rating > 0 && <span className="muted">★ {b.rating.toFixed(1)}</span>}
+          <button
+            disabled={busyID !== null || busyAll}
+            title={`Add to ${label} and search for it automatically`}
+            onClick={() => monitor(b)}
+          >
+            {busyID === b.id ? "Adding…" : "+ Monitor"}
+          </button>
+        </span>
+      </div>
+      {open === b.id && (
+        <div className="missing-detail">
+          {b.coverUrl ? (
+            <img className="missing-thumb" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
+          ) : (
+            <div className="missing-thumb fallback">{b.title.charAt(0)}</div>
+          )}
+          <p className="missing-about">
+            {b.description || "No description from the metadata provider."}
+          </p>
+        </div>
+      )}
+    </li>
+  );
+
   return (
     <section className="card">
       <div className="card-head">
         <h2>Missing ({missing.length})</h2>
-        {selected.size > 0 && (
-          <button
-            disabled={busyAll}
-            title={`Monitor the ${selected.size} checked book(s)`}
-            onClick={() => monitorMany(missing.filter((b) => selected.has(b.id)))}
-          >
-            {busyAll ? "Monitoring…" : `+ Monitor selected (${selected.size})`}
-          </button>
-        )}
+        <div className="card-head-actions">
+          {selected.size > 0 && (
+            <button
+              disabled={busyAll}
+              title={`Monitor the ${selected.size} checked book(s)`}
+              onClick={() => monitorMany(missing.filter((b) => selected.has(b.id)))}
+            >
+              {busyAll ? "Monitoring…" : `+ Monitor selected (${selected.size})`}
+            </button>
+          )}
+          {missing.length > 1 && (
+            <SortSelect
+              value={sort}
+              onChange={setSort}
+              options={[
+                ["series", "Series"],
+                ["date", "Release date"],
+                ["title", "Title"],
+                ["rating", "Rating"],
+              ]}
+            />
+          )}
+        </div>
       </div>
       {missing.length === 0 ? (
         <p className="muted">
@@ -380,77 +454,34 @@ function MissingCard({
             book to this library and searches for it automatically — check
             several rows to monitor them in one go.
           </p>
-          {groups.map((g, gi) => (
-            <div key={g.title || `standalone-${gi}`}>
-              {hasSeries && (
-                <h3 className="group-heading">
-                  {g.title || "Standalone"}
-                  {g.books.length > 1 && (
-                    <button
-                      className="toggle group-monitor"
-                      disabled={busyAll}
-                      title={
-                        g.title
-                          ? `Monitor all ${g.books.length} missing ${g.title} books`
-                          : `Monitor all ${g.books.length} standalones`
-                      }
-                      onClick={() => monitorMany(g.books)}
-                    >
-                      + Monitor all ({g.books.length})
-                    </button>
-                  )}
-                </h3>
-              )}
-              <ul className="rows">
-                {g.books.map((b) => (
-                  <li key={b.id}>
-                    <div className="row">
-                      <span className="row-select">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${b.title}`}
-                          checked={selected.has(b.id)}
-                          onChange={() => toggleSelect(b.id)}
-                        />
-                        <button
-                          className="link"
-                          onClick={() => setOpen(open === b.id ? null : b.id)}
-                        >
-                          {open === b.id ? "▾" : "▸"} {b.title}
-                          <span className="muted">
-                            {b.series?.[0] ? ` #${b.series[0].position}` : ""}
-                            {b.releaseDate ? ` (${b.releaseDate.slice(0, 4)})` : ""}
-                          </span>
-                        </button>
-                      </span>
-                      <span className="row-actions">
-                        {b.rating > 0 && <span className="muted">★ {b.rating.toFixed(1)}</span>}
-                        <button
-                          disabled={busyID !== null || busyAll}
-                          title={`Add to ${label} and search for it automatically`}
-                          onClick={() => monitor(b)}
-                        >
-                          {busyID === b.id ? "Adding…" : "+ Monitor"}
-                        </button>
-                      </span>
-                    </div>
-                    {open === b.id && (
-                      <div className="missing-detail">
-                        {b.coverUrl ? (
-                          <img className="missing-thumb" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
-                        ) : (
-                          <div className="missing-thumb fallback">{b.title.charAt(0)}</div>
-                        )}
-                        <p className="missing-about">
-                          {b.description || "No description from the metadata provider."}
-                        </p>
-                      </div>
+          {sort === "series" ? (
+            groups.map((g, gi) => (
+              <div key={g.title || `standalone-${gi}`}>
+                {hasSeries && (
+                  <h3 className="group-heading">
+                    {g.title || "Standalone"}
+                    {g.books.length > 1 && (
+                      <button
+                        className="toggle group-monitor"
+                        disabled={busyAll}
+                        title={
+                          g.title
+                            ? `Monitor all ${g.books.length} missing ${g.title} books`
+                            : `Monitor all ${g.books.length} standalones`
+                        }
+                        onClick={() => monitorMany(g.books)}
+                      >
+                        + Monitor all ({g.books.length})
+                      </button>
                     )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                  </h3>
+                )}
+                <ul className="rows">{g.books.map(renderRow)}</ul>
+              </div>
+            ))
+          ) : (
+            <ul className="rows">{sortBooks(missing, sort).map(renderRow)}</ul>
+          )}
         </>
       )}
     </section>

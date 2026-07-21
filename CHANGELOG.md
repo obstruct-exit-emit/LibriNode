@@ -11,6 +11,11 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **Sort controls on the Books, Wanted, and Missing lists.** A compact ⇅
+  dropdown in each section header re-orders it by title, release date, or rating;
+  Missing keeps its series grouping as the default (choose a sort to flatten it),
+  and Wanted defaults to recently-added — each section's existing look is its
+  default, so nothing changes until you pick a sort.
 - **A "Refresh all metadata" button** under Settings → Metadata → Cache
   maintenance re-fetches every author and series from your provider in one
   action — descriptions and covers come back, and (with the reconcile) entries
