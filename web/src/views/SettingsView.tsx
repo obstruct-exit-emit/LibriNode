@@ -2410,15 +2410,30 @@ function MetadataCard({
       <div className="settings-form">
         <Disclosure summary="Cache maintenance">
         <p className="muted field-note">
-          Cached metadata rebuilds on demand. <strong>Provider art</strong>
-          {" "}(author portraits, cover images) and <strong>extracted
-          covers</strong> (the first page of your owned manga/comic archives)
-          live under the data directory and re-fetch as you browse.{" "}
-          <strong>Descriptions</strong> are stored in the database and only
-          return on the next metadata refresh (per author/series, or the daily
-          sync).
+          <strong>Refresh all metadata</strong> re-fetches every author and
+          series from your provider right now — descriptions and covers come
+          back, and entries the provider no longer lists (old translations, box
+          sets, anthologies) are removed. It runs in the background; changes
+          appear as they complete. Clearing a cache below just empties it;
+          it rebuilds on demand. <strong>Provider art</strong> (author portraits,
+          cover images) and <strong>extracted covers</strong> (the first page of
+          your owned manga/comic archives) re-fetch as you browse;{" "}
+          <strong>descriptions</strong> return on the next refresh.
         </p>
         <div className="settings-actions">
+          <button
+            onClick={() => {
+              setCacheNotice("");
+              api
+                .refreshLibrary("all")
+                .then((r) => setCacheNotice(`✓ ${r.message}`))
+                .catch((err: unknown) =>
+                  setCacheNotice(`✗ ${err instanceof Error ? err.message : String(err)}`),
+                );
+            }}
+          >
+            Refresh all metadata
+          </button>
           <button className="danger" onClick={() => runClear(api.clearMetadataCache)}>
             Clear provider art
           </button>

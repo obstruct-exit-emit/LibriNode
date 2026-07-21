@@ -298,6 +298,19 @@ func (s *server) handleRefreshLibrary(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		count = len(seriesList)
+	case "all":
+		// Every author (prose) plus every manga/comic series — the whole library.
+		authors, err := s.store.ListAuthors()
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		count = len(authors)
+		for _, mt := range []string{"manga", "comic"} {
+			if seriesList, err := s.store.ListSeries(mt); err == nil {
+				count += len(seriesList)
+			}
+		}
 	default:
 		writeError(w, http.StatusBadRequest,
 			"mediaType must be ebook, audiobook, manga, or comic (magazines are provider-less)")
@@ -321,6 +334,10 @@ func (s *server) handleRefreshLibrary(w http.ResponseWriter, r *http.Request) {
 		// the browser tab must not abort the sweep.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 		defer cancel()
+		if mediaType == "all" {
+			s.refresh.RefreshAll(ctx)
+			return
+		}
 		if _, err := s.refresh.RefreshLibrary(ctx, mediaType); err != nil {
 			slog.Warn("library metadata refresh", "mediaType", mediaType, "error", err)
 		}

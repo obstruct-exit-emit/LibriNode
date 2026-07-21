@@ -11,6 +11,13 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **A "Refresh all metadata" button** under Settings → Metadata → Cache
+  maintenance re-fetches every author and series from your provider in one
+  action — descriptions and covers come back, and (with the reconcile) entries
+  the provider no longer lists are removed. Previously a full re-sync could only
+  be triggered per-library from each library page or waited for the daily sweep;
+  the metadata section, where you go to clear/rebuild metadata, now offers it too
+  (`POST /library/refresh` accepts `{"mediaType":"all"}`).
 - **Box sets & collections are hidden from metadata search by default**, with an
   opt-in under Settings → Metadata ("Show box sets & collections"). Hardcover
   lists omnibus/box-set editions alongside the individual books — six of them for
