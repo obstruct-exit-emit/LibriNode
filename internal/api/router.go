@@ -51,10 +51,22 @@ type server struct {
 	version        string
 }
 
-// NewRouter builds the API handler. The returned health service is the
-// caller's to run periodically (main starts it alongside the other
-// background loops); its endpoints are already wired into the handler.
-func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, version string) (http.Handler, *health.Service) {
+// Background bundles the services main runs on periodic loops. NewRouter owns
+// them so the entire app shares ONE download.Service, importer, indexer, and
+// search stack: the direct client's download queue is in-memory, so a second
+// download.Service (as main used to build) would never see a UI-grabbed file
+// finish, and it would never auto-import. Every background loop and every API
+// handler now act on the same queue.
+type Background struct {
+	Health   *health.Service
+	Importer *importer.Service
+	Search   *autosearch.Service
+}
+
+// NewRouter builds the API handler and returns the background services the
+// caller runs periodically (main starts them alongside the metadata-refresh
+// loop); their endpoints are already wired into the handler.
+func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, version string) (http.Handler, *Background) {
 	store := library.NewStore(db)
 	org := organize.New(store, cfg)
 	downloads := download.NewService(download.NewStore(db))
@@ -89,6 +101,9 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		defer cancel()
 		_, _ = s.search.SearchBook(ctx, bookID, mediaType)
 	})
+	// Remote path mappings translate a download client's reported paths onto
+	// this host's filesystem before the importer touches them.
+	s.importer.SetPathMappings(cfg.PathMappings)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ping", s.handlePing)
@@ -225,7 +240,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 
 	mux.HandleFunc("/", s.handleIndex)
 
-	return logRequests(mux), s.health
+	return logRequests(mux), &Background{Health: s.health, Importer: s.importer, Search: s.search}
 }
 
 // handleHealth returns the cached result of the last background health run

@@ -16,11 +16,8 @@ import (
 	"time"
 
 	"github.com/librinode/librinode/internal/api"
-	"github.com/librinode/librinode/internal/autosearch"
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
-	"github.com/librinode/librinode/internal/download"
-	"github.com/librinode/librinode/internal/importer"
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/indexer/audiobookbay"
 	"github.com/librinode/librinode/internal/indexer/libgen"
@@ -32,7 +29,6 @@ import (
 	"github.com/librinode/librinode/internal/metadata/googlebooks"
 	"github.com/librinode/librinode/internal/metadata/hardcover"
 	"github.com/librinode/librinode/internal/metadata/openlibrary"
-	"github.com/librinode/librinode/internal/organize"
 	"github.com/librinode/librinode/internal/refresh"
 )
 
@@ -187,30 +183,20 @@ func run(dataDir string) error {
 	bgCtx, cancelBg := context.WithCancel(context.Background())
 	defer cancelBg()
 	store := library.NewStore(db)
-	downloads := download.NewService(download.NewStore(db))
 	// Cadences: built-in defaults unless tuned under Settings → General →
 	// Background timings (applied at startup — a change needs a restart).
 	timings := cfg.TimingSettings()
-	go refresh.New(store, providers).RunPeriodic(bgCtx, timings.RefreshInterval())
-	imp := importer.New(store, downloads, organize.New(store, cfg), cfg.ImportSettings)
-	imp.SetPathMappings(cfg.PathMappings)
-	bgIndexers := indexer.NewService(indexer.NewStore(db))
-	// Grabs from the background auto-search resolve native lazy download URLs
-	// the same way API grabs do (see download.Service.SetURLResolver).
-	downloads.SetURLResolver(bgIndexers.ResolveGrabURL)
-	search := autosearch.New(store, bgIndexers, downloads)
-	// After the importer blocklists a junk/spam download, search for a
-	// replacement right away instead of waiting for the next periodic sweep.
-	imp.OnJunkBlocklist(func(bookID int64, mediaType string) {
-		ctx, cancel := context.WithTimeout(bgCtx, 5*time.Minute)
-		defer cancel()
-		_, _ = search.SearchBook(ctx, bookID, mediaType)
-	})
-	go imp.RunPeriodic(bgCtx, timings.ImportInterval())
-	go search.RunPeriodic(bgCtx, timings.SearchInterval())
 
-	handler, healthSvc := api.NewRouter(cfg, db, providers, version)
-	go healthSvc.RunPeriodic(bgCtx, timings.HealthInterval())
+	// NewRouter owns the shared service stack — one download.Service (whose
+	// direct-client queue is in-memory, so it must not be duplicated), importer,
+	// indexer, and auto-search, all wired together and already exposed on the API.
+	// main runs their periodic loops beside the metadata-refresh sweep so a
+	// UI-initiated grab and the background importer act on the very same queue.
+	handler, bg := api.NewRouter(cfg, db, providers, version)
+	go refresh.New(store, providers).RunPeriodic(bgCtx, timings.RefreshInterval())
+	go bg.Importer.RunPeriodic(bgCtx, timings.ImportInterval())
+	go bg.Search.RunPeriodic(bgCtx, timings.SearchInterval())
+	go bg.Health.RunPeriodic(bgCtx, timings.HealthInterval())
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr(),
