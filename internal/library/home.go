@@ -1,6 +1,9 @@
 package library
 
-import "sort"
+import (
+	"database/sql"
+	"sort"
+)
 
 // LibraryStatus describes one media-type library for the Plex-style UI: a
 // library is active — and visible — only once the user created it by adding
@@ -231,12 +234,8 @@ func (s *Store) Calendar(from, to string) ([]CalendarItem, error) {
 // (alphabetical, by position within), then standalones by release date.
 // Each book carries at most one series link for grouping.
 func (s *Store) MissingForAuthor(authorID int64, mediaType string) ([]Book, error) {
-	seriesTitle := `COALESCE((SELECT se.title FROM series_books sb JOIN series se ON se.id = sb.series_id
-		WHERE sb.book_id = books.id ORDER BY se.title LIMIT 1), '')`
-	seriesPos := `COALESCE((SELECT sb.position FROM series_books sb JOIN series se ON se.id = sb.series_id
-		WHERE sb.book_id = books.id ORDER BY se.title LIMIT 1), 0)`
 	rows, err := s.db.Query(`
-		SELECT `+bookCols+`, `+seriesTitle+` AS series_title, `+seriesPos+` AS series_pos
+		SELECT `+bookCols+primarySeriesCols+`
 		FROM books
 		WHERE books.author_id = ? AND books.media_type = 'book' AND NOT (`+itemsWhere(mediaType)+`)
 		ORDER BY (series_title = ''), series_title, series_pos, books.release_date, books.sort_title`,
@@ -248,20 +247,62 @@ func (s *Store) MissingForAuthor(authorID int64, mediaType string) ([]Book, erro
 
 	books := []Book{}
 	for rows.Next() {
-		var b Book
-		var st string
-		var sp float64
-		if err := rows.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
-			&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
-			&b.InEbookLibrary, &b.EbookMonitored, &b.InAudiobookLibrary, &b.AudiobookMonitored,
-			&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.HasColorFile, &b.HasMonoFile,
-			&b.AddedAt, &b.UpdatedAt, &st, &sp); err != nil {
+		b, err := scanBookWithSeries(rows)
+		if err != nil {
 			return nil, err
 		}
-		if st != "" {
-			b.Series = []SeriesLink{{Title: st, Position: sp}}
+		books = append(books, *b)
+	}
+	return books, rows.Err()
+}
+
+// primarySeriesCols are the two trailing SELECT expressions that carry a book's
+// primary series (title + this book's position in it) alongside bookCols, for
+// scanBookWithSeries. The series is chosen deterministically (first by title).
+const primarySeriesCols = `,
+	COALESCE((SELECT se.title FROM series_books sb JOIN series se ON se.id = sb.series_id
+		WHERE sb.book_id = books.id ORDER BY se.title LIMIT 1), '') AS series_title,
+	COALESCE((SELECT sb.position FROM series_books sb JOIN series se ON se.id = sb.series_id
+		WHERE sb.book_id = books.id ORDER BY se.title LIMIT 1), 0) AS series_pos`
+
+// scanBookWithSeries scans a row of bookCols + primarySeriesCols into a Book,
+// attaching the primary series link when the book has one.
+func scanBookWithSeries(rows *sql.Rows) (*Book, error) {
+	var b Book
+	var st string
+	var sp float64
+	if err := rows.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
+		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
+		&b.InEbookLibrary, &b.EbookMonitored, &b.InAudiobookLibrary, &b.AudiobookMonitored,
+		&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.HasColorFile, &b.HasMonoFile,
+		&b.AddedAt, &b.UpdatedAt, &st, &sp); err != nil {
+		return nil, err
+	}
+	if st != "" {
+		b.Series = []SeriesLink{{Title: st, Position: sp}}
+	}
+	return &b, nil
+}
+
+// ListAuthorBooks returns all of an author's prose books with their primary
+// series attached, so the author page can group/sort the grid by series (plain
+// ListBooks omits series for speed). Ordered by title; the UI re-sorts.
+func (s *Store) ListAuthorBooks(authorID int64) ([]Book, error) {
+	rows, err := s.db.Query(`SELECT `+bookCols+primarySeriesCols+`
+		FROM books WHERE books.author_id = ? AND books.media_type = 'book'
+		ORDER BY sort_title`, authorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	books := []Book{}
+	for rows.Next() {
+		b, err := scanBookWithSeries(rows)
+		if err != nil {
+			return nil, err
 		}
-		books = append(books, b)
+		books = append(books, *b)
 	}
 	return books, rows.Err()
 }

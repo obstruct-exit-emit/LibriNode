@@ -477,22 +477,31 @@ func (s *server) handleListBooks(w http.ResponseWriter, r *http.Request) {
 		}
 		authorID = id
 	}
-	if authorID == 0 {
-		if lib := r.URL.Query().Get("library"); lib != "" {
-			if lib != "ebook" && lib != "audiobook" {
-				writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
-				return
-			}
-			books, err := s.store.ListBooksInLibrary(lib)
-			if err != nil {
-				writeStoreError(w, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, books)
+	if authorID > 0 {
+		// The author page groups/sorts its grid by series, so it needs the books'
+		// series links (plain ListBooks omits them).
+		books, err := s.store.ListAuthorBooks(authorID)
+		if err != nil {
+			writeStoreError(w, err)
 			return
 		}
+		writeJSON(w, http.StatusOK, books)
+		return
 	}
-	books, err := s.store.ListBooks(authorID)
+	if lib := r.URL.Query().Get("library"); lib != "" {
+		if lib != "ebook" && lib != "audiobook" {
+			writeError(w, http.StatusBadRequest, "library must be ebook or audiobook")
+			return
+		}
+		books, err := s.store.ListBooksInLibrary(lib)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, books)
+		return
+	}
+	books, err := s.store.ListBooks(0)
 	if err != nil {
 		writeStoreError(w, err)
 		return
