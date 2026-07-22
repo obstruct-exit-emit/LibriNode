@@ -54,12 +54,14 @@ const (
 	legacyCategory = "undefined%2Cundefined"
 
 	// searchAttempts is how many times a homepage-bounced search is retried
-	// before surfacing the rate-limit error. ABB bounces are transient —
-	// especially on a shared VPN exit IP — and a browser-like "try again"
-	// usually succeeds where the first attempt was blocked.
-	searchAttempts = 3
+	// before surfacing the rate-limit error. ABB rate-limits per IP once it sees
+	// a burst, so retrying hard is counterproductive — each attempt is another
+	// warm-up + search, and a storm of them keeps the throttle alive. One retry,
+	// well spaced, catches a genuinely transient blip without feeding the limiter.
+	searchAttempts = 2
 	// searchBackoff scales the pause between retries: attempt N waits N× this.
-	searchBackoff = 700 * time.Millisecond
+	// Long enough to let a short throttle window clear before the single retry.
+	searchBackoff = 2 * time.Second
 )
 
 // defaultTrackers back-fill a magnet when a release page lists none, so the
