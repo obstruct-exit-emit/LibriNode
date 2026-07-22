@@ -14,11 +14,17 @@ import (
 // hammered every sweep. The first restAfter consecutive failures are tolerated
 // (a scraped source like AudioBook Bay bounces intermittently on a shared/VPN
 // IP but recovers on the next try — one blip shouldn't hide it for minutes);
-// past that, rest doubles per failure (5m, 10m, 20m, …) capped at 6h. One
+// past that, rest doubles per failure (2m, 4m, 8m, …) capped at 20m. One
 // success clears it. In-memory — a restart forgives.
+//
+// The rest is deliberately short: a big wanted search can briefly overrun an
+// indexer's (or Prowlarr's) rate limit, and those indexers recover within
+// seconds — resting a still-healthy indexer for hours (the user then has to
+// restart the app to clear it) is worse than the momentary overload. Keeping
+// the cap low means the worst case self-heals in minutes without a restart.
 const (
-	backoffBase = 5 * time.Minute
-	backoffMax  = 6 * time.Hour
+	backoffBase = 2 * time.Minute
+	backoffMax  = 20 * time.Minute
 	restAfter   = 3 // consecutive failures before an indexer starts resting
 )
 

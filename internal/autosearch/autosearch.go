@@ -18,6 +18,12 @@ import (
 	"github.com/librinode/librinode/internal/release"
 )
 
+// WantedSearchPacing is the gap left between consecutive book searches when
+// sweeping a wanted list — library-wide or for one author. It keeps a long
+// list from firing a rapid burst that trips indexers (or Prowlarr) into a
+// rate-limit backoff and leaves them "not responding" until a restart.
+const WantedSearchPacing = 500 * time.Millisecond
+
 type Service struct {
 	store     *library.Store
 	indexers  *indexer.Service
@@ -503,7 +509,7 @@ func (s *Service) SearchWanted(ctx context.Context) ([]BookOutcome, error) {
 			select {
 			case <-ctx.Done():
 				return outcomes, ctx.Err()
-			case <-time.After(500 * time.Millisecond):
+			case <-time.After(WantedSearchPacing):
 			}
 		}
 	}

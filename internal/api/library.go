@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/librinode/librinode/internal/autosearch"
 	"github.com/librinode/librinode/internal/comiccover"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
@@ -685,6 +686,19 @@ func (s *server) handleAuthorSearch(w http.ResponseWriter, r *http.Request) {
 	for i := range books {
 		if !wanted(&books[i]) {
 			continue
+		}
+		// Pace between searches so an author with a long wanted list doesn't
+		// fire a rapid burst that trips indexers (or Prowlarr) into a
+		// rate-limit backoff — same cadence as the library-wide sweep.
+		if searched > 0 {
+			select {
+			case <-r.Context().Done():
+				writeJSON(w, http.StatusOK, map[string]any{
+					"searched": searched, "grabbed": grabbed, "outcomes": outcomes,
+				})
+				return
+			case <-time.After(autosearch.WantedSearchPacing):
+			}
 		}
 		searched++
 		o, err := s.search.SearchBook(r.Context(), books[i].ID, lib)

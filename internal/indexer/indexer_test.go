@@ -321,9 +321,9 @@ func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 			t.Fatalf("failure %d errs = %v, want a real failure (not resting yet)", i+1, errs)
 		}
 	}
-	// Now it rests — 5m after the restAfter-th consecutive failure.
-	if until, ok := svc.resting(dead.ID); !ok || until.Sub(now) != 5*time.Minute {
-		t.Fatalf("should rest 5m after %d failures, got %v (resting=%v)", restAfter, until.Sub(now), ok)
+	// Now it rests — backoffBase after the restAfter-th consecutive failure.
+	if until, ok := svc.resting(dead.ID); !ok || until.Sub(now) != backoffBase {
+		t.Fatalf("should rest %v after %d failures, got %v (resting=%v)", backoffBase, restAfter, until.Sub(now), ok)
 	}
 
 	// A sweep inside the rest window is skipped with a resting notice.
@@ -335,14 +335,14 @@ func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 		t.Fatalf("resting sweep errs = %v, want a resting notice", errs)
 	}
 
-	// Past the rest (5m): retried again — another failure doubles the rest.
-	now = now.Add(6 * time.Minute)
+	// Past the rest: retried again — another failure doubles the rest.
+	now = now.Add(backoffBase + time.Minute)
 	_, errs, _ = svc.SearchAll(context.Background(), "mort", "", "ebook")
 	if len(errs) != 1 || strings.Contains(errs[0], "resting") {
 		t.Fatalf("post-rest sweep errs = %v, want a real failure", errs)
 	}
-	if until, ok := svc.resting(dead.ID); !ok || until.Sub(now) != 10*time.Minute {
-		t.Fatalf("next failure should rest 10m, got %v (resting=%v)", until.Sub(now), ok)
+	if until, ok := svc.resting(dead.ID); !ok || until.Sub(now) != 2*backoffBase {
+		t.Fatalf("next failure should rest %v, got %v (resting=%v)", 2*backoffBase, until.Sub(now), ok)
 	}
 
 	// A success clears the slate. Point the indexer at a working server.
