@@ -322,6 +322,7 @@ function MissingCard({
   const [missing, setMissing] = useState<Book[] | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [busyID, setBusyID] = useState<number | null>(null);
+  const [busyMode, setBusyMode] = useState<"add" | "monitor">("add");
   const [busyAll, setBusyAll] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [sort, setSort] = useState("series");
@@ -335,22 +336,27 @@ function MissingCard({
 
   if (!missing) return null;
 
-  const monitor = (b: Book) => {
+  // Add a missing book to this library. monitored=false makes it a plain
+  // member (shows in the Books grid, but never auto-searched); monitored=true
+  // also monitors it — eligible for the wanted sweep's auto-search-and-grab.
+  const add = (b: Book, monitored: boolean) => {
     setBusyID(b.id);
+    setBusyMode(monitored ? "monitor" : "add");
     api
-      .setBookLibrary(b.id, library, true, true)
+      .setBookLibrary(b.id, library, true, monitored)
       .then(onMonitored) // the book moves up into the Books grid
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setBusyID(null));
   };
 
-  // Bulk monitor: a whole series group, or the checked rows.
-  const monitorMany = (books: Book[]) => {
+  // Bulk add: a whole series group, or the checked rows — with or without
+  // monitoring, same split as the per-row buttons.
+  const addMany = (books: Book[], monitored: boolean) => {
     setBusyAll(true);
-    Promise.allSettled(books.map((b) => api.setBookLibrary(b.id, library, true, true)))
+    Promise.allSettled(books.map((b) => api.setBookLibrary(b.id, library, true, monitored)))
       .then((results) => {
         const failed = results.filter((r) => r.status === "rejected").length;
-        if (failed > 0) onError(`${failed} of ${books.length} could not be monitored`);
+        if (failed > 0) onError(`${failed} of ${books.length} could not be added`);
         setSelected(new Set());
         onMonitored();
       })
@@ -403,10 +409,17 @@ function MissingCard({
           {b.rating > 0 && <span className="muted">★ {b.rating.toFixed(1)}</span>}
           <button
             disabled={busyID !== null || busyAll}
-            title={`Add to ${label} and search for it automatically`}
-            onClick={() => monitor(b)}
+            title={`Add to ${label} as a library member (not monitored — never auto-searched)`}
+            onClick={() => add(b, false)}
           >
-            {busyID === b.id ? "Adding…" : "+ Monitor"}
+            {busyID === b.id && busyMode === "add" ? "Adding…" : "+ Add"}
+          </button>
+          <button
+            disabled={busyID !== null || busyAll}
+            title={`Add to ${label} and monitor — search for it and grab it automatically`}
+            onClick={() => add(b, true)}
+          >
+            {busyID === b.id && busyMode === "monitor" ? "Adding…" : "+ Add & Monitor"}
           </button>
         </span>
       </div>
@@ -431,13 +444,22 @@ function MissingCard({
         <h2>Missing ({missing.length})</h2>
         <div className="card-head-actions">
           {selected.size > 0 && (
-            <button
-              disabled={busyAll}
-              title={`Monitor the ${selected.size} checked book(s)`}
-              onClick={() => monitorMany(missing.filter((b) => selected.has(b.id)))}
-            >
-              {busyAll ? "Monitoring…" : `+ Monitor selected (${selected.size})`}
-            </button>
+            <>
+              <button
+                disabled={busyAll}
+                title={`Add the ${selected.size} checked book(s) without monitoring`}
+                onClick={() => addMany(missing.filter((b) => selected.has(b.id)), false)}
+              >
+                {`+ Add (${selected.size})`}
+              </button>
+              <button
+                disabled={busyAll}
+                title={`Add and monitor the ${selected.size} checked book(s)`}
+                onClick={() => addMany(missing.filter((b) => selected.has(b.id)), true)}
+              >
+                {`+ Add & Monitor (${selected.size})`}
+              </button>
+            </>
           )}
           {missing.length > 1 && (
             <SortSelect
@@ -460,9 +482,10 @@ function MissingCard({
       ) : (
         <>
           <p className="muted">
-            In the provider's bibliography but not in {label}. Monitor adds the
-            book to this library and searches for it automatically — check
-            several rows to monitor them in one go.
+            In the provider's bibliography but not in {label}. <strong>Add</strong>{" "}
+            puts the book in this library as a member; <strong>Add &amp; Monitor</strong>{" "}
+            also searches for it and grabs it automatically. Check several rows to
+            do them in one go.
           </p>
           {sort === "series" ? (
             groups.map((g, gi) => (
@@ -471,18 +494,32 @@ function MissingCard({
                   <h3 className="group-heading">
                     {g.title || "Standalone"}
                     {g.books.length > 1 && (
-                      <button
-                        className="toggle group-monitor"
-                        disabled={busyAll}
-                        title={
-                          g.title
-                            ? `Monitor all ${g.books.length} missing ${g.title} books`
-                            : `Monitor all ${g.books.length} standalones`
-                        }
-                        onClick={() => monitorMany(g.books)}
-                      >
-                        + Monitor all ({g.books.length})
-                      </button>
+                      <>
+                        <button
+                          className="toggle group-monitor"
+                          disabled={busyAll}
+                          title={
+                            g.title
+                              ? `Add all ${g.books.length} missing ${g.title} books (not monitored)`
+                              : `Add all ${g.books.length} standalones (not monitored)`
+                          }
+                          onClick={() => addMany(g.books, false)}
+                        >
+                          + Add all ({g.books.length})
+                        </button>
+                        <button
+                          className="toggle group-monitor"
+                          disabled={busyAll}
+                          title={
+                            g.title
+                              ? `Add and monitor all ${g.books.length} missing ${g.title} books`
+                              : `Add and monitor all ${g.books.length} standalones`
+                          }
+                          onClick={() => addMany(g.books, true)}
+                        >
+                          + Monitor all ({g.books.length})
+                        </button>
+                      </>
                     )}
                   </h3>
                 )}
