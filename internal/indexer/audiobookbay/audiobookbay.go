@@ -138,7 +138,7 @@ func (s *searcher) session() *http.Client {
 func (s *searcher) Test(ctx context.Context) error {
 	var err error
 	for _, base := range s.bases {
-		if _, _, err = fetch(ctx, s.session(), base+"/", ""); err == nil {
+		if _, _, err = fetch(ctx, s.session(), base+"/"); err == nil {
 			return nil
 		}
 	}
@@ -204,13 +204,11 @@ func (s *searcher) searchBase(ctx context.Context, base, query string) ([]post, 
 			}
 		}
 		client := s.session()
-		// Warm up the session from the homepage first (browser-like).
-		if _, _, err := fetch(ctx, client, base+"/", ""); err != nil {
+		// Warm up the session from the homepage first, then search on it.
+		if _, _, err := fetch(ctx, client, base+"/"); err != nil {
 			return nil, err
 		}
-		// The search is a same-origin navigation from the homepage — send its
-		// Referer so the request looks like a real in-site search.
-		listing, finalURL, err := fetch(ctx, client, base+"/?s="+url.QueryEscape(query)+"&cat="+legacyCategory, base+"/")
+		listing, finalURL, err := fetch(ctx, client, base+"/?s="+url.QueryEscape(query)+"&cat="+legacyCategory)
 		if err != nil {
 			return nil, err
 		}
@@ -236,9 +234,8 @@ func (s *searcher) Resolve(ctx context.Context, downloadURL string) (string, err
 	}
 	client := s.session()
 	home := u.Scheme + "://" + u.Host + "/"
-	_, _, _ = fetch(ctx, client, home, "") // best-effort warm-up
-	// Navigating to the release page from the site — send the Referer.
-	page, _, err := fetch(ctx, client, downloadURL, home)
+	_, _, _ = fetch(ctx, client, home) // best-effort warm-up
+	page, _, err := fetch(ctx, client, downloadURL)
 	if err != nil {
 		return "", fmt.Errorf("fetching AudioBook Bay release page: %w", err)
 	}
@@ -252,31 +249,20 @@ func (s *searcher) Resolve(ctx context.Context, downloadURL string) (string, err
 	return buildMagnet(hash, titleFromURL(u), trackers), nil
 }
 
-// fetch GETs a URL on the given session client with browser-like headers and
-// returns the body plus the final URL (after redirects), for homepage-redirect
-// detection. A non-empty referer is sent as the Referer header (marking the
-// request a same-origin navigation) — ABB serves reliably to requests that look
-// like real in-site clicks.
-func fetch(ctx context.Context, client *http.Client, rawURL, referer string) (body, finalURL string, err error) {
+// fetch GETs a URL on the given session client and returns the body plus the
+// final URL (after redirects), for homepage-redirect detection. Headers are kept
+// deliberately minimal — a browser User-Agent and Accept, nothing more. The
+// shelfmark reference client (and a plain curl) get search results this way,
+// whereas the fuller "browser navigation" header set (Sec-Fetch-*, Referer,
+// Upgrade-Insecure-Requests) paired with a Go client's TLS/HTTP fingerprint
+// reads as a spoofed browser and gets the search bounced to the homepage.
+func fetch(ctx context.Context, client *http.Client, rawURL string) (body, finalURL string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return "", "", err
 	}
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
-	// Browser navigation fetch-metadata: a real page load in a current Chrome.
-	req.Header.Set("Sec-Fetch-Mode", "navigate")
-	req.Header.Set("Sec-Fetch-User", "?1")
-	req.Header.Set("Sec-Fetch-Dest", "document")
-	if referer != "" {
-		req.Header.Set("Referer", referer)
-		req.Header.Set("Sec-Fetch-Site", "same-origin")
-	} else {
-		req.Header.Set("Sec-Fetch-Site", "none")
-	}
+	req.Header.Set("Accept", "*/*")
 
 	resp, err := client.Do(req)
 	if err != nil {
