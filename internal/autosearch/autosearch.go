@@ -155,6 +155,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 	prefs.MinFormatScore = minFormatScore
 
 	var query string
+	var nativeQuery string // title-focused query for scraped sources (ABB, Libgen)
 	var score func(indexer.Release) release.Candidate
 
 	if mediaType == "manga" || mediaType == "comic" {
@@ -170,6 +171,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 		}
 		seriesTitle, number := links[0].Title, links[0].Position
 		query = seriesTitle
+		nativeQuery = seriesTitle
 		score = func(rel indexer.Release) release.Candidate {
 			return release.ScoreVolume(rel, prefs, seriesTitle, number)
 		}
@@ -179,6 +181,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 			return nil, err
 		}
 		query = author.Name + " " + book.Title
+		nativeQuery = book.Title // ABB/Libgen match the bare title, not "author title"
 		if mediaType == "audiobook" {
 			// Categories do most of the filtering; the keyword helps
 			// indexers with sloppy category mapping.
@@ -189,7 +192,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 		}
 	}
 
-	found, indexerErrs, err := s.indexers.SearchAll(ctx, query, mediaType)
+	found, indexerErrs, err := s.indexers.SearchAll(ctx, query, nativeQuery, mediaType)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +286,7 @@ func (s *Service) SearchSeriesPacks(ctx context.Context, seriesID int64) (*PackS
 	}
 
 	prefs := release.PreferencesFor(s.store, series.MediaType)
-	found, indexerErrs, err := s.indexers.SearchAll(ctx, series.Title, series.MediaType)
+	found, indexerErrs, err := s.indexers.SearchAll(ctx, series.Title, series.Title, series.MediaType)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +406,7 @@ func (s *Service) searchMagazine(ctx context.Context, series *library.Series) ([
 		}
 	}
 
-	found, _, err := s.indexers.SearchAll(ctx, series.Title, "magazine")
+	found, _, err := s.indexers.SearchAll(ctx, series.Title, series.Title, "magazine")
 	if err != nil {
 		return nil, err
 	}

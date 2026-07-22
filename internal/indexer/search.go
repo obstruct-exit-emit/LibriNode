@@ -47,12 +47,12 @@ func (s *Service) Client() *Client { return s.client }
 // searchOne runs one indexer's search, dispatching a native source to its
 // registered implementation and everything else to the Newznab/Torznab client.
 // A native source that doesn't serve the media type yields nothing (not an error).
-func (s *Service) searchOne(ctx context.Context, ind *Indexer, query, mediaType string) ([]Release, error) {
+func (s *Service) searchOne(ctx context.Context, ind *Indexer, query, nativeQuery, mediaType string) ([]Release, error) {
 	if def, ok := NativeDefFor(ind.Type); ok {
 		if !def.Serves(mediaType) {
 			return nil, nil
 		}
-		return def.New(ind, s.client.httpc).Search(ctx, query, mediaType)
+		return def.New(ind, s.client.httpc).Search(ctx, nativeQuery, mediaType)
 	}
 	return s.client.Search(ctx, ind, query, ind.CategoriesFor(mediaType))
 }
@@ -161,7 +161,15 @@ func (s *Service) recordResult(id int64, err error) {
 // sorted by seeders (torrents first by health) then size. Indexers that
 // fail are reported in errs without sinking the whole search, and repeat
 // offenders rest with exponential backoff instead of being retried.
-func (s *Service) SearchAll(ctx context.Context, query, mediaType string) (releases []Release, errs []string, err error) {
+//
+// nativeQuery is the query handed to native scraped sources (AudioBook Bay,
+// Library Genesis) instead of query: those match a title as a contiguous
+// phrase, so an author-prefixed keyword (query) finds nothing — the caller
+// passes the bare book/series title here. Empty falls back to query.
+func (s *Service) SearchAll(ctx context.Context, query, nativeQuery, mediaType string) (releases []Release, errs []string, err error) {
+	if nativeQuery == "" {
+		nativeQuery = query
+	}
 	indexers, err := s.store.ListEnabled()
 	if err != nil {
 		return nil, nil, err
@@ -184,7 +192,7 @@ func (s *Service) SearchAll(ctx context.Context, query, mediaType string) (relea
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			found, err := s.searchOne(ctx, &ind, query, mediaType)
+			found, err := s.searchOne(ctx, &ind, query, nativeQuery, mediaType)
 			s.recordResult(ind.ID, err)
 			mu.Lock()
 			defer mu.Unlock()

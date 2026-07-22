@@ -248,7 +248,7 @@ func TestSearchAllMergesAndReportsFailures(t *testing.T) {
 		}
 	}
 
-	releases, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
+	releases, errs, err := svc.SearchAll(context.Background(), "mort", "", "ebook")
 	if err != nil {
 		t.Fatalf("SearchAll: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestSearchAllNeverLeaksAPIKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
+	_, errs, err := svc.SearchAll(context.Background(), "mort", "", "ebook")
 	if err != nil {
 		t.Fatalf("SearchAll: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 	// reports a real failure, never a resting notice — a transient blip on a
 	// scraped source shouldn't hide it.
 	for i := 0; i < restAfter; i++ {
-		_, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
+		_, errs, err := svc.SearchAll(context.Background(), "mort", "", "ebook")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,7 +327,7 @@ func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 	}
 
 	// A sweep inside the rest window is skipped with a resting notice.
-	_, errs, err := svc.SearchAll(context.Background(), "mort", "ebook")
+	_, errs, err := svc.SearchAll(context.Background(), "mort", "", "ebook")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 
 	// Past the rest (5m): retried again — another failure doubles the rest.
 	now = now.Add(6 * time.Minute)
-	_, errs, _ = svc.SearchAll(context.Background(), "mort", "ebook")
+	_, errs, _ = svc.SearchAll(context.Background(), "mort", "", "ebook")
 	if len(errs) != 1 || strings.Contains(errs[0], "resting") {
 		t.Fatalf("post-rest sweep errs = %v, want a real failure", errs)
 	}
@@ -353,7 +353,7 @@ func TestSearchAllBacksOffFailingIndexer(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(11 * time.Minute)
-	_, errs, _ = svc.SearchAll(context.Background(), "mort", "ebook")
+	_, errs, _ = svc.SearchAll(context.Background(), "mort", "", "ebook")
 	if len(errs) != 0 {
 		t.Fatalf("recovered sweep errs = %v, want none", errs)
 	}

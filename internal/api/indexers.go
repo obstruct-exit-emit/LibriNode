@@ -302,7 +302,15 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := s.metadataCtx(r)
 	defer cancel()
 
-	found, errs, err := s.indexers.SearchAll(ctx, term, mediaType)
+	// Native scraped sources (ABB, Libgen) match a title as a contiguous phrase,
+	// so hand them the bare title rather than the author-prefixed term.
+	nativeTerm := term
+	if seriesTitle != "" {
+		nativeTerm = seriesTitle
+	} else if book != nil {
+		nativeTerm = book.Title
+	}
+	found, errs, err := s.indexers.SearchAll(ctx, term, nativeTerm, mediaType)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

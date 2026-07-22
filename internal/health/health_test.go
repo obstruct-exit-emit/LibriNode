@@ -116,7 +116,7 @@ func TestCheckIndexerRestingSkipsProbe(t *testing.T) {
 	// Fail the search enough times to enter backoff — the first few consecutive
 	// failures are tolerated (a flaky source shouldn't rest on one blip).
 	for i := 0; i < 5; i++ {
-		if _, _, err := idxSvc.SearchAll(ctx, "test query", "ebook"); err != nil {
+		if _, _, err := idxSvc.SearchAll(ctx, "test query", "", "ebook"); err != nil {
 			t.Fatal(err)
 		}
 		if _, resting := idxSvc.Resting(ind.ID); resting {

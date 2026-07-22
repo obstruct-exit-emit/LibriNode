@@ -45,12 +45,12 @@ func TestNativeRegistryAndDispatch(t *testing.T) {
 	svc := &Service{client: NewClient()}
 
 	// Dispatches to the native searcher for a served media type.
-	got, err := svc.searchOne(context.Background(), ind, "q", "audiobook")
+	got, err := svc.searchOne(context.Background(), ind, "q", "q", "audiobook")
 	if err != nil || len(got) != 1 || got[0].Title != "A Result" {
 		t.Fatalf("searchOne(audiobook) = %+v, %v", got, err)
 	}
 	// A media type it doesn't serve yields nothing, not an error.
-	got, err = svc.searchOne(context.Background(), ind, "q", "ebook")
+	got, err = svc.searchOne(context.Background(), ind, "q", "q", "ebook")
 	if err != nil || got != nil {
 		t.Errorf("searchOne(ebook) = %+v, %v; want nil, nil", got, err)
 	}
