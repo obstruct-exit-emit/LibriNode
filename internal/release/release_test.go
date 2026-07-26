@@ -190,6 +190,42 @@ func TestScoreAgainstBook(t *testing.T) {
 	}
 }
 
+// TestScoreAuthorFallsBackToKeywords: AudioBook Bay's series/collection posts
+// often omit the author from the title but carry it in a separate tag list
+// (Release.Keywords) instead — that must satisfy the author check just like
+// a title mention would, but a book-title mismatch must still reject even
+// when Keywords happens to contain the author.
+func TestScoreAuthorFallsBackToKeywords(t *testing.T) {
+	prefs := DefaultAudiobookPreferences()
+	book := &library.Book{Title: "Dune Messiah"}
+	author := &library.Author{Name: "Frank Herbert"}
+
+	bare := indexer.Release{
+		Indexer: "abb", Protocol: indexer.ProtocolTorrent, Title: "Dune Messiah",
+		Keywords:    "Dune Frank Herbert",
+		DownloadURL: "https://abb.example/dune-messiah/",
+		Size:        200 << 20, Seeders: -1, Peers: -1,
+	}
+	c := Score(bare, prefs, book, author)
+	if !c.Approved {
+		t.Fatalf("author-in-keywords release rejected: %v", c.Rejections)
+	}
+
+	noKeywordMatch := bare
+	noKeywordMatch.Keywords = "Dune Science Fiction"
+	c = Score(noKeywordMatch, prefs, book, author)
+	if c.Approved {
+		t.Error("release naming neither the author in title nor keywords should still reject")
+	}
+
+	wrongBook := bare
+	wrongBook.Title = "Dune"
+	c = Score(wrongBook, prefs, book, author)
+	if c.Approved {
+		t.Error("a different book must still reject even when keywords name the right author")
+	}
+}
+
 func TestPreferencesFromProfile(t *testing.T) {
 	prefs := PreferencesFromProfile(library.QualityProfile{
 		Formats:     []string{"azw3", "epub"},

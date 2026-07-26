@@ -190,6 +190,7 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 				Indexer:   s.ind.Name,
 				Protocol:  indexer.ProtocolTorrent,
 				Title:     p.Title,
+				Keywords:  p.Keywords,
 				GUID:      p.URL,
 				InfoURL:   p.URL,
 				// The release page itself — Resolve turns it into a magnet at
@@ -378,8 +379,9 @@ func titleFromURL(u *url.URL) string {
 // --- Parsing (pure functions; fixture-tested) ---
 
 type post struct {
-	URL   string
-	Title string
+	URL      string
+	Title    string
+	Keywords string
 }
 
 var (
@@ -402,6 +404,11 @@ var (
 	magnetHashRe = regexp.MustCompile(`(?i)magnet:\?[^"'<>\s]*xt=urn:btih:([0-9a-f]{40,64})`)
 	// Tracker announce URLs (matched on the raw HTML, so hrefs count too).
 	trackerRe = regexp.MustCompile(`(?i)(udp://[^\s"'<>]+|https?://[^\s"'<>]*announce[^\s"'<>]*)`)
+	// A listing post's Keywords tag list, in its .postInfo block right after
+	// the title — e.g. "Keywords: Dune Frank Herbert" for a post titled just
+	// "Dune Messiah". Often names the author when the title alone doesn't;
+	// parseListing scopes this match to one post's own segment of the HTML.
+	keywordsRe = regexp.MustCompile(`(?is)keywords:\s*([^<]*)`)
 	// "File Size: 512.5 MB" / "Size: 1.2 GB" (matched on tag-stripped text).
 	sizeRe = regexp.MustCompile(`(?i)(?:file\s*)?size:?\s*([0-9][0-9.,]*)\s*(kb|mb|gb|tb)`)
 )
@@ -411,26 +418,41 @@ var (
 // slip through the fallback link matcher as bogus "posts".
 var navPath = regexp.MustCompile(`(?i)/(?:type|tag|cat|category|page|member|profile)/`)
 
-// parseListing extracts release-page links (absolute URLs) and titles from a
-// search results page. Duplicate URLs and navigation links are dropped.
+// parseListing extracts release-page links (absolute URLs), titles, and each
+// post's Keywords tag list from a search results page. Duplicate URLs and
+// navigation links are dropped.
 func parseListing(html, base string) []post {
 	seen := map[string]bool{}
 	out := []post{}
-	add := func(href, title string) {
+	add := func(href, title, keywords string) {
 		u := absURL(base, href)
 		title = cleanText(title)
 		if u == "" || title == "" || seen[u] || navPath.MatchString(u) {
 			return
 		}
 		seen[u] = true
-		out = append(out, post{URL: u, Title: title})
+		out = append(out, post{URL: u, Title: title, Keywords: cleanText(keywords)})
 	}
-	for _, m := range postTitleRe.FindAllStringSubmatch(html, -1) {
-		add(m[1], m[2])
+	// Matched by index (not FindAllStringSubmatch) so each post's own HTML
+	// segment — from the end of its title match to the start of the next
+	// post's (or end of document) — can be searched for that post's Keywords
+	// without depending on a fixed div-nesting shape.
+	matches := postTitleRe.FindAllStringSubmatchIndex(html, -1)
+	for i, idx := range matches {
+		href, title := html[idx[2]:idx[3]], html[idx[4]:idx[5]]
+		segEnd := len(html)
+		if i+1 < len(matches) {
+			segEnd = matches[i+1][0]
+		}
+		keywords := ""
+		if km := keywordsRe.FindStringSubmatch(html[idx[1]:segEnd]); km != nil {
+			keywords = km[1]
+		}
+		add(href, title, keywords)
 	}
 	if len(out) == 0 { // markup changed — fall back to permalink shape
 		for _, m := range audioLinkRe.FindAllStringSubmatch(html, -1) {
-			add(m[1], m[2])
+			add(m[1], m[2], "")
 		}
 	}
 	return out

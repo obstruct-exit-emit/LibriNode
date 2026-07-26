@@ -405,7 +405,17 @@ func (c *Candidate) matchBook(book *library.Book, author *library.Author) {
 
 	if author != nil {
 		authorNorm := scanner.Normalize(author.Name)
-		if authorNorm != "" && !authorMatches(relNorm, authorNorm) {
+		// Some sources (AudioBook Bay) omit the author from the title on a
+		// series/collection post but carry it in a separate tag list instead
+		// — fall back to that rather than rejecting a release the source
+		// itself associates with the right author. Never used for the
+		// book-title check above: a stray tag match there would be too easy
+		// to fool.
+		matchText := relNorm
+		if c.Release.Keywords != "" {
+			matchText = relNorm + " " + scanner.Normalize(c.Release.Keywords)
+		}
+		if authorNorm != "" && !authorMatches(matchText, authorNorm) {
 			c.reject("does not mention the author")
 		}
 	}

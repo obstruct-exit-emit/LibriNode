@@ -54,6 +54,26 @@ func TestParseListing(t *testing.T) {
 	}
 }
 
+// TestParseListingKeywordsPerPost: a post's Keywords tag list — which can
+// name the author even when the title alone doesn't (e.g. a bare "Dune
+// Messiah" post) — must be scoped to that post's own segment, not leak from
+// or into a neighboring post's Keywords.
+func TestParseListingKeywordsPerPost(t *testing.T) {
+	html := `<div class="post"><div class="postTitle"><h2><a href="/abss/the-dune-saga/" rel="bookmark">The Dune Saga - All Six Books</a></h2></div><div class="postInfo">Category: Sci-Fi&nbsp; <br />Language: English<span style="margin-left:100px;">Keywords: Arrakis&nbsp Politics&nbsp Frank Herbert&nbsp </span><br /></div><div class="postContent">stuff</div></div>
+<div class="post"><div class="postTitle"><h2><a href="/abss/dune-xmessiah/" rel="bookmark">Dune Messiah</a></h2></div><div class="postInfo">Category: Sci-Fi&nbsp; <br />Language: English<span style="margin-left:100px;">Keywords: Dune&nbsp Frank Herbert&nbsp </span><br /></div><div class="postContent">stuff</div></div>`
+
+	posts := parseListing(html, "https://audiobookbay.lu")
+	if len(posts) != 2 {
+		t.Fatalf("parsed %d posts, want 2: %+v", len(posts), posts)
+	}
+	if posts[0].Keywords != "Arrakis Politics Frank Herbert" {
+		t.Errorf("post[0].Keywords = %q", posts[0].Keywords)
+	}
+	if posts[1].Keywords != "Dune Frank Herbert" {
+		t.Errorf("post[1].Keywords = %q", posts[1].Keywords)
+	}
+}
+
 func TestParseDetailAndMagnet(t *testing.T) {
 	hash, trackers, size, ok := parseDetail(detailHTML)
 	if !ok {

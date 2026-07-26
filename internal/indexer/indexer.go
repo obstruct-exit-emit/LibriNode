@@ -77,6 +77,12 @@ type Release struct {
 	Size        int64  `json:"size"`
 	PublishDate string `json:"publishDate,omitempty"`
 	Categories  []int  `json:"categories,omitempty"`
+	// Keywords is extra searchable text an indexer can supply beyond Title —
+	// e.g. AudioBook Bay's per-post tag list, which often names the author
+	// even when the title itself doesn't. Scoring's author check falls back
+	// to it; it's never shown to the user and never used for the book-title
+	// check (a stray keyword match there would be too easy to fool).
+	Keywords string `json:"-"`
 	// Torrent-only; -1 means unknown/not applicable (usenet).
 	Seeders int `json:"seeders"`
 	Peers   int `json:"peers"`
