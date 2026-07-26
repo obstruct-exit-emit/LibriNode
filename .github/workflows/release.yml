@@ -2,11 +2,12 @@ name: Release
 
 # Tag a version to cut a release:
 #   git tag v0.9.0 && git push origin v0.9.0
-# Builds version-stamped binaries (linux amd64/arm64, windows amd64), zips
-# them with the packaging scripts, and attaches everything to a GitHub
-# release. The Docker image is built and pushed to GHCR
-# (ghcr.io/<owner>/librinode) using the built-in GITHUB_TOKEN — no extra
-# secret required; :latest tracks stable tags only, never a prerelease.
+# Builds version-stamped binaries (linux amd64/arm64), zips them with the
+# systemd unit, and attaches everything to a GitHub release.
+#
+# Docker and Windows builds are on hold for now (see ROADMAP.md) — both
+# worked and shipped before being pulled back mid-Phase-6 to concentrate on
+# one well-supported Linux path through burn-in.
 
 on:
   push:
@@ -50,9 +51,6 @@ jobs:
           (cd dist && tar czf "librinode-${VERSION}-linux-amd64.tar.gz" librinode && rm librinode)
           build linux arm64 librinode
           (cd dist && tar czf "librinode-${VERSION}-linux-arm64.tar.gz" librinode && rm librinode)
-          build windows amd64 librinode.exe
-          cp packaging/windows/*.ps1 dist/
-          (cd dist && zip "librinode-${VERSION}-windows-amd64.zip" librinode.exe *.ps1 && rm librinode.exe *.ps1)
           cp packaging/systemd/librinode.service dist/
 
       - name: Create release
@@ -60,34 +58,6 @@ jobs:
         with:
           files: |
             dist/*.tar.gz
-            dist/*.zip
             dist/librinode.service
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-
-  docker:
-    name: Docker image
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push image
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          # GHCR image names must be lowercase; the repo name may not be.
-          IMAGE="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')/librinode"
-          docker build --build-arg VERSION="${VERSION}" -t "${IMAGE}:${VERSION}" .
-          docker push "${IMAGE}:${VERSION}"
-          # Move :latest only for a stable tag (no pre-release suffix like -rc.1).
-          if [[ "${GITHUB_REF_NAME}" != *-* ]]; then
-            docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"
-            docker push "${IMAGE}:latest"
-          fi

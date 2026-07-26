@@ -17,9 +17,11 @@ npm run dev      # Vite dev server, proxies /api to :7845
 npm run build    # production build into web/dist
 ```
 
-> **Windows note:** with Smart App Control enabled, Windows blocks locally
-> compiled (unsigned) binaries. Develop inside WSL or disable SAC — official
-> releases will be code-signed.
+> **Windows note:** official Windows builds are on hold for now (see the
+> [roadmap](../ROADMAP.md)), but the backend is plain Go and builds fine on
+> Windows for local development. With Smart App Control enabled, Windows
+> blocks locally compiled (unsigned) binaries — develop inside WSL or
+> disable SAC.
 
 ## Layout
 
@@ -50,13 +52,12 @@ internal/config/      config.yaml + env overrides
 internal/database/    SQLite open + embedded migrations
 web/                  React SPA (embedded via go:embed)
 docs/                 this documentation (mkdocs)
-packaging/            Docker entrypoint, systemd unit, Windows scripts
+packaging/            systemd unit
 ```
 
 Releases are cut by tagging `v*` — CI builds version-stamped binaries
-(linux amd64/arm64, windows amd64), attaches them to a GitHub release, and
-builds and pushes a Docker image to `ghcr.io/<owner>/librinode` (`:latest`
-follows stable tags; a `-rc` tag is a prerelease). See
-`.github/workflows/release.yml`.
+(linux amd64/arm64) and attaches them to a GitHub release. See
+`.github/workflows/release.yml`. Docker and Windows builds are on hold for
+now (see the [roadmap](../ROADMAP.md)).
 
 Docs preview: `pip install mkdocs-material && mkdocs serve`.

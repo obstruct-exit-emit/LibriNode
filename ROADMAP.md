@@ -158,8 +158,14 @@ Turning "works on the dev box" into "trustable release". Done so far:
   audit, and a token-leak sweep with regression tests
 - ✅ Performance pass at ~11,000-book scale (batched scan transactions cut a
   cold scan from 32s to 2.5s; oversized payloads trimmed)
-- ✅ Release hygiene: version-stamped builds, a CHANGELOG, `v0.9.0-rc` tags
-  proving the release CI end to end, and **published Docker images on GHCR**
+- ✅ Release hygiene: version-stamped builds, a CHANGELOG, and `v0.9.0-rc`
+  tags proving the release CI end to end
+
+Docker and Windows support (both shipped earlier in this phase — a
+Dockerfile + compose file + published GHCR images, and a Windows
+zip + Task Scheduler install script) are **on hold for now**, pulled back to
+concentrate on a single well-supported Linux path through burn-in; both
+return post-1.0 (see [Future](#future-)).
 
 Remaining — externally gated:
 
@@ -169,15 +175,19 @@ Remaining — externally gated:
   Hardcover today)
 - [ ] ⏳ **Docs stranger-test**: a fresh person follows the quickstart from
   scratch (the code-audit pass is done; the human walkthrough remains)
-- [ ] ⏳ **Code-signed Windows installer** that passes Smart App Control
-  (needs a signing certificate)
 
-**1.0 ships when burn-in comes back clean and the installer is signed.**
+**1.0 ships when burn-in comes back clean.**
 
 ## Future 💡
 
 Under consideration, in no particular order:
 
+- [ ] **Docker and Windows support, returning**: Dockerfile + compose,
+  published GHCR images, and a Windows zip + install script all worked and
+  shipped before being pulled back mid-Phase-6 to concentrate on one
+  well-supported Linux path through burn-in — reintroducing them, plus the
+  originally-planned code-signed Windows installer, is a matter of picking
+  the work back up, not redesigning it
 - [ ] **Magazine metadata**: Wikidata as a series enricher (publisher, ISSN,
   publication frequency feeding Calendar predictions) + Internet Archive for
   vintage per-issue records

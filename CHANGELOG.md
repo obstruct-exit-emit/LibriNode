@@ -486,6 +486,16 @@ in progress. Highlights from the hardening period, newest first:
   build info instead of a stale placeholder; releases keep stamping real
   versions via ldflags.
 
+### Removed
+- **Docker and Windows support are on hold for now.** Both worked and shipped
+  (a Dockerfile + compose file + published GHCR images; a Windows zip with a
+  Task Scheduler install/uninstall script) but are pulled back mid-hardening
+  to concentrate on a single well-supported Linux path through burn-in.
+  Release CI now only builds Linux (amd64/arm64) tarballs + the systemd unit;
+  the Docker publish job, the Windows build step, and CI's Windows test leg
+  are all gone for now. Reintroducing them later is a matter of picking the
+  work back up, not redesigning it — see the roadmap's Future section.
+
 Earlier work (Phases 0–5) is chronicled in the README's roadmap section:
 libraries for ebooks/audiobooks/manga/comics/magazines, Hardcover/AniList/
 ComicVine metadata, Prowlarr sync, quality profiles and upgrades, Completed

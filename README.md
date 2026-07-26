@@ -8,13 +8,12 @@ An alternative in the *arr tradition: monitor what you want, search your indexer
 
 [![Release](https://img.shields.io/github/v/release/obstruct-exit-emit/LibriNode?include_prereleases&label=release)](https://github.com/obstruct-exit-emit/LibriNode/releases)
 [![CI](https://github.com/obstruct-exit-emit/LibriNode/actions/workflows/ci.yml/badge.svg)](https://github.com/obstruct-exit-emit/LibriNode/actions/workflows/ci.yml)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/obstruct-exit-emit/LibriNode/pkgs/container/librinode)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
 
 </div>
 
-> 🚧 **Pre-1.0, but feature-complete.** All five media types work end to end — metadata search through automatic grabbing to organized imports. What remains before 1.0 is hardening: real-world burn-in and code-signed installers. See the [roadmap](ROADMAP.md).
+> 🚧 **Pre-1.0, but feature-complete.** All five media types work end to end — metadata search through automatic grabbing to organized imports. What remains before 1.0 is hardening: real-world burn-in. See the [roadmap](ROADMAP.md).
 
 ---
 
@@ -57,19 +56,9 @@ LibriNode is an **alternative** to tools like Readarr (books; development has en
 
 ## Quick start
 
-**Docker (recommended):**
+Grab a binary from [Releases](https://github.com/obstruct-exit-emit/LibriNode/releases) (Linux amd64/arm64) — it's a single self-contained file, UI included. A systemd unit ships in the archive.
 
-```sh
-docker run -d --name librinode -p 7845:7845 \
-  -e PUID=1000 -e PGID=1000 \
-  -v /path/to/config:/config \
-  -v /path/to/media:/media \
-  ghcr.io/obstruct-exit-emit/librinode:0.9.0-rc.3
-```
-
-Or use the [compose example](docker-compose.example.yml). Images are published per release; `:latest` arrives with the first stable tag.
-
-**Bare metal:** grab a binary from [Releases](https://github.com/obstruct-exit-emit/LibriNode/releases) (Linux amd64/arm64, Windows amd64) — it's a single self-contained file, UI included. A systemd unit and Windows startup scripts ship in the archive.
+> Docker and Windows builds are on hold for now (see the [roadmap](ROADMAP.md)) — planned to return later.
 
 Then open `http://localhost:7845` — a first-run wizard walks you through your account, libraries, metadata, an indexer, and a download client. Full steps: [Installation](docs/installation.md) · [Quickstart](docs/quickstart.md).
 
@@ -77,7 +66,7 @@ Then open `http://localhost:7845` — a first-run wizard walks you through your 
 
 | | |
 |---|---|
-| [Installation](docs/installation.md) | Docker, Linux, Windows, from source |
+| [Installation](docs/installation.md) | Linux, from source |
 | [Quickstart](docs/quickstart.md) | First-run walkthrough |
 | [Libraries](docs/libraries.md) | How each of the five libraries behaves |
 | [Acquisition](docs/acquisition.md) | Indexers, native sources, scoring, download clients |
