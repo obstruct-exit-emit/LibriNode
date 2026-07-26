@@ -73,9 +73,10 @@ func mockQbit(t *testing.T) *httptest.Server {
 					return
 				}
 				w.Write([]byte(`[
-					{"hash":"aaa","name":"Mort.epub","state":"downloading","progress":0.42,"content_path":"","save_path":"/dl"},
-					{"hash":"bbb","name":"Guards.epub","state":"stalledUP","progress":1,"content_path":"/dl/Guards.epub"},
-					{"hash":"ccc","name":"Bad.epub","state":"error","progress":0.1}
+					{"hash":"aaa","name":"Mort.epub","state":"downloading","progress":0.42,"content_path":"","save_path":"/dl","category":"librinode"},
+					{"hash":"bbb","name":"Guards.epub","state":"stalledUP","progress":1,"content_path":"/dl/Guards.epub","category":"librinode"},
+					{"hash":"ccc","name":"Bad.epub","state":"error","progress":0.1,"category":"librinode"},
+					{"hash":"ddd","name":"SomeMovie.mkv","state":"stalledUP","progress":1,"content_path":"/dl/SomeMovie.mkv","category":"radarr"}
 				]`))
 			case "/api/v2/torrents/delete":
 				r.ParseForm()
@@ -137,12 +138,18 @@ func TestQBittorrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
+	// The server returns a 4th torrent (category "radarr") despite the
+	// category=librinode query param — some qBittorrent-compatible bridges
+	// (debrid services) don't honor it. It must be filtered client-side.
 	if len(items) != 3 {
-		t.Fatalf("items = %+v", items)
+		t.Fatalf("items = %+v, want 3 (radarr-categorized torrent excluded)", items)
 	}
 	byID := map[string]Item{}
 	for _, it := range items {
 		byID[it.ID] = it
+	}
+	if _, ok := byID["ddd"]; ok {
+		t.Error("torrent from another app's category (radarr) leaked into our list")
 	}
 	if byID["aaa"].Status != "downloading" || byID["aaa"].Progress != 0.42 {
 		t.Errorf("downloading item = %+v", byID["aaa"])
@@ -206,9 +213,13 @@ func mockSab(t *testing.T) *httptest.Server {
 				{"nzo_id": "SABnzbd_nzo_q1", "filename": "Mort", "status": "Downloading", "percentage": "34", "category": "librinode"}
 			]}}`))
 		case "history":
+			// A radarr-categorized slot is included even though the request
+			// asked for category=librinode — some SABnzbd-compatible bridges
+			// (debrid services) don't honor that filter server-side.
 			w.Write([]byte(`{"history": {"slots": [
 				{"nzo_id": "SABnzbd_nzo_h1", "name": "Guards", "status": "Completed", "storage": "/complete/Guards", "category": "librinode"},
-				{"nzo_id": "SABnzbd_nzo_h2", "name": "Broken", "status": "Failed", "fail_message": "crc", "category": "librinode"}
+				{"nzo_id": "SABnzbd_nzo_h2", "name": "Broken", "status": "Failed", "fail_message": "crc", "category": "librinode"},
+				{"nzo_id": "SABnzbd_nzo_h3", "name": "SomeMovie", "status": "Completed", "storage": "/complete/SomeMovie", "category": "radarr"}
 			]}}`))
 		default:
 			w.Write([]byte(`{"status": false, "error": "unknown mode"}`))
@@ -265,11 +276,14 @@ func TestSABnzbd(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	if len(items) != 3 {
-		t.Fatalf("items = %+v", items)
+		t.Fatalf("items = %+v, want 3 (radarr-categorized slot excluded)", items)
 	}
 	byID := map[string]Item{}
 	for _, it := range items {
 		byID[it.ID] = it
+	}
+	if _, ok := byID["SABnzbd_nzo_h3"]; ok {
+		t.Error("download from another app's category (radarr) leaked into our list")
 	}
 	if byID["SABnzbd_nzo_q1"].Status != "downloading" || byID["SABnzbd_nzo_q1"].Progress != 0.34 {
 		t.Errorf("queue item = %+v", byID["SABnzbd_nzo_q1"])

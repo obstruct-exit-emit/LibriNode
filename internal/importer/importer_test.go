@@ -146,7 +146,7 @@ func TestSeededTorrentRemovedAfterImport(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/auth/login"):
 			w.Write([]byte("Ok."))
 		case strings.HasSuffix(r.URL.Path, "/torrents/info"):
-			w.Write([]byte(`[{"hash":"h1","name":"Terry Pratchett - Mort EPUB","state":"pausedUP","progress":1,"content_path":"/downloads/mort"}]`))
+			w.Write([]byte(`[{"hash":"h1","name":"Terry Pratchett - Mort EPUB","state":"pausedUP","progress":1,"content_path":"/downloads/mort","category":"librinode"}]`))
 		case strings.HasSuffix(r.URL.Path, "/torrents/delete"):
 			r.ParseForm()
 			deleted = append(deleted, r.FormValue("hashes")+":"+r.FormValue("deleteFiles"))
@@ -793,7 +793,7 @@ func TestImportRemovesTorrentFromClientWhenEnabled(t *testing.T) {
 			w.Write([]byte("Ok."))
 		case strings.HasSuffix(r.URL.Path, "/torrents/info"):
 			// Finished but still seeding (not the paused "seeded" state).
-			fmt.Fprintf(w, `[{"hash":"h9","name":"Terry Pratchett - Mort EPUB","state":"uploading","progress":1,"content_path":%q}]`, dir)
+			fmt.Fprintf(w, `[{"hash":"h9","name":"Terry Pratchett - Mort EPUB","state":"uploading","progress":1,"content_path":%q,"category":"librinode"}]`, dir)
 		case strings.HasSuffix(r.URL.Path, "/torrents/delete"):
 			r.ParseForm()
 			deleted = append(deleted, r.FormValue("hashes")+":"+r.FormValue("deleteFiles"))

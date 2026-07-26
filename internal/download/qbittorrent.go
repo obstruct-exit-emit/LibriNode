@@ -351,6 +351,7 @@ func (q *qbittorrent) List(ctx context.Context) ([]Item, error) {
 		Progress    float64 `json:"progress"`
 		ContentPath string  `json:"content_path"`
 		SavePath    string  `json:"save_path"`
+		Category    string  `json:"category"`
 	}
 	if err := json.Unmarshal(body, &torrents); err != nil {
 		return nil, fmt.Errorf("qbittorrent: decoding torrent list: %w", err)
@@ -358,6 +359,14 @@ func (q *qbittorrent) List(ctx context.Context) ([]Item, error) {
 
 	items := make([]Item, 0, len(torrents))
 	for _, t := range torrents {
+		if !strings.EqualFold(t.Category, q.cfg.Category) {
+			// The category query param above is a server-side filter some
+			// qBittorrent-compatible bridges (debrid services in particular)
+			// don't actually honor, silently returning every app's torrents —
+			// filter client-side too so another app's items sharing this
+			// client never show up as ours.
+			continue
+		}
 		item := Item{
 			Client:   q.cfg.Name,
 			ConfigID: q.cfg.ID,

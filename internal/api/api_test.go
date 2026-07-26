@@ -1702,7 +1702,7 @@ func TestDownloadClientsAndGrab(t *testing.T) {
 		case "addurl":
 			w.Write([]byte(`{"status": true, "nzo_ids": ["nzo_1"]}`))
 		case "queue":
-			w.Write([]byte(`{"queue": {"slots": [{"nzo_id": "nzo_1", "filename": "Mort", "status": "Downloading", "percentage": "50"}]}}`))
+			w.Write([]byte(`{"queue": {"slots": [{"nzo_id": "nzo_1", "filename": "Mort", "status": "Downloading", "percentage": "50", "category": "librinode"}]}}`))
 		case "history":
 			w.Write([]byte(`{"history": {"slots": []}}`))
 		default:

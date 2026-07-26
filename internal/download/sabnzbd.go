@@ -260,6 +260,14 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 
 	items := []Item{}
 	for _, slot := range queue.Queue.Slots {
+		if !strings.EqualFold(slot.Category, s.cfg.Category) {
+			// The category query param above is a server-side filter some
+			// SABnzbd-compatible bridges (debrid services in particular) don't
+			// actually honor, silently returning every app's downloads —
+			// filter client-side too so another app's items sharing this
+			// client never show up as ours.
+			continue
+		}
 		item := Item{Client: s.cfg.Name, ConfigID: s.cfg.ID, ID: slot.NzoID, Title: slot.Filename}
 		if pct, err := strconv.ParseFloat(slot.Percentage, 64); err == nil {
 			item.Progress = pct / 100
@@ -275,6 +283,9 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 		items = append(items, item)
 	}
 	for _, slot := range history.History.Slots {
+		if !strings.EqualFold(slot.Category, s.cfg.Category) {
+			continue // see the queue loop above
+		}
 		item := Item{Client: s.cfg.Name, ConfigID: s.cfg.ID, ID: slot.NzoID, Title: slot.Name, Path: slot.Storage}
 		switch strings.ToLower(slot.Status) {
 		case "completed":
