@@ -86,7 +86,7 @@ func rel(title string, protocol string, size int64, seeders int) indexer.Release
 func TestScoreGeneric(t *testing.T) {
 	prefs := DefaultEbookPreferences()
 
-	epub := Score(rel("Mort Retail EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil)
+	epub := Score(rel("Mort Retail EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil)
 	if !epub.Approved {
 		t.Fatalf("epub rejected: %v", epub.Rejections)
 	}
@@ -95,32 +95,32 @@ func TestScoreGeneric(t *testing.T) {
 		t.Errorf("epub score = %d, want 135", epub.Score)
 	}
 
-	pdf := Score(rel("Mort PDF", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil)
+	pdf := Score(rel("Mort PDF", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil)
 	if !pdf.Approved || pdf.Score >= epub.Score {
 		t.Errorf("pdf should approve but rank below epub: %+v", pdf)
 	}
 
-	noFormat := Score(rel("Mort", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil)
+	noFormat := Score(rel("Mort", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil)
 	if noFormat.Approved {
 		t.Error("release without a format should be rejected")
 	}
 
-	dead := Score(rel("Mort EPUB", indexer.ProtocolTorrent, 1<<20, 0), prefs, nil, nil)
+	dead := Score(rel("Mort EPUB", indexer.ProtocolTorrent, 1<<20, 0), prefs, nil, nil, nil)
 	if dead.Approved {
 		t.Error("torrent with 0 seeders should be rejected")
 	}
 
-	seeded := Score(rel("Mort EPUB", indexer.ProtocolTorrent, 1<<20, 50), prefs, nil, nil)
+	seeded := Score(rel("Mort EPUB", indexer.ProtocolTorrent, 1<<20, 50), prefs, nil, nil, nil)
 	if !seeded.Approved || seeded.Score != 120 { // 100 + capped 20
 		t.Errorf("seeded torrent = %+v, want score 120", seeded)
 	}
 
-	tiny := Score(rel("Mort EPUB", indexer.ProtocolUsenet, 512, -1), prefs, nil, nil)
+	tiny := Score(rel("Mort EPUB", indexer.ProtocolUsenet, 512, -1), prefs, nil, nil, nil)
 	if tiny.Approved {
 		t.Error("tiny file should be rejected")
 	}
 
-	german := Score(rel("Mort EPUB German", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil)
+	german := Score(rel("Mort EPUB German", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil)
 	if german.Approved {
 		t.Error("non-preferred language should be rejected")
 	}
@@ -132,24 +132,24 @@ func TestScoreGeneric(t *testing.T) {
 func TestScoreImageMediaAllowsUnknownFormat(t *testing.T) {
 	prefs := DefaultMangaPreferences()
 
-	noFormat := Score(rel("Death Note Vol. 01 (2005) (Digital)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil)
+	noFormat := Score(rel("Death Note Vol. 01 (2005) (Digital)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil, nil)
 	if !noFormat.Approved {
 		t.Fatalf("format-less manga release should approve: %v", noFormat.Rejections)
 	}
 
-	cbz := Score(rel("Death Note Vol. 01 (cbz)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil)
+	cbz := Score(rel("Death Note Vol. 01 (cbz)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil, nil)
 	if !cbz.Approved || cbz.Score <= noFormat.Score {
 		t.Errorf("named cbz (%d) should approve and outrank unknown-format (%d)", cbz.Score, noFormat.Score)
 	}
 
 	// A stated but unwanted format is still rejected, even for image media.
-	badFmt := Score(rel("Death Note Vol. 01 (mp3)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil)
+	badFmt := Score(rel("Death Note Vol. 01 (mp3)", indexer.ProtocolUsenet, 5<<20, -1), prefs, nil, nil, nil)
 	if badFmt.Approved {
 		t.Error("an unwanted format should still be rejected for manga")
 	}
 
 	// Ebooks keep requiring a format.
-	if Score(rel("Mort", indexer.ProtocolUsenet, 1<<20, -1), DefaultEbookPreferences(), nil, nil).Approved {
+	if Score(rel("Mort", indexer.ProtocolUsenet, 1<<20, -1), DefaultEbookPreferences(), nil, nil, nil).Approved {
 		t.Error("ebook without a format must still reject")
 	}
 }
@@ -159,34 +159,70 @@ func TestScoreAgainstBook(t *testing.T) {
 	book := &library.Book{Title: "The Colour of Magic", ReleaseDate: "1983-11-24"}
 	author := &library.Author{Name: "Terry Pratchett"}
 
-	right := Score(rel("Terry Pratchett - The Colour of Magic (1983) EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author)
+	right := Score(rel("Terry Pratchett - The Colour of Magic (1983) EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
 	if !right.Approved {
 		t.Fatalf("correct release rejected: %v", right.Rejections)
 	}
 
 	// Article-stripped title still matches.
-	stripped := Score(rel("Terry Pratchett - Colour of Magic EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author)
+	stripped := Score(rel("Terry Pratchett - Colour of Magic EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
 	if !stripped.Approved {
 		t.Errorf("article-stripped title rejected: %v", stripped.Rejections)
 	}
 
-	wrongBook := Score(rel("Terry Pratchett - Mort EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author)
+	wrongBook := Score(rel("Terry Pratchett - Mort EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
 	if wrongBook.Approved {
 		t.Error("different book should be rejected")
 	}
 
-	wrongAuthor := Score(rel("Stephen King - The Colour of Magic EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author)
+	wrongAuthor := Score(rel("Stephen King - The Colour of Magic EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
 	if wrongAuthor.Approved {
 		t.Error("missing author mention should be rejected")
 	}
 
 	// Year drift is a penalty, not a rejection.
-	reprint := Score(rel("Terry Pratchett - The Colour of Magic (2009) EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author)
+	reprint := Score(rel("Terry Pratchett - The Colour of Magic (2009) EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
 	if !reprint.Approved {
 		t.Fatalf("reprint rejected: %v", reprint.Rejections)
 	}
 	if reprint.Score >= right.Score {
 		t.Errorf("reprint (%d) should score below original-year release (%d)", reprint.Score, right.Score)
+	}
+}
+
+// TestScoreFlagsPackWhenReleaseNamesAnotherBook: a release bundling the
+// wanted book with another of the author's standalone titles ("Tau Zero &
+// The Boat of a Million Years") must be flagged as a pack even though it
+// uses none of the "Complete"/"Collection"/volume-span wording Parsed.Pack
+// otherwise looks for. A release naming only the wanted book must not be.
+func TestScoreFlagsPackWhenReleaseNamesAnotherBook(t *testing.T) {
+	prefs := DefaultEbookPreferences()
+	// The wanted book sits last in the bundled title — first would trip the
+	// "immediately followed by another title" guard titleMatches uses to
+	// keep a short title from matching as a prefix of a longer one (e.g.
+	// "Saga" inside "Saga of the Swamp Thing"); that guard is or is not
+	// tripped is exactly the same kind of "which of two titles came first"
+	// distinction a real bundle presents.
+	book := &library.Book{Title: "The Boat of a Million Years", ReleaseDate: "1989-01-01"}
+	author := &library.Author{Name: "Poul Anderson"}
+	otherTitles := []string{"Tau Zero", "The Boat of a Million Years"} // includes the wanted book itself
+
+	bundle := Score(rel("Poul Anderson - Tau Zero & The Boat of a Million Years EPUB", indexer.ProtocolUsenet, 1<<20, -1),
+		prefs, book, author, otherTitles)
+	if !bundle.Approved {
+		t.Fatalf("bundle release rejected: %v", bundle.Rejections)
+	}
+	if !bundle.Parsed.Pack {
+		t.Error("release naming a second book should be flagged as a pack")
+	}
+
+	single := Score(rel("Poul Anderson - The Boat of a Million Years EPUB", indexer.ProtocolUsenet, 1<<20, -1),
+		prefs, book, author, otherTitles)
+	if !single.Approved {
+		t.Fatalf("single-book release rejected: %v", single.Rejections)
+	}
+	if single.Parsed.Pack {
+		t.Error("release naming only the wanted book should not be flagged as a pack")
 	}
 }
 
@@ -206,21 +242,21 @@ func TestScoreAuthorFallsBackToKeywords(t *testing.T) {
 		DownloadURL: "https://abb.example/dune-messiah/",
 		Size:        200 << 20, Seeders: -1, Peers: -1,
 	}
-	c := Score(bare, prefs, book, author)
+	c := Score(bare, prefs, book, author, nil)
 	if !c.Approved {
 		t.Fatalf("author-in-keywords release rejected: %v", c.Rejections)
 	}
 
 	noKeywordMatch := bare
 	noKeywordMatch.Keywords = "Dune Science Fiction"
-	c = Score(noKeywordMatch, prefs, book, author)
+	c = Score(noKeywordMatch, prefs, book, author, nil)
 	if c.Approved {
 		t.Error("release naming neither the author in title nor keywords should still reject")
 	}
 
 	wrongBook := bare
 	wrongBook.Title = "Dune"
-	c = Score(wrongBook, prefs, book, author)
+	c = Score(wrongBook, prefs, book, author, nil)
 	if c.Approved {
 		t.Error("a different book must still reject even when keywords name the right author")
 	}
@@ -242,11 +278,11 @@ func TestPreferencesFromProfile(t *testing.T) {
 	}
 
 	// An epub-only German profile rejects English pdf, prefers azw3.
-	pdf := Score(rel("Mort PDF", indexer.ProtocolUsenet, 500, -1), prefs, nil, nil)
+	pdf := Score(rel("Mort PDF", indexer.ProtocolUsenet, 500, -1), prefs, nil, nil, nil)
 	if pdf.Approved {
 		t.Errorf("pdf approved under azw3/epub profile: %+v", pdf)
 	}
-	azw3 := Score(rel("Der Mort AZW3 German Retail", indexer.ProtocolUsenet, 500, -1), prefs, nil, nil)
+	azw3 := Score(rel("Der Mort AZW3 German Retail", indexer.ProtocolUsenet, 500, -1), prefs, nil, nil, nil)
 	if !azw3.Approved || azw3.Score != 150 { // 100 + retail 40 + usenet 10
 		t.Errorf("azw3 = %+v, want approved score 150", azw3)
 	}
@@ -263,30 +299,30 @@ func TestPreferencesFromProfile(t *testing.T) {
 func TestScoreAudiobook(t *testing.T) {
 	prefs := DefaultAudiobookPreferences()
 
-	m4b := Score(rel("Mort Unabridged M4B", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	m4b := Score(rel("Mort Unabridged M4B", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil, nil)
 	if !m4b.Approved {
 		t.Fatalf("m4b rejected: %v", m4b.Rejections)
 	}
-	mp3 := Score(rel("Mort MP3 64kbps", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	mp3 := Score(rel("Mort MP3 64kbps", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil, nil)
 	if !mp3.Approved || mp3.Score >= m4b.Score {
 		t.Errorf("mp3 should approve below m4b: %+v vs %+v", mp3, m4b)
 	}
-	abridged := Score(rel("Mort Abridged M4B", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	abridged := Score(rel("Mort Abridged M4B", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil, nil)
 	if abridged.Approved {
 		t.Error("abridged should be rejected for audiobooks")
 	}
-	epub := Score(rel("Mort EPUB", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	epub := Score(rel("Mort EPUB", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil, nil)
 	if epub.Approved {
 		t.Error("ebook format should be rejected under audiobook prefs")
 	}
 	// Ebook-sized files are suspicious for audio.
-	tiny := Score(rel("Mort M4B", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil)
+	tiny := Score(rel("Mort M4B", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil)
 	if tiny.Approved {
 		t.Error("1 MiB audiobook should be rejected")
 	}
 	// Audiobook names routinely omit the format (bitrate/narrator instead), so
 	// a format-less release must still approve — ranked below a named format.
-	noFmt := Score(rel("Ready Player One Unabridged 192k", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil)
+	noFmt := Score(rel("Ready Player One Unabridged 192k", indexer.ProtocolUsenet, 200<<20, -1), prefs, nil, nil, nil)
 	if !noFmt.Approved {
 		t.Errorf("format-less audiobook should approve: %v", noFmt.Rejections)
 	}
@@ -364,10 +400,10 @@ func TestScoreMagazine(t *testing.T) {
 func TestRank(t *testing.T) {
 	prefs := DefaultEbookPreferences()
 	candidates := []Candidate{
-		Score(rel("Mort", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil),             // rejected
-		Score(rel("Mort PDF", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil),         // low
-		Score(rel("Mort Retail EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil), // high
-		Score(rel("Mort EPUB", indexer.ProtocolTorrent, 1<<20, 5), prefs, nil, nil),        // mid
+		Score(rel("Mort", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil),             // rejected
+		Score(rel("Mort PDF", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil),         // low
+		Score(rel("Mort Retail EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, nil, nil, nil), // high
+		Score(rel("Mort EPUB", indexer.ProtocolTorrent, 1<<20, 5), prefs, nil, nil, nil),        // mid
 	}
 	Rank(candidates)
 	if !candidates[0].Approved || candidates[0].Score != 135 {

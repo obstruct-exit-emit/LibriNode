@@ -193,8 +193,9 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 			// indexers with sloppy category mapping.
 			query += " audiobook"
 		}
+		otherTitles := otherBookTitles(s.store, book)
 		score = func(rel indexer.Release) release.Candidate {
-			return release.Score(rel, prefs, book, author)
+			return release.Score(rel, prefs, book, author, otherTitles)
 		}
 	}
 
@@ -323,6 +324,25 @@ func (s *Service) markBlocked(candidates []release.Candidate) {
 
 func pendingKey(bookID int64, mediaType string) string {
 	return fmt.Sprintf("%d/%s", bookID, mediaType)
+}
+
+// otherBookTitles returns the author's other prose book titles — release
+// scoring's only use for them is flagging a release that names one of them
+// alongside the wanted book as a pack (e.g. "Tau Zero & The Boat of a Million
+// Years"), bundling two standalone titles without using any "Complete"/
+// "Collection"/volume-span wording at all.
+func otherBookTitles(store *library.Store, book *library.Book) []string {
+	books, err := store.ListBooks(book.AuthorID)
+	if err != nil {
+		return nil
+	}
+	titles := make([]string, 0, len(books))
+	for _, b := range books {
+		if b.MediaType == "book" && b.ID != book.ID {
+			titles = append(titles, b.Title)
+		}
+	}
+	return titles
 }
 
 // pendingBookIDs is the set of book/media-type pairs that already have an

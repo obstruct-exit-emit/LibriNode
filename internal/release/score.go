@@ -69,6 +69,29 @@ func titleMatches(relNorm string, keys []string) bool {
 	return false
 }
 
+// titleMentioned reports whether any normalized title key appears in the
+// release title as a whole-word run — unlike titleMatches, a match right
+// before another word (a stopword or otherwise) still counts. Pack detection
+// wants exactly the case titleMatches' stopword guard excludes: that's the
+// boundary between two concatenated titles in a bundle ("Tau Zero & THE Boat
+// of a Million Years"), not a false-positive risk the way it is for the
+// primary book-title check.
+func titleMentioned(relNorm string, keys []string) bool {
+	relWords := strings.Fields(relNorm)
+	for _, key := range keys {
+		kw := strings.Fields(key)
+		if len(kw) == 0 {
+			continue
+		}
+		for i := 0; i+len(kw) <= len(relWords); i++ {
+			if slices.Equal(relWords[i:i+len(kw)], kw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Preferences drive scoring. Each media type's default quality profile
 // produces these (PreferencesFor); the Default*Preferences constructors are
 // the built-in fallbacks when no profile exists.
@@ -229,8 +252,11 @@ type Candidate struct {
 
 // Score evaluates one release. book and author are optional: without them
 // only generic checks run (format, size, health); with them the release must
-// actually be the wanted book.
-func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *library.Author) Candidate {
+// actually be the wanted book. otherTitles is the author's other book
+// titles, used only to flag a release that bundles more than one of them as
+// a pack — pass nil when unavailable (the "Complete"/"Collection"/volume-span
+// title signals in Parsed.Pack still apply either way).
+func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *library.Author, otherTitles []string) Candidate {
 	c := Candidate{Release: rel, Parsed: Parse(rel.Title)}
 
 	// Spam guard: a release whose name states an executable/installer extension
@@ -304,7 +330,7 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 	}
 
 	if book != nil {
-		c.matchBook(book, author)
+		c.matchBook(book, author, otherTitles)
 	}
 
 	c.Approved = len(c.Rejections) == 0
@@ -314,7 +340,7 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 // ScoreVolume evaluates a release against a wanted manga volume / comic
 // issue: generic checks plus the series title and the exact volume number.
 func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, number float64) Candidate {
-	c := Score(rel, prefs, nil, nil)
+	c := Score(rel, prefs, nil, nil, nil)
 
 	relNorm := scanner.Normalize(rel.Title)
 	if !titleMatches(relNorm, scanner.TitleKeys(seriesTitle)) {
@@ -343,7 +369,7 @@ func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string,
 	// A pack is dozens of volumes in one release — the per-item size cap
 	// doesn't apply. 100 GiB still guards against nonsense.
 	prefs.MaxSize = 100 << 30
-	c := Score(rel, prefs, nil, nil)
+	c := Score(rel, prefs, nil, nil, nil)
 
 	relNorm := scanner.Normalize(rel.Title)
 	if !titleMatches(relNorm, scanner.TitleKeys(seriesTitle)) {
@@ -377,7 +403,7 @@ func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string,
 // already owned. The identifier is returned so the caller can materialize
 // the issue on grab.
 func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned map[string]bool) (Candidate, string) {
-	c := Score(rel, prefs, nil, nil)
+	c := Score(rel, prefs, nil, nil, nil)
 
 	relNorm := scanner.Normalize(rel.Title)
 	if !titleMatches(relNorm, scanner.TitleKeys(title)) {
@@ -396,11 +422,28 @@ func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned m
 }
 
 // matchBook rejects releases that don't look like the wanted book.
-func (c *Candidate) matchBook(book *library.Book, author *library.Author) {
+func (c *Candidate) matchBook(book *library.Book, author *library.Author, otherTitles []string) {
 	relNorm := scanner.Normalize(c.Release.Title)
 
 	if !titleMatches(relNorm, scanner.TitleKeys(book.Title)) {
 		c.reject("does not contain the book title")
+	}
+
+	// Pack detection beyond the "Complete"/"Collection"/volume-span title
+	// signals already in Parsed.Pack: a release naming the wanted book
+	// alongside another of the author's standalone titles ("Tau Zero & The
+	// Boat of a Million Years") bundles two books without using any of those
+	// words at all.
+	if !c.Parsed.Pack {
+		for _, t := range otherTitles {
+			if t == "" || strings.EqualFold(t, book.Title) {
+				continue
+			}
+			if titleMentioned(relNorm, scanner.TitleKeys(t)) {
+				c.Parsed.Pack = true
+				break
+			}
+		}
 	}
 
 	if author != nil {

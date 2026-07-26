@@ -252,6 +252,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	var author *library.Author
 	var seriesTitle string
 	var volumeNumber float64
+	var otherTitles []string // author's other prose titles — pack detection only
 	if v := r.URL.Query().Get("bookId"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
@@ -281,6 +282,13 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 			}
 			if term == "" {
 				term = author.Name + " " + book.Title
+			}
+			if books, err := s.store.ListBooks(author.ID); err == nil {
+				for _, b := range books {
+					if b.MediaType == "book" && b.ID != book.ID {
+						otherTitles = append(otherTitles, b.Title)
+					}
+				}
 			}
 		}
 	}
@@ -322,7 +330,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 		if seriesTitle != "" {
 			candidates = append(candidates, release.ScoreVolume(rel, prefs, seriesTitle, volumeNumber))
 		} else {
-			candidates = append(candidates, release.Score(rel, prefs, book, author))
+			candidates = append(candidates, release.Score(rel, prefs, book, author, otherTitles))
 		}
 	}
 	release.Rank(candidates)
