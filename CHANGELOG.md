@@ -231,6 +231,16 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **An owned audiobook upgraded to a different-shaped format (e.g. a multi-file
+  mp3 set upgraded by a single m4b) could end up "owned" with no file at all.**
+  Multi-file audiobooks are recorded by their whole book folder; a single-file
+  upgrade places its file one level inside that same folder. The old-file
+  cleanup that runs right after placing the new one only skipped deletion when
+  the old and new paths were identical — not when the new file was nested
+  inside the old folder — so it deleted the whole folder, including the file
+  it had just placed there. The library record survived, so the book silently
+  looked owned with nothing on disk. Found via full UI QA testing; caught by a
+  regression test that reproduces the exact scenario.
 - **AudioBook Bay searches for ordinary book titles ("Dune Messiah", "The
   Hobbit") mostly failed with what looked like rate-limiting — that wasn't the
   real cause.** ABB's edge silently redirects any search whose query starts
