@@ -1357,3 +1357,194 @@ func TestPackSkipsOwnedBookUnlessUpgrade(t *testing.T) {
 		t.Fatalf("Guards files = %+v, want only the pre-owned epub", files)
 	}
 }
+
+// TestImportAudiobookPackFillsMonitoredBooksByFolderName: a bundle organizing
+// each book into its own top-level subfolder imports the grabbed book
+// (matched by folder name, not size or any individual track's filename) plus
+// any other *monitored* audiobook — never an unmonitored one.
+func TestImportAudiobookPackFillsMonitoredBooksByFolderName(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	guards := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "10",
+		Title: "Guards! Guards!", ReleaseDate: "1989-01-01", InAudiobookLibrary: true, AudiobookMonitored: true}
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+	sourcery := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "11",
+		Title: "Sourcery"} // enrolled nowhere, monitored nowhere
+	if err := f.store.UpsertBook(sourcery); err != nil {
+		t.Fatal(err)
+	}
+
+	// The largest, most generically-named tracks belong to the book that must
+	// NOT be picked for the grab — proves matching goes by folder name, not size.
+	f.completedDownload(t, "nzo_abpack", "Terry Pratchett - Discworld Collection Unabridged",
+		filepath.Join("Mort", "01 - Opening.mp3"),
+		filepath.Join("Mort", "02 - Death.mp3"),
+		filepath.Join("Guards! Guards!", "01 - Theft.mp3"),
+		filepath.Join("Sourcery", "01 - Rincewind.mp3"),
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_abpack",
+		Title: "Terry Pratchett - Discworld Collection Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 2 {
+		t.Fatalf("imported = %d, want 2 (grabbed Mort + monitored Guards): %+v", result.Imported, result)
+	}
+
+	mortDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
+	for _, name := range []string{"01 - Opening.mp3", "02 - Death.mp3"} {
+		if _, err := os.Stat(filepath.Join(mortDir, name)); err != nil {
+			t.Errorf("Mort track missing: %v", err)
+		}
+	}
+	if files, _ := f.store.ListBookFiles(guards.ID); len(files) != 1 {
+		t.Fatalf("Guards files = %+v, want the pack extra", files)
+	}
+	if files, _ := f.store.ListBookFiles(sourcery.ID); len(files) != 0 {
+		t.Fatalf("Sourcery files = %+v, want none (unmonitored)", files)
+	}
+}
+
+// TestImportAudiobookPackImportAllOptIn: with the pack-import-all setting on,
+// an audiobook pack fills unmonitored books too, without monitoring them.
+func TestImportAudiobookPackImportAllOptIn(t *testing.T) {
+	f := fixture(t)
+	f.packAll = true
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	sourcery := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "11",
+		Title: "Sourcery"} // enrolled nowhere, monitored nowhere
+	if err := f.store.UpsertBook(sourcery); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_aball", "Terry Pratchett - Discworld Collection Unabridged",
+		filepath.Join("Mort", "01 - Opening.mp3"),
+		filepath.Join("Sourcery", "01 - Rincewind.mp3"),
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_aball",
+		Title: "Terry Pratchett - Discworld Collection Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 2 {
+		t.Fatalf("imported = %d, want 2 (import-all fills the unmonitored book too): %+v", result.Imported, result)
+	}
+	if files, _ := f.store.ListBookFiles(sourcery.ID); len(files) != 1 {
+		t.Fatalf("Sourcery files = %+v, want the pack extra", files)
+	}
+	got, _ := f.store.GetBook(sourcery.ID)
+	if got.AudiobookMonitored {
+		t.Error("import-all must not monitor the unmonitored book")
+	}
+}
+
+// TestImportAudiobookSingleSubfolderIsNotAPack: exactly one top-level
+// subfolder isn't a detectable pack — indistinguishable from an ordinary
+// single-book release organized in its own folder — so it imports as one
+// book, all its files together, same as before pack support existed.
+func TestImportAudiobookSingleSubfolderIsNotAPack(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_single", "Terry Pratchett - Mort Unabridged",
+		filepath.Join("Mort", "01 - Opening.mp3"),
+		filepath.Join("Mort", "02 - Death.mp3"),
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_single",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("imported = %d, want 1: %+v", result.Imported, result)
+	}
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
+	for _, name := range []string{"01 - Opening.mp3", "02 - Death.mp3"} {
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
+			t.Errorf("track missing: %v", err)
+		}
+	}
+}
+
+// TestImportAudiobookPackFallsBackWhenGrabbedFolderUnmatched: if none of the
+// pack's folder names match the grabbed book by title, the whole download
+// falls back to being treated as the one book rather than failing outright
+// or guessing wrong.
+func TestImportAudiobookPackFallsBackWhenGrabbedFolderUnmatched(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_nomatch", "Terry Pratchett - Mort Unabridged",
+		filepath.Join("Unknown Group A", "01 - Opening.mp3"),
+		filepath.Join("Unknown Group B", "01 - Continued.mp3"),
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_nomatch",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("imported = %d, want 1 (fallback to single book): %+v", result.Imported, result)
+	}
+	// Non-disc subfolders flatten (same as an ordinary single-book download —
+	// see TestImportAudiobookFlattensNonDiscNesting); the two names don't
+	// collide, so neither gets qualified with its folder.
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
+	for _, name := range []string{"01 - Opening.mp3", "01 - Continued.mp3"} {
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
+			t.Errorf("track missing: %v", err)
+		}
+	}
+}

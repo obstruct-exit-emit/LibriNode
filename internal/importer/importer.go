@@ -278,10 +278,11 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 
 	var sources []string
 	var format string
-	var pack *packPlan // set when the download is a multi-book release
+	var pack *packPlan           // set when an ebook/manga/comic download is a multi-book release
+	var audioPack *audioPackPlan // set when an audiobook download is a multi-book release
 	switch mediaType {
 	case "audiobook":
-		sources, format, err = pickAudioFiles(item.Path)
+		sources, format, audioPack, err = s.pickAudioPackAware(item.Path, grab, book)
 	case "manga", "comic":
 		var source string
 		source, pack, err = s.pickPackAware(item.Path, scanner.IsComicPath, "comic archive", grab, book, mediaType)
@@ -360,6 +361,9 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	// from the download folder, so it must run before any cleanup deletes it.
 	if grab != nil && pack != nil {
 		s.importPackExtras(pack, sources[0], book, mediaType, result)
+	}
+	if grab != nil && audioPack != nil {
+		s.importAudioPackExtras(audioPack, book, result)
 	}
 	if grab != nil {
 		s.cleanupAfterImport(ctx, item, grab, result)
@@ -1086,45 +1090,184 @@ func pickLargestFile(path string, accept func(string) bool, kind string) (string
 	return largestFile(files), nil
 }
 
-// pickAudioFiles returns the audio content at path: all audio files under a
-// directory (multi-file audiobook), or the single audio file itself. The
-// format is the largest file's extension.
-func pickAudioFiles(path string) ([]string, string, error) {
-	if path == "" {
-		return nil, "", fmt.Errorf("client reported no path yet: %w", errDownloadPending)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, "", fmt.Errorf("download path missing (%v): %w", err, errDownloadPending)
-	}
-	if !info.IsDir() {
-		if !scanner.IsAudioPath(path) {
-			return nil, "", fmt.Errorf("%s is not an audiobook file", filepath.Base(path))
-		}
-		return []string{path}, strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), "."), nil
-	}
+// audioGroup is one candidate book's own audio files within a possibly
+// multi-book audiobook download: everything under one top-level subfolder,
+// recursively (so a disc/part subfolder one level deeper — CD1, Disc 02 —
+// stays part of the same group, same as a lone multi-file audiobook).
+type audioGroup struct {
+	name  string // the top-level subfolder's name, matched against book titles
+	files []string
+}
 
+// audioPackPlan carries a multi-book audiobook download's candidate groups
+// and their matcher from primary-group selection to the pack-extras pass.
+type audioPackPlan struct {
+	groups  []audioGroup
+	matcher *packMatcher
+}
+
+// splitAudioGroups partitions a download folder's audio files into candidate
+// per-book groups by top-level subfolder, and separately returns any audio
+// files sitting directly in the root (or under a root-level disc/part
+// subfolder) — those have no subfolder name to match a book by, so they can
+// only ever be treated as the download's single book, never a pack extra.
+func splitAudioGroups(root string) (rootFiles []string, named []audioGroup, err error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, e := range entries {
+		full := filepath.Join(root, e.Name())
+		if !e.IsDir() {
+			if scanner.IsAudioPath(full) {
+				rootFiles = append(rootFiles, full)
+			}
+			continue
+		}
+		files, err := audioFilesUnder(full)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(files) == 0 {
+			continue
+		}
+		if scanner.IsDiscFolder(e.Name()) {
+			rootFiles = append(rootFiles, files...)
+			continue
+		}
+		named = append(named, audioGroup{name: e.Name(), files: files})
+	}
+	return rootFiles, named, nil
+}
+
+// audioFilesUnder returns every audio file under dir, recursively.
+func audioFilesUnder(dir string) ([]string, error) {
 	var files []string
-	var largest int64
-	var format string
-	err = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !scanner.IsAudioPath(p) {
 			return err
 		}
 		files = append(files, p)
-		if fi, err := d.Info(); err == nil && fi.Size() > largest {
-			largest = fi.Size()
-			format = strings.TrimPrefix(strings.ToLower(filepath.Ext(p)), ".")
-		}
 		return nil
 	})
+	return files, err
+}
+
+// formatOfLargestAudio is the largest file's extension — the same heuristic
+// pickAudioFiles always used for a single book's format.
+func formatOfLargestAudio(files []string) string {
+	var largest int64
+	var format string
+	for _, f := range files {
+		if fi, err := os.Stat(f); err == nil && fi.Size() > largest {
+			largest = fi.Size()
+			format = fileFormat(f)
+		}
+	}
+	return format
+}
+
+// pickAudioPackAware selects the files to import for the grabbed audiobook
+// and, when the download turns out to bundle several different audiobooks
+// together, also returns every other candidate group for pack-extra
+// imports. The layout has to be unambiguous to count as a pack: two or more
+// distinctly-named top-level subfolders (each a candidate book) and nothing
+// stray sitting directly in the root. Anything less structured — a single
+// folder, flat files, disc/part subfolders at the root — falls back to the
+// original single-book behavior: every audio file under path belongs to the
+// one book being imported, exactly as before this existed.
+func (s *Service) pickAudioPackAware(path string, grab *download.GrabRecord, book *library.Book) ([]string, string, *audioPackPlan, error) {
+	if path == "" {
+		return nil, "", nil, fmt.Errorf("client reported no path yet: %w", errDownloadPending)
+	}
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, fmt.Errorf("download path missing (%v): %w", err, errDownloadPending)
 	}
-	if len(files) == 0 {
-		return nil, "", fmt.Errorf("no audio files found in download")
+	if !info.IsDir() {
+		if !scanner.IsAudioPath(path) {
+			return nil, "", nil, fmt.Errorf("%s is not an audiobook file", filepath.Base(path))
+		}
+		return []string{path}, fileFormat(path), nil, nil
 	}
-	return files, format, nil
+
+	rootFiles, named, err := splitAudioGroups(path)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	singleBook := func() ([]string, string, *audioPackPlan, error) {
+		all := append(append([]string{}, rootFiles...), flattenAudioGroups(named)...)
+		if len(all) == 0 {
+			return nil, "", nil, fmt.Errorf("no audio files found in download")
+		}
+		return all, formatOfLargestAudio(all), nil, nil
+	}
+	if grab == nil || len(named) < 2 || len(rootFiles) > 0 {
+		return singleBook()
+	}
+
+	matcher := s.newPackMatcher(book, "audiobook")
+	var primary audioGroup
+	found := false
+	for _, g := range named {
+		if b := matcher.match(g.name); b != nil && b.ID == book.ID {
+			primary, found = g, true
+			break
+		}
+	}
+	if !found {
+		// None of the folders match the grabbed book by name — don't guess;
+		// fall back to treating the whole download as the one book.
+		return singleBook()
+	}
+	return primary.files, formatOfLargestAudio(primary.files), &audioPackPlan{groups: named, matcher: matcher}, nil
+}
+
+func flattenAudioGroups(groups []audioGroup) []string {
+	var all []string
+	for _, g := range groups {
+		all = append(all, g.files...)
+	}
+	return all
+}
+
+// importAudioPackExtras imports the other audiobooks bundled in a multi-book
+// download, mirroring importPackExtras: only files matching a *monitored*
+// library book are imported by default; the opt-in pack-import-all setting
+// lifts that to every matching book; a book that already has an audiobook
+// file is only replaced when the pack's copy is a genuine quality upgrade.
+func (s *Service) importAudioPackExtras(pack *audioPackPlan, grabbed *library.Book, result *Result) {
+	importAll := s.opts().PackImportAll
+	done := map[int64]bool{grabbed.ID: true}
+	for _, g := range pack.groups {
+		b := pack.matcher.match(g.name)
+		if b == nil || done[b.ID] || len(g.files) == 0 {
+			continue
+		}
+		done[b.ID] = true
+		if !importAll && !monitoredFor(b, "audiobook") {
+			continue
+		}
+		format := formatOfLargestAudio(g.files)
+		var replacing []library.BookFile
+		if len(s.ownedFiles(b.ID, "audiobook")) > 0 {
+			old, better := s.upgradeCheck(b, "audiobook", format)
+			if !better {
+				continue
+			}
+			replacing = old
+		}
+		target, ok := s.placeAndRecord(b, "audiobook", format, g.files, replacing, g.name, result)
+		if !ok {
+			continue
+		}
+		if err := s.store.EnsureBookLibrary(b.ID, "audiobook"); err != nil {
+			result.note("pack: enrolling %s: %v", b.Title, err)
+		}
+		result.Imported++
+		result.note("pack: imported %s for %s", g.name, b.Title)
+		slog.Info("imported audiobook pack extra", "book", b.Title, "path", target)
+	}
 }
 
 // copyFile copies (never moves — torrents keep seeding) source into place.

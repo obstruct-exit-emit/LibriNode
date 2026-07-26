@@ -159,13 +159,19 @@ queue's book linking working regardless of what name the bridge shows.
   history is cleared either way, since LibriNode only ever copies from it.
 - **Multi-book packs**: when a grabbed release turns out to be a bundle
   ("complete series"), the grabbed book's file is identified by volume
-  number (manga/comics) or title (ebooks) — never by size, so a v01–v12
-  pack can't file volume 12 as the one you grabbed. With **Import whole
-  packs** on (the default), the pack's other files fill every book they
-  match — imported ebooks join their format library, though nothing is
-  monitored automatically. Turn it off to fill only the grabbed book plus
-  other **monitored** books. Either way, a book that already owns the format
-  is only replaced when the pack's copy is a genuine quality upgrade.
+  number (manga/comics), title (ebooks), or top-level folder name
+  (audiobooks — each book its own subfolder of tracks) — never by size, so a
+  v01–v12 pack can't file volume 12 as the one you grabbed. With **Import
+  whole packs** on (the default), the pack's other files fill every book
+  they match — imported ebooks/audiobooks join their format library, though
+  nothing is monitored automatically. Turn it off to fill only the grabbed
+  book plus other **monitored** books. Either way, a book that already owns
+  the format is only replaced when the pack's copy is a genuine quality
+  upgrade. An audiobook bundle needs at least two distinctly-named folders
+  with nothing loose in the root to be recognized as a pack at all —
+  anything less structured (a single folder, flat tracks, disc/part
+  subfolders like CD1/CD2 at the root) imports as one ordinary multi-file
+  audiobook instead, exactly as it always has.
 - **Seed goals**: with *remove completed downloads* off, a torrent keeps
   seeding to the ratio/time limit set in qBittorrent; when it finishes and
   pauses (goal reached), LibriNode removes the torrent *and its data* — but

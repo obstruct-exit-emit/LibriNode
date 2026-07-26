@@ -11,6 +11,21 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **Audiobooks now support multi-book pack imports**, matching the existing
+  ebook/manga/comic behavior. A bundle that organizes each book into its own
+  top-level subfolder ("Author - Series Collection Unabridged/Book 1/",
+  "Book 2/", …) fills the grabbed book (matched by **folder name**, never
+  size — the largest set of tracks in a bundle is rarely the book you
+  grabbed) plus every other book the bundle matches, same as ebook/manga/comic
+  packs — with **Import whole packs** (on by default) governing whether that
+  includes unmonitored books too, or only ones already monitored. The
+  detection is deliberately conservative: it only activates for two or more
+  distinctly-named top-level folders with nothing loose sitting in the root —
+  anything less structured (a single folder, flat files, disc/part subfolders
+  like CD1/CD2 at the root) falls back to the existing single-book behavior
+  unchanged, and a bundle whose folder names don't match the grabbed book by
+  title falls back to treating the whole download as that one book rather
+  than guessing wrong.
 - **A "Source" button on each release in the search browser** opens the
   release's own listing/info page in a new tab (indexer feeds carry this as
   the standard Torznab/Newznab `<comments>` field; native sources set it from
