@@ -185,7 +185,7 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 		}
 		releases := make([]indexer.Release, 0, len(posts))
 		for _, p := range posts {
-			releases = append(releases, indexer.Release{
+			rel := indexer.Release{
 				IndexerID: s.ind.ID,
 				Indexer:   s.ind.Name,
 				Protocol:  indexer.ProtocolTorrent,
@@ -196,9 +196,14 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 				// The release page itself — Resolve turns it into a magnet at
 				// grab time (one request, only when grabbed).
 				DownloadURL: p.URL,
+				Size:        p.Size,
 				Seeders:     -1, // ABB doesn't report swarm health; unknown, not dead
 				Peers:       -1,
-			})
+			}
+			if !p.PostedDate.IsZero() {
+				rel.PublishDate = p.PostedDate.Format(time.RFC3339)
+			}
+			releases = append(releases, rel)
 		}
 		return releases, nil
 	}
@@ -379,9 +384,11 @@ func titleFromURL(u *url.URL) string {
 // --- Parsing (pure functions; fixture-tested) ---
 
 type post struct {
-	URL      string
-	Title    string
-	Keywords string
+	URL        string
+	Title      string
+	Keywords   string
+	Size       int64
+	PostedDate time.Time // zero if unparsed
 }
 
 var (
@@ -411,6 +418,10 @@ var (
 	keywordsRe = regexp.MustCompile(`(?is)keywords:\s*([^<]*)`)
 	// "File Size: 512.5 MB" / "Size: 1.2 GB" (matched on tag-stripped text).
 	sizeRe = regexp.MustCompile(`(?i)(?:file\s*)?size:?\s*([0-9][0-9.,]*)\s*(kb|mb|gb|tb)`)
+	// "Posted: 27 Mar 2008" — a listing post's upload date, alongside its
+	// Format/Bitrate/File Size in the same .postContent block. ABB gives no
+	// time of day, so this parses to midnight UTC on that date.
+	postedRe = regexp.MustCompile(`(?i)posted:\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})`)
 )
 
 // navPath marks hrefs that are site navigation, not release pages — ABB's
@@ -419,24 +430,27 @@ var (
 var navPath = regexp.MustCompile(`(?i)/(?:type|tag|cat|category|page|member|profile)/`)
 
 // parseListing extracts release-page links (absolute URLs), titles, and each
-// post's Keywords tag list from a search results page. Duplicate URLs and
-// navigation links are dropped.
+// post's Keywords, file size, and posted date from a search results page.
+// Duplicate URLs and navigation links are dropped. Seeders/peers are never
+// part of this: ABB (a WordPress listing, not a tracker) doesn't report swarm
+// health anywhere on the site, listing or detail page.
 func parseListing(html, base string) []post {
 	seen := map[string]bool{}
 	out := []post{}
-	add := func(href, title, keywords string) {
-		u := absURL(base, href)
-		title = cleanText(title)
-		if u == "" || title == "" || seen[u] || navPath.MatchString(u) {
+	add := func(p post) {
+		p.URL = absURL(base, p.URL)
+		p.Title = cleanText(p.Title)
+		p.Keywords = cleanText(p.Keywords)
+		if p.URL == "" || p.Title == "" || seen[p.URL] || navPath.MatchString(p.URL) {
 			return
 		}
-		seen[u] = true
-		out = append(out, post{URL: u, Title: title, Keywords: cleanText(keywords)})
+		seen[p.URL] = true
+		out = append(out, p)
 	}
 	// Matched by index (not FindAllStringSubmatch) so each post's own HTML
 	// segment — from the end of its title match to the start of the next
-	// post's (or end of document) — can be searched for that post's Keywords
-	// without depending on a fixed div-nesting shape.
+	// post's (or end of document) — can be searched for that post's Keywords,
+	// size, and posted date without depending on a fixed div-nesting shape.
 	matches := postTitleRe.FindAllStringSubmatchIndex(html, -1)
 	for i, idx := range matches {
 		href, title := html[idx[2]:idx[3]], html[idx[4]:idx[5]]
@@ -444,15 +458,21 @@ func parseListing(html, base string) []post {
 		if i+1 < len(matches) {
 			segEnd = matches[i+1][0]
 		}
+		segment := html[idx[1]:segEnd]
 		keywords := ""
-		if km := keywordsRe.FindStringSubmatch(html[idx[1]:segEnd]); km != nil {
+		if km := keywordsRe.FindStringSubmatch(segment); km != nil {
 			keywords = km[1]
 		}
-		add(href, title, keywords)
+		segText := stripTags(segment)
+		var postedDate time.Time
+		if pm := postedRe.FindStringSubmatch(segText); pm != nil {
+			postedDate = parsePostedDate(pm[1])
+		}
+		add(post{URL: href, Title: title, Keywords: keywords, Size: parseSize(segText), PostedDate: postedDate})
 	}
 	if len(out) == 0 { // markup changed — fall back to permalink shape
 		for _, m := range audioLinkRe.FindAllStringSubmatch(html, -1) {
-			add(m[1], m[2], "")
+			add(post{URL: m[1], Title: m[2]})
 		}
 	}
 	return out
@@ -540,6 +560,17 @@ func parseSize(html string) int64 {
 		n *= 1 << 40
 	}
 	return int64(n)
+}
+
+// parsePostedDate parses ABB's "27 Mar 2008" listing date. Zero value on
+// failure — a post's date is a nice-to-have for sorting/display, never worth
+// failing the whole search over.
+func parsePostedDate(s string) time.Time {
+	t, err := time.Parse("2 Jan 2006", s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // absURL resolves a possibly-relative href against the site base. It preserves

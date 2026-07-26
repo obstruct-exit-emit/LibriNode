@@ -74,6 +74,35 @@ func TestParseListingKeywordsPerPost(t *testing.T) {
 	}
 }
 
+// TestParseListingSizeAndPostedDate: a post's file size and posted date live
+// in the same .postContent block as its Keywords, on the listing page itself
+// — no detail-page fetch needed. Two posts with different values confirm
+// per-post scoping, and a single-digit day ("7 Mar") confirms the date parse
+// isn't only accidentally correct for zero-padded days.
+func TestParseListingSizeAndPostedDate(t *testing.T) {
+	html := `<div class="post"><div class="postTitle"><h2><a href="/abss/a/" rel="bookmark">Book A</a></h2></div><div class="postInfo">Language: English<span style="margin-left:100px;">Keywords: Author A</span><br /></div><div class="postContent"><p style='text-align:center;'>Posted: 27 Mar 2008<br />Format: <span>MP3</span> / Bitrate: <span>128 Kbps</span><br />File Size: <span style='color:#00f;'>204.13</span> MBs</p></div></div>
+<div class="post"><div class="postTitle"><h2><a href="/abss/b/" rel="bookmark">Book B</a></h2></div><div class="postInfo">Language: English<span style="margin-left:100px;">Keywords: Author B</span><br /></div><div class="postContent"><p style='text-align:center;'>Posted: 7 Jan 2015<br />File Size: <span style='color:#00f;'>1.5</span> GBs</p></div></div>`
+
+	posts := parseListing(html, "https://audiobookbay.lu")
+	if len(posts) != 2 {
+		t.Fatalf("parsed %d posts, want 2: %+v", len(posts), posts)
+	}
+	mb := 204.13
+	if want := int64(mb * (1 << 20)); posts[0].Size != want {
+		t.Errorf("post[0].Size = %d, want %d", posts[0].Size, want)
+	}
+	if posts[0].PostedDate.Format("2006-01-02") != "2008-03-27" {
+		t.Errorf("post[0].PostedDate = %v, want 2008-03-27", posts[0].PostedDate)
+	}
+	gb := 1.5
+	if want := int64(gb * (1 << 30)); posts[1].Size != want {
+		t.Errorf("post[1].Size = %d, want %d", posts[1].Size, want)
+	}
+	if posts[1].PostedDate.Format("2006-01-02") != "2015-01-07" {
+		t.Errorf("post[1].PostedDate = %v, want 2015-01-07 (single-digit day)", posts[1].PostedDate)
+	}
+}
+
 func TestParseDetailAndMagnet(t *testing.T) {
 	hash, trackers, size, ok := parseDetail(detailHTML)
 	if !ok {
