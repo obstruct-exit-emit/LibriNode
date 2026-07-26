@@ -140,7 +140,12 @@ torrent to its magnet or downloads the `.torrent` and uploads the bytes. So a
 download client behind NAT — or a SABnzbd/qBittorrent-compatible **debrid
 bridge** (Real-Debrid, TorBox) whose cloud side can't reach your LAN
 indexers — still works. Adds to a slow debrid bridge are confirmed against the
-client's list so a slow response never loses the grab.
+client's list so a slow response never loses the grab. A torrent grab is
+tracked by the **magnet's own info hash**, not by name: some bridges (TorBox
+included) ignore LibriNode's rename request and always report the
+uploader's own torrent name instead — sometimes wildly different from, or a
+typo of, the release title — so tracking by hash keeps import and the
+queue's book linking working regardless of what name the bridge shows.
 
 - **Automatic search** sweeps all wanted items every 6 hours; **Search
   wanted** and per-item **Auto grab** run on demand; **Search releases**
