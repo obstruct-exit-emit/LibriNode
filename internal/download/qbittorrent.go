@@ -17,8 +17,9 @@ import (
 )
 
 // qBittorrent Web API v2: cookie-session auth via /api/v2/auth/login, then
-// form-encoded endpoints under /api/v2. Notable quirk: torrents/add returns
-// no hash, so grabs report an empty id and tracking goes by category.
+// form-encoded endpoints under /api/v2. Notable quirk: torrents/add doesn't
+// echo back the hash, so it's looked up right after by title (findHash) to
+// give each grab a real client item id.
 type qbittorrent struct {
 	cfg   *ClientConfig
 	httpc *http.Client
@@ -144,7 +145,11 @@ func (q *qbittorrent) Add(ctx context.Context, dlURL, title string) (string, err
 }
 
 // addURLs hands qBittorrent a magnet (or a URL it can fetch itself) via the
-// urls field. The add endpoint doesn't return the hash, so the id is empty.
+// urls field. The add endpoint never echoes the hash back, so it's looked up
+// right after by title — giving the grab a real client item id instead of
+// leaving it empty, which is what left removeQueueItem (and the queue's own
+// grab-to-book linking) unable to find this item again by anything but a
+// title match.
 func (q *qbittorrent) addURLs(ctx context.Context, urls, title string) (string, error) {
 	body, err := q.do(ctx, "/api/v2/torrents/add",
 		url.Values{"urls": {urls}, "category": {q.cfg.Category}, "rename": {title}})
@@ -152,39 +157,49 @@ func (q *qbittorrent) addURLs(ctx context.Context, urls, title string) (string, 
 		// A debrid bridge can accept the magnet yet respond too slowly, tripping
 		// the client timeout even though the torrent lands. Confirm via the list
 		// before giving up, so the grab is still recorded.
-		if q.landed(title) {
-			return "", nil
+		if hash := q.findHash(title); hash != "" {
+			return hash, nil
 		}
 		return "", err
 	}
 	if strings.HasPrefix(string(body), "Fails") {
 		return "", fmt.Errorf("qbittorrent rejected the torrent")
 	}
-	return "", nil
+	return q.findHash(title), nil
 }
 
-// landed reports whether a torrent matching title is now in our category. It
-// confirms a slow add (see addURLs/addFile) actually took effect, using a fresh
-// short-lived context so a stalled add request doesn't taint the check.
-func (q *qbittorrent) landed(title string) bool {
+// findHash looks up the hash of the torrent matching title in our category,
+// using a fresh short-lived context so a stalled add request doesn't taint the
+// check. An exact normalized match is preferred; a substring match is the
+// fallback, tolerating a tracker or the client itself appending/mutating the
+// name we asked for — the same latitude an exact match can't afford, which is
+// why it's tried second rather than skipped. Returns "" when nothing matches.
+func (q *qbittorrent) findHash(title string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 	items, err := q.List(ctx)
 	if err != nil {
-		return false
+		return ""
 	}
 	want := normalizeTitle(title)
+	if want == "" {
+		return ""
+	}
+	fallback := ""
 	for _, it := range items {
 		got := normalizeTitle(it.Title)
-		if want != "" && (got == want || strings.Contains(got, want)) {
-			return true
+		if got == want {
+			return it.ID
+		}
+		if fallback == "" && strings.Contains(got, want) {
+			fallback = it.ID
 		}
 	}
-	return false
+	return fallback
 }
 
 // normalizeTitle lowercases a title to space-separated alphanumeric runs so
-// cosmetic punctuation differences don't defeat the landed() match.
+// cosmetic punctuation differences don't defeat the findHash() match.
 func normalizeTitle(s string) string {
 	var b strings.Builder
 	space := false
@@ -292,8 +307,8 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 	resp, err := attempt()
 	if err != nil {
 		// Slow bridge: the upload may have landed despite the timeout.
-		if q.landed(title) {
-			return "", nil
+		if hash := q.findHash(title); hash != "" {
+			return hash, nil
 		}
 		return "", fmt.Errorf("qbittorrent: %w", err)
 	}
@@ -303,8 +318,8 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 			return "", err
 		}
 		if resp, err = attempt(); err != nil {
-			if q.landed(title) {
-				return "", nil
+			if hash := q.findHash(title); hash != "" {
+				return hash, nil
 			}
 			return "", fmt.Errorf("qbittorrent: %w", err)
 		}
@@ -317,7 +332,7 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 	if strings.HasPrefix(string(body), "Fails") {
 		return "", fmt.Errorf("qbittorrent rejected the torrent")
 	}
-	return "", nil
+	return q.findHash(title), nil
 }
 
 // torrentFilename makes a filesystem-safe "<title>.torrent" for the upload.

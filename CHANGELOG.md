@@ -231,6 +231,17 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Removing a torrent download from Activity before it imported could leave
+  that book permanently stuck reporting "a grab is already pending," blocking
+  any new search or grab for it.** qBittorrent's add endpoint never echoes
+  back the torrent's hash, so every torrent grab was recorded with an empty
+  client item id; removing it from the queue could then only resolve (close
+  out) the matching pending-grab record via an exact, punctuation-sensitive
+  title match, and any mismatch (a tracker or the client itself mutating the
+  name) silently left that grab open forever. The hash is now looked up right
+  after adding — preferring an exact title match, falling back to a
+  substring match — so removal (and the queue's own grab-to-book linking) can
+  find the grab by its real id instead.
 - **Switching an author or book's metadata provider override and refreshing
   always failed with "not found at metadata provider"** — reproduced live with
   Frank Herbert pinned to Open Library after being added via Hardcover.
