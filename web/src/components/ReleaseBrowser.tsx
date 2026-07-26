@@ -247,6 +247,15 @@ export default function ReleaseBrowser({
                     >
                       {c.score}
                     </span>
+                    {c.infoUrl && (
+                      <button
+                        className="toggle"
+                        onClick={() => window.open(c.infoUrl, "_blank", "noopener,noreferrer")}
+                        title="Open this release's source page in a new tab"
+                      >
+                        Source
+                      </button>
+                    )}
                     {state ? (
                       <span className={state.startsWith("✗") ? "notice bad" : "notice ok"}>
                         {state === "sending" ? "Sending…" : state}

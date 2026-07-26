@@ -11,6 +11,11 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **A "Source" button on each release in the search browser** opens the
+  release's own listing/info page in a new tab (indexer feeds carry this as
+  the standard Torznab/Newznab `<comments>` field; native sources set it from
+  their own listing/file page). Only shown when a release actually carries
+  one.
 - **AudioBook Bay results carry file size and posted date** straight from the
   search listing (no extra request needed), and the release scorer's author
   check now falls back to a post's own tag list when a series/collection
