@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -144,13 +145,31 @@ func (q *qbittorrent) Add(ctx context.Context, dlURL, title string) (string, err
 	return q.addURLs(ctx, dlURL, title)
 }
 
+// magnetHashRe extracts a magnet URI's v1 ("btih") or v2 ("btmh") info hash —
+// the same hex form AudioBookBay's own indexer already builds magnets from
+// and extracts them with (see audiobookbay.go's magnetHashRe).
+var magnetHashRe = regexp.MustCompile(`(?i)xt=urn:bt[im]h:([0-9a-f]{40,64})`)
+
+// magnetHash returns a magnet URI's info hash, lowercased to match how
+// clients report it, or "" if urls isn't a magnet (or carries no hash).
+func magnetHash(urls string) string {
+	m := magnetHashRe.FindStringSubmatch(urls)
+	if m == nil {
+		return ""
+	}
+	return strings.ToLower(m[1])
+}
+
 // addURLs hands qBittorrent a magnet (or a URL it can fetch itself) via the
-// urls field. The add endpoint never echoes the hash back, so it's looked up
-// right after by title — giving the grab a real client item id instead of
-// leaving it empty, which is what left removeQueueItem (and the queue's own
-// grab-to-book linking) unable to find this item again by anything but a
-// title match.
+// urls field. A magnet's own info hash is exact and independent of whatever
+// name the client ends up reporting for the torrent — a debrid bridge
+// (TorBox) can ignore our rename request outright, always reporting the
+// uploader's own name instead, which is routinely differently formatted from
+// (or an outright typo of) the release title and silently defeats any
+// title-based match — so the magnet's hash is used directly whenever
+// available; a non-magnet URL falls back to looking the hash up by title.
 func (q *qbittorrent) addURLs(ctx context.Context, urls, title string) (string, error) {
+	hash := magnetHash(urls)
 	before := q.snapshotHashes(ctx)
 	body, err := q.do(ctx, "/api/v2/torrents/add",
 		url.Values{"urls": {urls}, "category": {q.cfg.Category}, "rename": {title}})
@@ -158,13 +177,19 @@ func (q *qbittorrent) addURLs(ctx context.Context, urls, title string) (string, 
 		// A debrid bridge can accept the magnet yet respond too slowly, tripping
 		// the client timeout even though the torrent lands. Confirm via the list
 		// before giving up, so the grab is still recorded.
-		if hash := q.findHash(title, before); hash != "" {
+		if hash != "" && q.hashLanded(ctx, hash) {
 			return hash, nil
+		}
+		if h := q.findHash(title, before); h != "" {
+			return h, nil
 		}
 		return "", err
 	}
 	if strings.HasPrefix(string(body), "Fails") {
 		return "", fmt.Errorf("qbittorrent rejected the torrent")
+	}
+	if hash != "" {
+		return hash, nil
 	}
 	return q.findHash(title, before), nil
 }
@@ -187,6 +212,24 @@ func (q *qbittorrent) snapshotHashes(ctx context.Context) map[string]bool {
 		seen[it.ID] = true
 	}
 	return seen
+}
+
+// hashLanded reports whether hash is now present in our category — used to
+// confirm a magnet actually landed despite the add request itself erroring
+// out (a slow debrid bridge tripping our client timeout).
+func (q *qbittorrent) hashLanded(ctx context.Context, hash string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	items, err := q.List(ctx)
+	if err != nil {
+		return false
+	}
+	for _, it := range items {
+		if strings.EqualFold(it.ID, hash) {
+			return true
+		}
+	}
+	return false
 }
 
 // findHash looks up the hash of the torrent matching title in our category,

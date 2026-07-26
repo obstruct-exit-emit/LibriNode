@@ -124,3 +124,28 @@ func TestQBittorrentAddIgnoresPreexistingSubstringMatch(t *testing.T) {
 		t.Errorf("Add returned id %q — misattributed the pre-existing \"Dune Messiah\" torrent's hash to this new \"Dune\" grab", id)
 	}
 }
+
+// TestQBittorrentAddUsesMagnetHashDirectly: a debrid bridge (TorBox) can
+// ignore the rename request entirely, always reporting the uploader's own
+// torrent name instead — often a wildly different, or typo'd, string from
+// the release title we grabbed under ("theq last emperox john scalzi" for
+// "The Last Emperox"). Title matching can never bridge that gap, but the
+// magnet's own info hash doesn't depend on it at all: Add must return that
+// hash straight from the magnet URI, with no reliance on whatever title the
+// client reports back. Regression for torrent imports becoming permanently
+// unmatchable on a bridge that never honors rename.
+func TestQBittorrentAddUsesMagnetHashDirectly(t *testing.T) {
+	hash := "1234567890abcdef1234567890abcdef12345678" // 40 hex chars
+	stub := &qbitStub{
+		pendingAdd: &qbitTorrent{Hash: hash, Name: "theq last emperox john scalzi", State: "downloading", Category: "librinode"},
+	}
+	q := newTestQBittorrent(t, stub.server())
+
+	id, err := q.Add(context.Background(), "magnet:?xt=urn:btih:"+hash+"&dn=whatever", "The Last Emperox")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if id != hash {
+		t.Errorf("Add returned id %q, want the magnet's own hash %q regardless of the client's reported title", id, hash)
+	}
+}

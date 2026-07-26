@@ -231,6 +231,18 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Torrent downloads through a debrid bridge (TorBox) could never import,
+  and never showed a status on their book's page either** — the bridge
+  ignores LibriNode's rename request outright and always reports the
+  uploader's own torrent name instead, which is routinely differently
+  formatted from (or an outright typo of) the release title stored at grab
+  time ("theq last emperox john scalzi" for "The Last Emperox"). Every
+  matching path that fell back to comparing titles — import, and the queue's
+  own grab-to-book linking that puts a "downloading" badge on a book's page —
+  could never bridge that gap. A magnet already carries its own exact info
+  hash, independent of any title or rename; it's now used directly as the
+  grab's client item id, so matching no longer depends on the client
+  reporting a title anywhere close to the one we grabbed under.
 - **SABnzbd downloads never appeared in the Activity queue until they
   finished** — only completed usenet downloads showed up; anything still
   downloading was invisible. SABnzbd names a download's category field
