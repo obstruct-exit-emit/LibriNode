@@ -241,7 +241,11 @@ in progress. Highlights from the hardening period, newest first:
   name) silently left that grab open forever. The hash is now looked up right
   after adding — preferring an exact title match, falling back to a
   substring match — so removal (and the queue's own grab-to-book linking) can
-  find the grab by its real id instead.
+  find the grab by its real id instead. This only prevents the problem going
+  forward — a grab already stuck this way from before the fix stays stuck, so
+  Activity → History now has a "cancel" button on any entry still reporting
+  "grabbed": it manually clears LibriNode's own pending record without
+  touching the download client, unblocking a new search or grab for that book.
 - **Switching an author or book's metadata provider override and refreshing
   always failed with "not found at metadata provider"** — reproduced live with
   Frank Herbert pinned to Open Library after being added via Hardcover.

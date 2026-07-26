@@ -288,6 +288,30 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"records": records, "total": total})
 }
 
+// handleCancelGrab manually resolves a pending grab as failed, without
+// touching any download client. A grab can be left permanently "pending" —
+// blocking any new search or grab for its book — when its queue entry is
+// already gone: removed directly in the client, lost to a client restart, or
+// (before this fix) a torrent grab whose client item id was never reliably
+// recorded. This is the manual escape hatch for a grab already stuck that
+// way, independent of whatever state the client itself is in.
+func (s *server) handleCancelGrab(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid grab id")
+		return
+	}
+	if err := s.downloads.Store().ResolveGrab(id, download.GrabStatusFailed, "manually cancelled"); err != nil {
+		if errors.Is(err, download.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "grab not found")
+			return
+		}
+		writeDownloadError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cancelled": id})
+}
+
 // handleBlocklist lists releases blocked after failed downloads.
 func (s *server) handleBlocklist(w http.ResponseWriter, r *http.Request) {
 	entries, err := s.downloads.Store().ListBlocklist()

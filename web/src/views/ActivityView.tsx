@@ -66,6 +66,20 @@ export default function ActivityView({
       .finally(() => setRemoving(""));
   };
 
+  const cancelGrab = async (g: GrabRecord) => {
+    const ok = await confirmDlg({
+      title: "Cancel pending grab",
+      message: `Stop tracking "${g.title}" as pending?\n\nThis only clears LibriNode's own record — it does not touch the download client. Use this when the download is gone from Activity above but a new search still says one is already pending.`,
+      confirmLabel: "Cancel grab",
+      danger: true,
+    });
+    if (!ok) return;
+    api
+      .cancelGrab(g.id)
+      .then(reload)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  };
+
   const runImport = () => {
     setImporting(true);
     setNotice("");
@@ -227,6 +241,15 @@ export default function ActivityView({
                       <span className={`owned ${g.status === "failed" ? "no" : "yes"}`}>
                         {g.status}
                       </span>
+                      {g.status === "grabbed" && (
+                        <button
+                          className="danger"
+                          title="Clear this pending grab without touching the download client — use this when the download itself is already gone but a new search still says one is pending"
+                          onClick={() => cancelGrab(g)}
+                        >
+                          cancel
+                        </button>
+                      )}
                     </span>
                   </div>
                 </li>

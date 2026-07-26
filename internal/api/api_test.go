@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -88,6 +89,7 @@ type testAPI struct {
 	srv    *httptest.Server
 	apiKey string
 	mgr    *metadata.Manager
+	db     *sql.DB
 	t      *testing.T
 }
 
@@ -111,7 +113,7 @@ func newTestAPI(t *testing.T, provider metadata.Provider) *testAPI {
 	handler, _ := NewRouter(cfg, db, mgr, "test")
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return &testAPI{srv: srv, apiKey: cfg.APIKey, mgr: mgr, t: t}
+	return &testAPI{srv: srv, apiKey: cfg.APIKey, mgr: mgr, db: db, t: t}
 }
 
 // call makes an authenticated request and decodes the JSON response into out

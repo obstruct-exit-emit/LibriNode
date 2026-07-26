@@ -798,6 +798,8 @@ export const api = {
     request<{ records: GrabRecord[]; total: number }>(
       `/api/v1/history?search=${encodeURIComponent(search)}&limit=${limit}&offset=${offset}`,
     ),
+  cancelGrab: (id: number) =>
+    request<{ cancelled: number }>(`/api/v1/grab/${id}/cancel`, { method: "POST" }),
   runImport: () =>
     request<ImportResult>("/api/v1/library/import", { method: "POST" }),
 
