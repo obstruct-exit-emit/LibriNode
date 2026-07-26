@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/librinode/librinode/internal/comicinfo"
@@ -40,6 +41,12 @@ type Service struct {
 	// pathMappings (optional) reports the remote→local path mappings applied
 	// to client-reported download paths before any disk access.
 	pathMappings func() []config.PathMapping
+	// runMu serializes Run passes: the periodic sweep (every ImportInterval)
+	// and a manual "Import now" click can otherwise overlap, and a pack
+	// import's cleanup step (RemoveAll-ing the whole download folder) racing
+	// against a second, still-in-progress pass copying that same download's
+	// other book out of it would corrupt or silently drop that book's file.
+	runMu sync.Mutex
 }
 
 func New(store *library.Store, downloads *download.Service, org *organize.Service, settings func() config.ImportSettings) *Service {
@@ -86,8 +93,13 @@ func (r *Result) note(format string, args ...any) {
 	r.Messages = append(r.Messages, fmt.Sprintf(format, args...))
 }
 
-// Run performs one import pass over all download clients.
+// Run performs one import pass over all download clients. Serialized against
+// any other in-progress pass (the periodic sweep and a manual "Import now"
+// click both call this) — see runMu.
 func (s *Service) Run(ctx context.Context) (*Result, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
 	result := &Result{Messages: []string{}}
 
 	items, clientErrs, err := s.downloads.Queue(ctx)

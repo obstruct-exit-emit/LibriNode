@@ -1548,3 +1548,37 @@ func TestImportAudiobookPackFallsBackWhenGrabbedFolderUnmatched(t *testing.T) {
 		}
 	}
 }
+
+// TestRunSerializesConcurrentPasses: the periodic sweep and a manual
+// "Import now" click both call Run, and nothing previously stopped them
+// overlapping. A pack import's cleanup step (RemoveAll-ing the whole
+// download folder once its books are copied out) racing against a second,
+// still-in-progress pass that's mid-way through copying that same
+// download's OTHER book would corrupt or silently drop that book's file —
+// exactly the "only one of the two books ever imports, inconsistently
+// which one" bug this guards against. Run must serialize against any
+// already-in-progress pass rather than let two run concurrently.
+func TestRunSerializesConcurrentPasses(t *testing.T) {
+	f := fixture(t)
+
+	f.svc.runMu.Lock() // simulate a pass already in progress
+	done := make(chan struct{})
+	go func() {
+		f.svc.Run(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("Run returned while another pass held the lock — passes are not serialized")
+	case <-time.After(100 * time.Millisecond):
+		// still blocked, as expected
+	}
+
+	f.svc.runMu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run never completed after the lock was released")
+	}
+}

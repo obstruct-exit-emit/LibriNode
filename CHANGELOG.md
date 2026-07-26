@@ -260,6 +260,15 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **A multi-book pack could import only one of its books, inconsistently
+  which one** — nothing previously stopped the periodic import sweep and a
+  manual "Import now" click from overlapping. A pack's cleanup step
+  (deleting the whole download folder once its books are copied out) racing
+  against a second, still-in-progress pass mid-copy on that same download's
+  *other* book would silently drop or corrupt whichever book that pass was
+  working on — purely a timing accident, so sometimes the book you searched
+  for came through and sometimes the other one did. Import passes are now
+  serialized: a pass already running is waited out instead of raced.
 - **Torrent downloads through a debrid bridge (TorBox) could never import,
   and never showed a status on their book's page either** — the bridge
   ignores LibriNode's rename request outright and always reports the
