@@ -2,7 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import { DetailSkeleton } from "../components/Skeleton";
-import { SortSelect, sortBooks, groupBySeries } from "../components/SortControl";
+import {
+  SortSelect,
+  DirectionButtons,
+  sortBooks,
+  groupBySeries,
+  defaultDirFor,
+  type SortDir,
+} from "../components/SortControl";
+
+// Books section display: "grid" (current default, large covers), "compact"
+// (same grid, smaller covers), or "list" (a plain title + status row, like
+// manga volumes/issues).
+type BooksView = "grid" | "compact" | "list";
 
 // Full-page author detail, *arr-style: header with portrait, description and
 // author-level actions, then this library's books as a cover grid — clicking
@@ -29,6 +41,14 @@ export default function AuthorDetailView({
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [providerOptions, setProviderOptions] = useState<string[]>([]);
   const [booksSort, setBooksSort] = useState("title");
+  const [booksDir, setBooksDir] = useState<SortDir>(defaultDirFor("title"));
+  const [booksView, setBooksView] = useState<BooksView>("grid");
+  // Picking a new sort key starts at that key's own natural direction; the
+  // direction buttons then apply to whichever key is currently chosen.
+  const changeBooksSort = (key: string) => {
+    setBooksSort(key);
+    setBooksDir(defaultDirFor(key));
+  };
 
   // The provider-override selector lists the registered book providers.
   useEffect(() => {
@@ -159,6 +179,29 @@ export default function AuthorDetailView({
     );
   };
 
+  // List view: a plain title + status row, like manga volumes/issues —
+  // no covers, one line per book.
+  const renderRow = (b: Book) => {
+    const bookOwned = library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile;
+    const monitored = library === "ebook" ? b.ebookMonitored : b.audiobookMonitored;
+    return (
+      <li key={b.id}>
+        <div className="row">
+          <button className="link" onClick={() => onOpenBook(b.id)}>
+            {b.title}
+          </button>
+          <span className="row-actions">
+            {b.releaseDate && <span className="muted">{b.releaseDate.slice(0, 4)}</span>}
+            {!monitored && <span className="muted">unmonitored</span>}
+            <span className={bookOwned ? "owned yes" : "owned no"}>
+              {bookOwned ? "owned" : "wanted"}
+            </span>
+          </span>
+        </div>
+      </li>
+    );
+  };
+
   return (
     <>
       <button className="link back" onClick={onBack}>
@@ -263,18 +306,38 @@ export default function AuthorDetailView({
       <section className="card">
         <div className="card-head">
           <h2>Books ({books.length})</h2>
-          {books.length > 1 && (
-            <SortSelect
-              value={booksSort}
-              onChange={setBooksSort}
-              options={[
-                ["title", "Title"],
-                ["series", "Series"],
-                ["date", "Release date"],
-                ["rating", "Rating"],
-              ]}
-            />
-          )}
+          <span className="row-actions">
+            <span className="view-toggle">
+              {(["grid", "compact", "list"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={booksView === v ? "toggle on" : "toggle"}
+                  onClick={() => setBooksView(v)}
+                  title={
+                    v === "grid" ? "Covers" : v === "compact" ? "Smaller covers" : "List"
+                  }
+                >
+                  {v === "grid" ? "Grid" : v === "compact" ? "Compact" : "List"}
+                </button>
+              ))}
+            </span>
+            {books.length > 1 && (
+              <>
+                <SortSelect
+                  value={booksSort}
+                  onChange={changeBooksSort}
+                  options={[
+                    ["title", "Title"],
+                    ["series", "Series"],
+                    ["date", "Release date"],
+                    ["rating", "Rating"],
+                  ]}
+                />
+                <DirectionButtons value={booksDir} onChange={setBooksDir} />
+              </>
+            )}
+          </span>
         </div>
         {books.length === 0 ? (
           <p className="muted">
@@ -283,16 +346,28 @@ export default function AuthorDetailView({
             files.
           </p>
         ) : booksSort === "series" ? (
-          groupBySeries(sortBooks(books, "series"), (b) => b.series?.[0]?.title ?? "").map((g, _gi, arr) => (
-            <div key={g.title || "standalone"}>
-              {(g.title || arr.some((x) => x.title !== "")) && (
-                <h3 className="group-heading">{g.title || "Standalone"}</h3>
-              )}
-              <div className="poster-grid">{g.items.map(renderPoster)}</div>
-            </div>
-          ))
+          groupBySeries(sortBooks(books, "series", booksDir), (b) => b.series?.[0]?.title ?? "").map(
+            (g, _gi, arr) => (
+              <div key={g.title || "standalone"}>
+                {(g.title || arr.some((x) => x.title !== "")) && (
+                  <h3 className="group-heading">{g.title || "Standalone"}</h3>
+                )}
+                {booksView === "list" ? (
+                  <ul className="rows">{g.items.map(renderRow)}</ul>
+                ) : (
+                  <div className={booksView === "compact" ? "poster-grid compact" : "poster-grid"}>
+                    {g.items.map(renderPoster)}
+                  </div>
+                )}
+              </div>
+            ),
+          )
+        ) : booksView === "list" ? (
+          <ul className="rows">{sortBooks(books, booksSort, booksDir).map(renderRow)}</ul>
         ) : (
-          <div className="poster-grid">{sortBooks(books, booksSort).map(renderPoster)}</div>
+          <div className={booksView === "compact" ? "poster-grid compact" : "poster-grid"}>
+            {sortBooks(books, booksSort, booksDir).map(renderPoster)}
+          </div>
         )}
       </section>
 
@@ -326,6 +401,11 @@ function MissingCard({
   const [busyAll, setBusyAll] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [sort, setSort] = useState("series");
+  const [dir, setDir] = useState<SortDir>(defaultDirFor("series"));
+  const changeSort = (key: string) => {
+    setSort(key);
+    setDir(defaultDirFor(key));
+  };
 
   useEffect(() => {
     api
@@ -374,9 +454,12 @@ function MissingCard({
   };
 
   // Grouping: the backend orders series (alphabetical, by position), then
-  // standalones by release date — preserve that order while grouping.
+  // standalones by release date — preserve that order while grouping, unless
+  // the direction buttons ask for it reversed (whole-array reverse keeps
+  // consecutive series runs intact, so groups still form correctly).
+  const orderedForGroups = dir === "desc" ? [...missing].reverse() : missing;
   const groups: { title: string; books: Book[] }[] = [];
-  for (const b of missing) {
+  for (const b of orderedForGroups) {
     const title = b.series?.[0]?.title ?? "";
     const last = groups[groups.length - 1];
     if (last && last.title === title) {
@@ -462,16 +545,19 @@ function MissingCard({
             </>
           )}
           {missing.length > 1 && (
-            <SortSelect
-              value={sort}
-              onChange={setSort}
-              options={[
-                ["series", "Series"],
-                ["date", "Release date"],
-                ["title", "Title"],
-                ["rating", "Rating"],
-              ]}
-            />
+            <>
+              <SortSelect
+                value={sort}
+                onChange={changeSort}
+                options={[
+                  ["series", "Series"],
+                  ["date", "Release date"],
+                  ["title", "Title"],
+                  ["rating", "Rating"],
+                ]}
+              />
+              <DirectionButtons value={dir} onChange={setDir} />
+            </>
           )}
         </div>
       </div>
@@ -527,7 +613,7 @@ function MissingCard({
               </div>
             ))
           ) : (
-            <ul className="rows">{sortBooks(missing, sort).map(renderRow)}</ul>
+            <ul className="rows">{sortBooks(missing, sort, dir).map(renderRow)}</ul>
           )}
         </>
       )}

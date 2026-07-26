@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type HomeItem } from "../api";
 import { downloadPct, useQueue } from "../useQueue";
-import { SortSelect, sortItems, groupBySeries } from "./SortControl";
+import { SortSelect, DirectionButtons, sortItems, groupBySeries, defaultDirFor, type SortDir } from "./SortControl";
 
 // WantedCard is the per-library Wanted page: everything monitored but
 // missing this format's file, each with its own search button (magazines
@@ -17,6 +17,13 @@ export default function WantedCard({
   const [busyID, setBusyID] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
   const [sort, setSort] = useState("default");
+  const [dir, setDir] = useState<SortDir>(defaultDirFor("default"));
+  // Picking a new sort key starts at that key's own natural direction; the
+  // direction dropdown then applies to whichever key is currently chosen.
+  const changeSort = (key: string) => {
+    setSort(key);
+    setDir(defaultDirFor(key));
+  };
   // Shared queue poll: wanted rows with an active download show its progress
   // instead of another grab button.
   const queue = useQueue();
@@ -50,7 +57,7 @@ export default function WantedCard({
       .finally(() => setBusyID(null));
   };
 
-  const shown = sortItems(items, sort);
+  const shown = sortItems(items, sort, dir);
 
   const renderRow = (item: HomeItem) => (
     <li key={item.bookId}>
@@ -84,7 +91,7 @@ export default function WantedCard({
         <h2>Wanted ({items.length})</h2>
         <SortSelect
           value={sort}
-          onChange={setSort}
+          onChange={changeSort}
           options={[
             ["default", "Recently added"],
             ["title", "Title"],
@@ -93,6 +100,7 @@ export default function WantedCard({
             ["rating", "Rating"],
           ]}
         />
+        <DirectionButtons value={dir} onChange={setDir} />
       </div>
       <p className="muted">
         Monitored but not owned in this library. Auto grab searches the
