@@ -52,7 +52,14 @@ func writeSyncError(w http.ResponseWriter, err error) {
 	case errors.Is(err, library.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, metadata.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not found at metadata provider")
+		// err.Error() carries specifics when available (e.g. a provider-override
+		// refresh that couldn't re-match the record by name on the new
+		// provider) — more useful than a bare, generic "not found".
+		msg := err.Error()
+		if msg == metadata.ErrNotFound.Error() {
+			msg = "not found at metadata provider"
+		}
+		writeError(w, http.StatusNotFound, msg)
 	default:
 		writeError(w, http.StatusBadGateway, err.Error())
 	}

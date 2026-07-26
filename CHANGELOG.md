@@ -231,6 +231,22 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Switching an author or book's metadata provider override and refreshing
+  always failed with "not found at metadata provider"** — reproduced live with
+  Frank Herbert pinned to Open Library after being added via Hardcover.
+  Refresh was reusing the record's original provider's foreign id when calling
+  the override provider, but that id belongs to a different provider's
+  namespace entirely (Hardcover's author id means nothing to Open Library) and
+  will never resolve there. Refresh now re-finds the record by name (authors)
+  or title (books) on the override provider first, preferring an exact match.
+  Fixing this also surfaced a second bug it would have hit next: once
+  resolved, saving under the new provider's identity would have upserted by
+  the (source, foreign id) natural key, which no longer matched the existing
+  row — creating a duplicate author/book instead of updating it in place, and
+  orphaning everything linked to the original. A refresh now always updates
+  its known row by internal id, and an author-level provider switch matches
+  its existing bibliography by title so owned/monitored books update in place
+  too instead of duplicating alongside the fresh set.
 - **Activity/queue could show another app's downloads.** A qBittorrent or
   SABnzbd instance shared with another *arr app (common with debrid-service
   bridges like TorBox) sometimes doesn't honor the category filter LibriNode

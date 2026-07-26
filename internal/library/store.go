@@ -58,6 +58,20 @@ func (s *Store) UpsertAuthor(a *Author) error {
 	if a.SortName == "" {
 		a.SortName = SortName(a.Name)
 	}
+	// A caller that already knows the row (a refresh, keyed by internal id —
+	// never a fresh add) updates it directly, source/foreign_id included:
+	// refreshing through a per-record provider override changes the natural
+	// (metadata_source, foreign_id) key, and upserting by that key would
+	// create a second row instead of updating this one.
+	if a.ID != 0 {
+		_, err := s.db.Exec(`
+			UPDATE authors SET metadata_source = ?, foreign_id = ?, name = ?, sort_name = ?,
+				description = ?, image_url = ?, monitored = ?, updated_at = datetime('now')
+			WHERE id = ?`,
+			a.Source, a.ForeignID, a.Name, a.SortName, a.Description, a.ImageURL, a.Monitored, a.ID,
+		)
+		return err
+	}
 	return s.db.QueryRow(`
 		INSERT INTO authors (metadata_source, foreign_id, name, sort_name, description, image_url, monitored)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -227,6 +241,21 @@ func (s *Store) UpsertBook(b *Book) error {
 	}
 	if b.MediaType == "" {
 		b.MediaType = "book"
+	}
+	// A caller that already knows the row (a refresh, keyed by internal id —
+	// never a fresh add) updates it directly, source/foreign_id included: see
+	// UpsertAuthor. Library membership columns are left untouched here too,
+	// matching the natural-key path below.
+	if b.ID != 0 {
+		_, err := s.db.Exec(`
+			UPDATE books SET author_id = ?, metadata_source = ?, media_type = ?, foreign_id = ?,
+				title = ?, sort_title = ?, description = ?, release_date = ?, rating = ?, cover_url = ?,
+				updated_at = datetime('now')
+			WHERE id = ?`,
+			b.AuthorID, b.Source, b.MediaType, b.ForeignID, b.Title, b.SortTitle,
+			b.Description, b.ReleaseDate, b.Rating, b.CoverURL, b.ID,
+		)
+		return err
 	}
 	return s.db.QueryRow(`
 		INSERT INTO books (author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,

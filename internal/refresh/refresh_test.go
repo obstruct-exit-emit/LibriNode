@@ -326,3 +326,193 @@ func TestRefreshAuthorNotFound(t *testing.T) {
 		t.Errorf("err = %v, want library.ErrNotFound", err)
 	}
 }
+
+// otherProvider is a second, distinctly-named metadata source used to test a
+// per-record provider override — one whose ids share nothing with the
+// "fake" provider newFixture wires up as the active/original one.
+type otherProvider struct{}
+
+func (otherProvider) Name() string { return "other" }
+
+func (otherProvider) SearchAuthors(_ context.Context, query string) ([]metadata.Author, error) {
+	if query != "Terry Pratchett" {
+		return nil, nil
+	}
+	return []metadata.Author{{ForeignID: "other-author-9", Name: "Terry Pratchett"}}, nil
+}
+
+func (otherProvider) SearchBooks(_ context.Context, query string) ([]metadata.Book, error) {
+	if query != "The Colour of Magic" {
+		return nil, nil
+	}
+	return []metadata.Book{{
+		ForeignID: "other-book-9", Title: "The Colour of Magic", AuthorName: "Terry Pratchett",
+	}}, nil
+}
+
+func (otherProvider) GetAuthor(_ context.Context, id string) (*metadata.Author, error) {
+	if id != "other-author-9" {
+		return nil, metadata.ErrNotFound
+	}
+	return &metadata.Author{
+		ForeignID: "other-author-9", Name: "Terry Pratchett",
+		Description: "Resolved via the override provider, by name.",
+		Books: []metadata.Book{
+			{ForeignID: "other-book-9", Title: "The Colour of Magic", AuthorForeignID: "other-author-9", AuthorName: "Terry Pratchett"},
+		},
+	}, nil
+}
+
+func (otherProvider) GetBook(_ context.Context, id string) (*metadata.Book, error) {
+	if id != "other-book-9" {
+		return nil, metadata.ErrNotFound
+	}
+	return &metadata.Book{
+		ForeignID: "other-book-9", Title: "The Colour of Magic", AuthorForeignID: "other-author-9",
+		AuthorName: "Terry Pratchett", Description: "Resolved via the override provider, by name.",
+	}, nil
+}
+
+// TestRefreshAuthorProviderOverrideResolvesFreshID: an author sourced from
+// one provider, pinned via a per-record override to a DIFFERENT provider,
+// must not blindly reuse the original provider's foreign id on refresh — it
+// belongs to a different namespace ("100" means nothing to the override
+// provider) and would just 404 there. The refresh must re-find the author by
+// name on the override provider instead. Regression for the bug where
+// switching a record's provider override always failed with "not found at
+// metadata provider", confirmed live against Open Library.
+func TestRefreshAuthorProviderOverrideResolvesFreshID(t *testing.T) {
+	svc, store, _ := newFixture(t)
+	metadata.Register("other", func(metadata.Settings) (metadata.Provider, error) {
+		return otherProvider{}, nil
+	})
+
+	author := &library.Author{
+		Source: "fake", ForeignID: "100", Name: "Terry Pratchett", Monitored: true,
+	}
+	if err := store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	// A book already on file under the original provider, sharing a title
+	// with what the override provider's bibliography will report under a
+	// completely different foreign id.
+	book := &library.Book{
+		AuthorID: author.ID, Source: "fake", ForeignID: "1",
+		Title: "The Colour of Magic", Monitored: true,
+	}
+	if err := store.UpsertBook(book); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAuthorProviderOverride(author.ID, "other"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.RefreshAuthor(context.Background(), author.ID); err != nil {
+		t.Fatalf("RefreshAuthor: %v", err)
+	}
+
+	// The bibliography book must have updated in place by title match, not
+	// duplicated under the override provider's own foreign id.
+	books, err := store.ListBooks(author.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(books) != 1 {
+		t.Fatalf("books under author after override refresh = %d, want 1 (no duplicate): %+v", len(books), books)
+	}
+	if books[0].ID != book.ID {
+		t.Errorf("bibliography book was duplicated instead of updated in place: original id %d, got id %d", book.ID, books[0].ID)
+	}
+	if books[0].Source != "other" || books[0].ForeignID != "other-book-9" {
+		t.Errorf("bibliography book not updated to the override provider's identity: %+v", books[0])
+	}
+
+	got, err := store.GetAuthor(author.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != "other" {
+		t.Errorf("author.Source = %q, want %q (refreshed via the override provider)", got.Source, "other")
+	}
+	if got.Description != "Resolved via the override provider, by name." {
+		t.Errorf("author not refreshed with the override provider's data: %+v", got)
+	}
+
+	// The row must have been updated in place, not duplicated: the new
+	// (source, foreign_id) natural key must resolve back to the SAME id, and
+	// no second row should exist.
+	byNewKey, err := store.GetAuthorByForeignID("other", "other-author-9")
+	if err != nil {
+		t.Fatalf("GetAuthorByForeignID(other, other-author-9): %v", err)
+	}
+	if byNewKey.ID != author.ID {
+		t.Errorf("override refresh created a duplicate author row: original id %d, new-key id %d", author.ID, byNewKey.ID)
+	}
+	all, err := store.ListAuthors()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 {
+		t.Errorf("author count after override refresh = %d, want 1 (no duplicate)", len(all))
+	}
+}
+
+// TestRefreshBookProviderOverrideResolvesFreshID is the RefreshBook
+// equivalent: the book's own stored foreign id belongs to the original
+// provider, not the author's override, so it must be re-found by title.
+func TestRefreshBookProviderOverrideResolvesFreshID(t *testing.T) {
+	svc, store, _ := newFixture(t)
+	metadata.Register("other", func(metadata.Settings) (metadata.Provider, error) {
+		return otherProvider{}, nil
+	})
+
+	author := &library.Author{
+		Source: "fake", ForeignID: "100", Name: "Terry Pratchett", Monitored: true,
+	}
+	if err := store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAuthorProviderOverride(author.ID, "other"); err != nil {
+		t.Fatal(err)
+	}
+	book := &library.Book{
+		AuthorID: author.ID, Source: "fake", ForeignID: "1",
+		Title: "The Colour of Magic", Monitored: true,
+	}
+	if err := store.UpsertBook(book); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.RefreshBook(context.Background(), book.ID); err != nil {
+		t.Fatalf("RefreshBook: %v", err)
+	}
+
+	got, err := store.GetBook(book.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Description != "Resolved via the override provider, by name." {
+		t.Errorf("book not refreshed with the override provider's data: %+v", got)
+	}
+	// Must be the SAME row under the author, not a duplicate, and the author
+	// itself (already resolved by RefreshBook's caller) must not have been
+	// re-derived into a duplicate stub via the book's (now different) author
+	// foreign id.
+	if got.AuthorID != author.ID {
+		t.Errorf("book.AuthorID = %d, want %d (the already-known author, not a duplicate stub)", got.AuthorID, author.ID)
+	}
+	byNewKey, err := store.GetBookByForeignID("other", "other-book-9")
+	if err != nil {
+		t.Fatalf("GetBookByForeignID(other, other-book-9): %v", err)
+	}
+	if byNewKey.ID != book.ID {
+		t.Errorf("override refresh created a duplicate book row: original id %d, new-key id %d", book.ID, byNewKey.ID)
+	}
+	allAuthors, err := store.ListAuthors()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allAuthors) != 1 {
+		t.Errorf("author count after book override refresh = %d, want 1 (no duplicate stub)", len(allAuthors))
+	}
+}

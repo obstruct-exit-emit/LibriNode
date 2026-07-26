@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/librinode/librinode/internal/library"
@@ -66,13 +67,17 @@ func (s *Service) SyncAuthor(ctx context.Context, foreignID string, monitored bo
 	if err != nil {
 		return nil, err
 	}
-	return s.syncAuthorWith(ctx, p, foreignID, monitored)
+	return s.syncAuthorWith(ctx, p, foreignID, monitored, 0)
 }
 
 // syncAuthorWith is SyncAuthor through an explicit provider — the caller
 // resolves it (the active provider on add, or the author's provider override
-// on refresh).
-func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, foreignID string, monitored bool) (*library.Author, error) {
+// on refresh). existingID pins the author to an already-known row (a
+// refresh, so a provider-override switch — which changes source and foreign
+// id — updates that row instead of creating a second one); 0 lets
+// UpsertAuthor create-or-update by the natural (metadata_source, foreign_id)
+// key, as a fresh add does.
+func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, foreignID string, monitored bool, existingID int64) (*library.Author, error) {
 	remote, err := p.GetAuthor(ctx, foreignID)
 	if err != nil {
 		return nil, err
@@ -85,6 +90,7 @@ func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, forei
 		source = p.Name()
 	}
 	author := &library.Author{
+		ID:          existingID,
 		Source:      source,
 		ForeignID:   remote.ForeignID,
 		Name:        remote.Name,
@@ -95,11 +101,26 @@ func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, forei
 	if err := s.store.UpsertAuthor(author); err != nil {
 		return nil, err
 	}
+
+	// A provider-override refresh's bibliography carries a fresh set of
+	// foreign ids that won't match any book already on file under the old
+	// provider's — match by title instead, so a book the user already owns or
+	// enrolled updates in place rather than getting a duplicate row alongside
+	// an orphaned original under the old id.
+	byTitle := map[string]int64{}
+	if existingID != 0 {
+		if existingBooks, err := s.store.ListBooks(author.ID); err == nil {
+			for _, b := range existingBooks {
+				byTitle[strings.ToLower(strings.TrimSpace(b.Title))] = b.ID
+			}
+		}
+	}
 	for i := range remote.Books {
 		if remote.Books[i].Source == "" {
 			remote.Books[i].Source = source
 		}
-		if err := s.persistBook(p, &remote.Books[i], author.ID, monitored); err != nil {
+		knownBookID := byTitle[strings.ToLower(strings.TrimSpace(remote.Books[i].Title))]
+		if err := s.persistBook(p, &remote.Books[i], author.ID, monitored, knownBookID); err != nil {
 			return nil, err
 		}
 	}
@@ -140,18 +161,24 @@ func (s *Service) SyncBook(ctx context.Context, foreignID string, monitored bool
 	if err != nil {
 		return nil, err
 	}
-	return s.syncBookWith(ctx, p, foreignID, monitored)
+	return s.syncBookWith(ctx, p, foreignID, monitored, 0, 0)
 }
 
 // syncBookWith is SyncBook through an explicit provider — the caller
 // resolves it (the active provider on add, or the author's provider override
-// on refresh).
-func (s *Service) syncBookWith(ctx context.Context, p metadata.Provider, foreignID string, monitored bool) (*library.Book, error) {
+// on refresh). knownAuthorID pins the book to an author the caller already
+// resolved (a refresh, so a provider-override switch — which changes the
+// remote author's foreign id — reuses the existing author instead of
+// creating a duplicate stub under the new provider's id); 0 derives/creates
+// one from the remote book's author info, as a fresh add does. existingID
+// likewise pins the book itself to an already-known row; 0 lets UpsertBook
+// create-or-update by natural key.
+func (s *Service) syncBookWith(ctx context.Context, p metadata.Provider, foreignID string, monitored bool, knownAuthorID, existingID int64) (*library.Book, error) {
 	remote, err := p.GetBook(ctx, foreignID)
 	if err != nil {
 		return nil, err
 	}
-	if remote.AuthorForeignID == "" {
+	if knownAuthorID == 0 && remote.AuthorForeignID == "" {
 		return nil, fmt.Errorf("provider returned book %s without an author", foreignID)
 	}
 
@@ -161,22 +188,30 @@ func (s *Service) syncBookWith(ctx context.Context, p metadata.Provider, foreign
 	if source == "" {
 		source = p.Name()
 	}
-	author, err := s.store.GetAuthorByForeignID(source, remote.AuthorForeignID)
-	if errors.Is(err, library.ErrNotFound) {
-		author = &library.Author{
-			Source:    source,
-			ForeignID: remote.AuthorForeignID,
-			Name:      remote.AuthorName,
-			Monitored: false,
+
+	authorID := knownAuthorID
+	if authorID == 0 {
+		author, err := s.store.GetAuthorByForeignID(source, remote.AuthorForeignID)
+		if errors.Is(err, library.ErrNotFound) {
+			author = &library.Author{
+				Source:    source,
+				ForeignID: remote.AuthorForeignID,
+				Name:      remote.AuthorName,
+				Monitored: false,
+			}
+			err = s.store.UpsertAuthor(author)
 		}
-		err = s.store.UpsertAuthor(author)
-	}
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+		authorID = author.ID
 	}
 
-	if err := s.persistBook(p, remote, author.ID, monitored); err != nil {
+	if err := s.persistBook(p, remote, authorID, monitored, existingID); err != nil {
 		return nil, err
+	}
+	if existingID != 0 {
+		return s.store.GetBook(existingID)
 	}
 	return s.store.GetBookByForeignID(source, remote.ForeignID)
 }
@@ -195,6 +230,69 @@ func (s *Service) bookProviderFor(author *library.Author) (metadata.Provider, er
 	return s.provider()
 }
 
+// resolveAuthorForeignID returns the id to fetch author with from p. When p
+// is the author's own source, that's just the stored ForeignID (the normal
+// case). A provider override names a DIFFERENT provider — the stored id
+// belongs to the original source's namespace and means nothing there (an
+// Open Library key doesn't exist in Hardcover's ids, or vice versa), so it
+// has to be found again by name before it can be fetched. Prefers an exact
+// (case-insensitive) name match; falls back to the first result rather than
+// failing outright when the provider's own casing/punctuation differs
+// slightly (initials, diacritics).
+func (s *Service) resolveAuthorForeignID(ctx context.Context, p metadata.Provider, author *library.Author) (string, error) {
+	if author.Source == "" || author.Source == p.Name() {
+		return author.ForeignID, nil
+	}
+	candidates, err := p.SearchAuthors(ctx, author.Name)
+	if err != nil {
+		return "", err
+	}
+	for _, c := range candidates {
+		if strings.EqualFold(c.Name, author.Name) {
+			return c.ForeignID, nil
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates[0].ForeignID, nil
+	}
+	return "", fmt.Errorf("no author named %q found on %s: %w", author.Name, p.Name(), metadata.ErrNotFound)
+}
+
+// resolveBookForeignID is RefreshBook's equivalent of resolveAuthorForeignID:
+// a provider override means the book's stored id belongs to a different
+// provider's namespace, so it has to be found again by title first. Prefers
+// a result whose title AND author both match; falls back to any title
+// match, then the first result — title alone is common enough (series
+// entries, reprints) that author agreement matters when it's available.
+func (s *Service) resolveBookForeignID(ctx context.Context, p metadata.Provider, book *library.Book, authorName string) (string, error) {
+	if book.Source == "" || book.Source == p.Name() {
+		return book.ForeignID, nil
+	}
+	candidates, err := p.SearchBooks(ctx, book.Title)
+	if err != nil {
+		return "", err
+	}
+	titleMatch := ""
+	for _, c := range candidates {
+		if !strings.EqualFold(c.Title, book.Title) {
+			continue
+		}
+		if titleMatch == "" {
+			titleMatch = c.ForeignID
+		}
+		if authorName != "" && strings.EqualFold(c.AuthorName, authorName) {
+			return c.ForeignID, nil
+		}
+	}
+	if titleMatch != "" {
+		return titleMatch, nil
+	}
+	if len(candidates) > 0 {
+		return candidates[0].ForeignID, nil
+	}
+	return "", fmt.Errorf("no book titled %q found on %s: %w", book.Title, p.Name(), metadata.ErrNotFound)
+}
+
 // RefreshAuthor re-syncs an existing author by local id. Books discovered
 // since the last sync are added with the author's monitored flag.
 func (s *Service) RefreshAuthor(ctx context.Context, id int64) error {
@@ -206,7 +304,11 @@ func (s *Service) RefreshAuthor(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.syncAuthorWith(ctx, p, author.ForeignID, author.Monitored)
+	foreignID, err := s.resolveAuthorForeignID(ctx, p, author)
+	if err != nil {
+		return err
+	}
+	_, err = s.syncAuthorWith(ctx, p, foreignID, author.Monitored, author.ID)
 	return err
 }
 
@@ -226,7 +328,11 @@ func (s *Service) RefreshBook(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.syncBookWith(ctx, p, book.ForeignID, book.Monitored)
+	foreignID, err := s.resolveBookForeignID(ctx, p, book, author.Name)
+	if err != nil {
+		return err
+	}
+	_, err = s.syncBookWith(ctx, p, foreignID, book.Monitored, author.ID, book.ID)
 	return err
 }
 
@@ -234,8 +340,10 @@ func (s *Service) RefreshBook(ctx context.Context, id int64) error {
 // under the given author. Library membership columns are left at their
 // defaults (new books) or preserved (existing books) — enrollment is always
 // an explicit user action. (New ebook editions still inherit the book's
-// monitored flag into the legacy editions.monitored column.)
-func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, authorID int64, monitored bool) error {
+// monitored flag into the legacy editions.monitored column.) existingID pins
+// the book to an already-known row (a refresh); 0 lets UpsertBook
+// create-or-update by natural key, as a fresh add does.
+func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, authorID int64, monitored bool, existingID int64) error {
 	// A fallback-sourced record stamps its true origin; otherwise the provider
 	// that returned it is the source. See metadata.FallbackProvider.
 	source := remote.Source
@@ -243,6 +351,7 @@ func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, author
 		source = p.Name()
 	}
 	book := &library.Book{
+		ID:          existingID,
 		AuthorID:    authorID,
 		Source:      source,
 		ForeignID:   remote.ForeignID,
