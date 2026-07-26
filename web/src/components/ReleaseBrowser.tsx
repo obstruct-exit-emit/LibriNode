@@ -256,18 +256,19 @@ export default function ReleaseBrowser({
                   <span className={`metric${sort === "size" ? " on" : ""}`} title="Size">
                     📦 {formatBytes(c.size) || "—"}
                   </span>
-                  <span
-                    className={`metric${sort === "seeders" ? " on" : ""}`}
-                    title={c.protocol === "torrent" ? "Seeders" : "Seeders (usenet has none)"}
-                  >
-                    ↑ {c.protocol === "torrent" && c.seeders >= 0 ? c.seeders : "—"}
-                  </span>
-                  <span
-                    className="metric"
-                    title={c.protocol === "torrent" ? "Leechers" : "Leechers (usenet has none)"}
-                  >
-                    ↓ {leechers(c) ?? "—"}
-                  </span>
+                  {c.protocol === "torrent" && (
+                    <>
+                      <span
+                        className={`metric${sort === "seeders" ? " on" : ""}`}
+                        title="Seeders"
+                      >
+                        ↑ {c.seeders >= 0 ? c.seeders : "N/A"}
+                      </span>
+                      <span className="metric" title="Leechers">
+                        ↓ {leechers(c) ?? "N/A"}
+                      </span>
+                    </>
+                  )}
                   <span className={`metric${sort === "age" ? " on" : ""}`} title="Age (published)">
                     🕓 {fmtAge(c.publishDate) || "—"}
                   </span>
