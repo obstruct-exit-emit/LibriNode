@@ -231,6 +231,26 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **SABnzbd downloads never appeared in the Activity queue until they
+  finished** — only completed usenet downloads showed up; anything still
+  downloading was invisible. SABnzbd names a download's category field
+  differently between its two endpoints — `cat` in the live queue, `category`
+  in history — and the queue side was read with the wrong key, so every
+  in-progress item failed LibriNode's own-downloads filter and was silently
+  dropped. Only history (correctly keyed) ever showed anything, so a download
+  only appeared once it was already done.
+- **Torrent grabs could become permanently unmatchable at import — "cannot
+  import files acquired via torrent"** — a regression from the fix just
+  above. Giving every torrent grab a real id (by looking up its hash right
+  after adding) could pick the wrong torrent's hash when a similarly-titled
+  release was already in the client at grab time (an earlier series volume
+  already seeding: "Dune" matches inside "Dune Messiah"), and a grab's title
+  fallback was then skipped entirely because it now looked like it already
+  had a "real" id. The hash lookup now compares against a snapshot taken
+  right before adding, so an existing torrent can never be mistaken for the
+  one just added; the title fallback also no longer requires an empty client
+  item id, so a grab with a wrong one (including one already stuck that way
+  from before this fix) is still found by title.
 - **Removing a torrent download from Activity before it imported could leave
   that book permanently stuck reporting "a grab is already pending," blocking
   any new search or grab for it.** qBittorrent's add endpoint never echoes

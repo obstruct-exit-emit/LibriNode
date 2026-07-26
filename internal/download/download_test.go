@@ -209,8 +209,14 @@ func mockSab(t *testing.T) *httptest.Server {
 			}
 			w.Write([]byte(`{"status": true, "nzo_ids": ["SABnzbd_nzo_x1"]}`))
 		case "queue":
+			// SABnzbd's queue slots name the category field "cat" — unlike
+			// history, which calls it "category" (see sabSlot). A radarr-
+			// categorized slot is included to confirm the client-side filter
+			// still excludes it even though the request asked for cat=librinode
+			// — some SABnzbd-compatible bridges don't honor that server-side.
 			w.Write([]byte(`{"queue": {"slots": [
-				{"nzo_id": "SABnzbd_nzo_q1", "filename": "Mort", "status": "Downloading", "percentage": "34", "category": "librinode"}
+				{"nzo_id": "SABnzbd_nzo_q1", "filename": "Mort", "status": "Downloading", "percentage": "34", "cat": "librinode"},
+				{"nzo_id": "SABnzbd_nzo_q2", "filename": "SomeShow", "status": "Downloading", "percentage": "10", "cat": "radarr"}
 			]}}`))
 		case "history":
 			// A radarr-categorized slot is included even though the request
@@ -276,7 +282,7 @@ func TestSABnzbd(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	if len(items) != 3 {
-		t.Fatalf("items = %+v, want 3 (radarr-categorized slot excluded)", items)
+		t.Fatalf("items = %+v, want 3 (radarr-categorized slots excluded)", items)
 	}
 	byID := map[string]Item{}
 	for _, it := range items {
@@ -285,6 +291,14 @@ func TestSABnzbd(t *testing.T) {
 	if _, ok := byID["SABnzbd_nzo_h3"]; ok {
 		t.Error("download from another app's category (radarr) leaked into our list")
 	}
+	if _, ok := byID["SABnzbd_nzo_q2"]; ok {
+		t.Error("another app's in-progress download (radarr) leaked into our queue")
+	}
+	// Regression: the queue's still-downloading item must appear at all — a
+	// prior bug read the wrong JSON field for the queue's category (SABnzbd
+	// calls it "cat" there, "category" in history) and so filtered out every
+	// real in-progress usenet download, leaving Activity showing nothing
+	// until the download finished and moved into history.
 	if byID["SABnzbd_nzo_q1"].Status != "downloading" || byID["SABnzbd_nzo_q1"].Progress != 0.34 {
 		t.Errorf("queue item = %+v", byID["SABnzbd_nzo_q1"])
 	}

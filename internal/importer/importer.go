@@ -218,8 +218,12 @@ func (s *Service) writeOPF(book *library.Book, mediaType, target, dir string) er
 }
 
 // matchGrab pairs a queue item with its grab record: by the client's item id
-// when we have one (SABnzbd), by normalized title otherwise (qBittorrent's
-// add endpoint returns no id).
+// first, by normalized title otherwise. The title fallback isn't restricted
+// to grabs with no client item id — a torrent grab's id can still be wrong
+// (a same-titled item already in the client at grab time, or a record from
+// before the client-item-id fix ever existed) — so it stays a safety net
+// even for a grab that does carry one, rather than leaving that grab
+// unmatchable forever.
 func matchGrab(pending []download.GrabRecord, item *download.Item) *download.GrabRecord {
 	for i := range pending {
 		g := &pending[i]
@@ -230,7 +234,7 @@ func matchGrab(pending []download.GrabRecord, item *download.Item) *download.Gra
 	itemTitle := scanner.Normalize(item.Title)
 	for i := range pending {
 		g := &pending[i]
-		if g.ClientItemID == "" && scanner.Normalize(g.Title) == itemTitle {
+		if scanner.Normalize(g.Title) == itemTitle {
 			return g
 		}
 	}

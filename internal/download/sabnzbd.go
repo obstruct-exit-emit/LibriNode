@@ -228,7 +228,9 @@ func nzbFilename(title string) string {
 }
 
 // sabSlots covers both queue and history slot shapes (numbers arrive as
-// strings).
+// strings). Notable quirk: SABnzbd's own API names the category field
+// differently between the two — "cat" in the queue, "category" in history —
+// so both are carried here and each loop below reads its own.
 type sabSlot struct {
 	NzoID       string `json:"nzo_id"`
 	Filename    string `json:"filename"` // queue
@@ -237,7 +239,8 @@ type sabSlot struct {
 	Percentage  string `json:"percentage"`
 	Storage     string `json:"storage"`
 	FailMessage string `json:"fail_message"`
-	Category    string `json:"category"`
+	Cat         string `json:"cat"`      // queue
+	Category    string `json:"category"` // history
 }
 
 func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
@@ -246,7 +249,7 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 			Slots []sabSlot `json:"slots"`
 		} `json:"queue"`
 	}
-	if err := s.api(ctx, url.Values{"mode": {"queue"}, "category": {s.cfg.Category}}, &queue); err != nil {
+	if err := s.api(ctx, url.Values{"mode": {"queue"}, "cat": {s.cfg.Category}}, &queue); err != nil {
 		return nil, err
 	}
 	var history struct {
@@ -260,7 +263,7 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 
 	items := []Item{}
 	for _, slot := range queue.Queue.Slots {
-		if !strings.EqualFold(slot.Category, s.cfg.Category) {
+		if !strings.EqualFold(slot.Cat, s.cfg.Category) {
 			// The category query param above is a server-side filter some
 			// SABnzbd-compatible bridges (debrid services in particular) don't
 			// actually honor, silently returning every app's downloads —

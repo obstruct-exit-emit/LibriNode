@@ -1704,7 +1704,9 @@ func TestDownloadClientsAndGrab(t *testing.T) {
 		case "addurl":
 			w.Write([]byte(`{"status": true, "nzo_ids": ["nzo_1"]}`))
 		case "queue":
-			w.Write([]byte(`{"queue": {"slots": [{"nzo_id": "nzo_1", "filename": "Mort", "status": "Downloading", "percentage": "50", "category": "librinode"}]}}`))
+			// SABnzbd names the queue slot's category field "cat" (history uses
+			// "category" instead — see sabSlot in internal/download/sabnzbd.go).
+			w.Write([]byte(`{"queue": {"slots": [{"nzo_id": "nzo_1", "filename": "Mort", "status": "Downloading", "percentage": "50", "cat": "librinode"}]}}`))
 		case "history":
 			w.Write([]byte(`{"history": {"slots": []}}`))
 		default:

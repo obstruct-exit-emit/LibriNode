@@ -348,9 +348,13 @@ type queueItem struct {
 	MediaType string `json:"mediaType,omitempty"`
 }
 
-// enrichQueue pairs client items with pending grabs — by client item id when
-// the client reports one (SABnzbd), by normalized title otherwise
-// (qBittorrent's add returns no id) — mirroring the importer's matching.
+// enrichQueue pairs client items with pending grabs — by client item id
+// first, by normalized title otherwise — mirroring the importer's matching.
+// The title map covers every pending grab, not just ones with no client item
+// id: a torrent grab's id can still be wrong (a same-titled item already in
+// the client at grab time, or a record from before the client-item-id fix
+// existed), so title stays a fallback even then instead of leaving that grab
+// unlinked.
 func (s *server) enrichQueue(items []download.Item) []queueItem {
 	out := make([]queueItem, len(items))
 	for i := range items {
@@ -366,9 +370,8 @@ func (s *server) enrichQueue(items []download.Item) []queueItem {
 		g := &pending[i]
 		if g.ClientItemID != "" {
 			byID[g.ClientItemID] = g
-		} else {
-			byTitle[scanner.Normalize(g.Title)] = g
 		}
+		byTitle[scanner.Normalize(g.Title)] = g
 	}
 	for i := range out {
 		g := byID[out[i].ID]

@@ -8,17 +8,23 @@ import (
 	"testing"
 )
 
-// qbitStub simulates just enough of qBittorrent's Web API for Add/List:
-// login always succeeds, createCategory and add are no-ops, and torrents/info
-// reports whatever torrents are configured on the stub.
+type qbitTorrent struct {
+	Hash     string  `json:"hash"`
+	Name     string  `json:"name"`
+	State    string  `json:"state"`
+	Progress float64 `json:"progress"`
+	Category string  `json:"category"`
+}
+
+// qbitStub simulates just enough of qBittorrent's Web API for Add/List, with
+// realistic timing: torrents lists the items already present before any add;
+// pendingAdd (if set) only appears in torrents/info once the add endpoint has
+// actually been hit — so a test can tell "before this add" apart from "after
+// it", the same distinction Add's own snapshotHashes/findHash rely on.
 type qbitStub struct {
-	torrents []struct {
-		Hash     string  `json:"hash"`
-		Name     string  `json:"name"`
-		State    string  `json:"state"`
-		Progress float64 `json:"progress"`
-		Category string  `json:"category"`
-	}
+	torrents   []qbitTorrent
+	pendingAdd *qbitTorrent
+	added      bool
 }
 
 func (q *qbitStub) server() *httptest.Server {
@@ -29,9 +35,14 @@ func (q *qbitStub) server() *httptest.Server {
 		case "/api/v2/torrents/createCategory":
 			w.WriteHeader(http.StatusOK)
 		case "/api/v2/torrents/add":
+			q.added = true
 			_, _ = w.Write([]byte("Ok."))
 		case "/api/v2/torrents/info":
-			_ = json.NewEncoder(w).Encode(q.torrents)
+			list := append([]qbitTorrent{}, q.torrents...)
+			if q.added && q.pendingAdd != nil {
+				list = append(list, *q.pendingAdd)
+			}
+			_ = json.NewEncoder(w).Encode(list)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -53,14 +64,9 @@ func newTestQBittorrent(t *testing.T, srv *httptest.Server) *qbittorrent {
 // missing id meant removal could only resolve the grab by an exact title
 // match.
 func TestQBittorrentAddReturnsHash(t *testing.T) {
-	stub := &qbitStub{}
-	stub.torrents = append(stub.torrents, struct {
-		Hash     string  `json:"hash"`
-		Name     string  `json:"name"`
-		State    string  `json:"state"`
-		Progress float64 `json:"progress"`
-		Category string  `json:"category"`
-	}{Hash: "abc123", Name: "Dune Messiah", State: "downloading", Progress: 0.1, Category: "librinode"})
+	stub := &qbitStub{
+		pendingAdd: &qbitTorrent{Hash: "abc123", Name: "Dune Messiah", State: "downloading", Progress: 0.1, Category: "librinode"},
+	}
 	q := newTestQBittorrent(t, stub.server())
 
 	id, err := q.Add(context.Background(), "magnet:?xt=urn:btih:abc123", "Dune Messiah")
@@ -77,14 +83,9 @@ func TestQBittorrentAddReturnsHash(t *testing.T) {
 // punctuation); an exact match is preferred but a substring match still
 // resolves the hash rather than giving up and leaving the grab untraceable.
 func TestQBittorrentAddFindsHashOnSubstringMatch(t *testing.T) {
-	stub := &qbitStub{}
-	stub.torrents = append(stub.torrents, struct {
-		Hash     string  `json:"hash"`
-		Name     string  `json:"name"`
-		State    string  `json:"state"`
-		Progress float64 `json:"progress"`
-		Category string  `json:"category"`
-	}{Hash: "def456", Name: "Dune Messiah [FL] {Narrator} 2023", State: "downloading", Progress: 0, Category: "librinode"})
+	stub := &qbitStub{
+		pendingAdd: &qbitTorrent{Hash: "def456", Name: "Dune Messiah [FL] {Narrator} 2023", State: "downloading", Category: "librinode"},
+	}
 	q := newTestQBittorrent(t, stub.server())
 
 	id, err := q.Add(context.Background(), "magnet:?xt=urn:btih:def456", "Dune Messiah")
@@ -93,5 +94,33 @@ func TestQBittorrentAddFindsHashOnSubstringMatch(t *testing.T) {
 	}
 	if id != "def456" {
 		t.Errorf("Add returned id %q, want the fuzzily-matched hash %q", id, "def456")
+	}
+}
+
+// TestQBittorrentAddIgnoresPreexistingSubstringMatch: an earlier series
+// volume ("Dune Messiah") is already seeding in the same category when a
+// shorter-titled release ("Dune") is added, and the new torrent doesn't show
+// up under its own name within the lookup window. The substring fallback
+// alone would match the PRE-EXISTING "Dune Messiah" (its normalized title
+// contains "dune") and misattribute its hash to the new grab — corrupting
+// both: the queue would link the wrong book to it, and cancelling one grab
+// could resolve the other's. Add must return "" rather than guess, since the
+// snapshot taken before this add already contained that torrent.
+func TestQBittorrentAddIgnoresPreexistingSubstringMatch(t *testing.T) {
+	stub := &qbitStub{
+		torrents: []qbitTorrent{
+			{Hash: "existing1", Name: "Dune Messiah", State: "downloading", Progress: 0.5, Category: "librinode"},
+		},
+		// pendingAdd left nil: the new "Dune" torrent never becomes visible in
+		// this test, simulating an add that landed but hasn't shown up yet.
+	}
+	q := newTestQBittorrent(t, stub.server())
+
+	id, err := q.Add(context.Background(), "magnet:?xt=urn:btih:newone", "Dune")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if id != "" {
+		t.Errorf("Add returned id %q — misattributed the pre-existing \"Dune Messiah\" torrent's hash to this new \"Dune\" grab", id)
 	}
 }
