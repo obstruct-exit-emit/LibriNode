@@ -13,10 +13,20 @@
 //   - Every request rides a warmed-up session (a PHPSESSID cookie fetched from
 //     the homepage first) with full browser headers; ABB serves reliable
 //     search pages only to an initialized, browser-like session.
-//   - A search redirected to the homepage means ABB is rate-limiting/blocking
-//     (common on a shared VPN exit IP). The search retries a few times with
-//     backoff — a browser-like "try again" — and only then surfaces a clear
-//     error, so a transient bounce doesn't fail an otherwise-working source.
+//   - The query is lowercased before it hits the URL: ABB's edge redirects
+//     any ?s= value starting with an uppercase letter straight to the
+//     homepage (confirmed live), and book titles are naturally Title Case.
+//     Unlowercased, this bounces nearly every real search — the redirect
+//     looks identical to rate-limiting but isn't; it's a fixed property of
+//     the query, not a transient IP state, so no amount of retrying helps it.
+//   - A search redirected to the homepage, or one that comes back with an
+//     empty body, means ABB is rate-limiting/blocking (common on a shared VPN
+//     exit IP) — this is the transient case, once the query-case issue above
+//     is ruled out. Both signals get one gentle retry with backoff — a
+//     browser-like "try again" — and only then surface a clear error, so a
+//     transient bounce doesn't fail an otherwise-working source. The
+//     grab-time detail fetch (Resolve) gets the same one-retry treatment for
+//     the same reason.
 //
 // This is a dual-use shadow-library source: it is never bundled or enabled by
 // default; a user adds it deliberately and is responsible for its use. HTML
@@ -29,6 +39,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -53,15 +64,21 @@ const (
 	// percent-encoded); shelfmark found it necessary for reliable results.
 	legacyCategory = "undefined%2Cundefined"
 
-	// searchAttempts is how many times a homepage-bounced search is retried
-	// before surfacing the rate-limit error. ABB rate-limits per IP once it sees
-	// a burst, so retrying hard is counterproductive — each attempt is another
-	// warm-up + search, and a storm of them keeps the throttle alive. One retry,
-	// well spaced, catches a genuinely transient blip without feeding the limiter.
+	// searchAttempts is how many times a homepage-bounced or empty search is
+	// retried before surfacing the rate-limit error. ABB rate-limits per IP
+	// once it sees a burst, so retrying hard is counterproductive — each
+	// attempt is another warm-up + search, and a storm of them keeps the
+	// throttle alive. One retry, well spaced, catches a genuinely transient
+	// blip without feeding the limiter.
 	searchAttempts = 2
 	// searchBackoff scales the pause between retries: attempt N waits N× this.
 	// Long enough to let a short throttle window clear before the single retry.
 	searchBackoff = 2 * time.Second
+	// detailAttempts mirrors searchAttempts for Resolve's grab-time detail
+	// fetch: one gentle retry (same searchBackoff pacing) on a transient
+	// empty page or a missing hash, without reintroducing the retry-burst
+	// that searchAttempts was deliberately tuned down to avoid.
+	detailAttempts = 2
 )
 
 // defaultTrackers back-fill a magnet when a release page lists none, so the
@@ -208,24 +225,48 @@ func (s *searcher) searchBase(ctx context.Context, base, query string) ([]post, 
 		client := s.session()
 		// Warm up the session from the homepage first, then search on it.
 		if _, _, err := fetch(ctx, client, base+"/"); err != nil {
+			slog.Warn("abb warmup failed", "base", base, "attempt", attempt+1, "err", err)
 			return nil, err
 		}
-		listing, finalURL, err := fetch(ctx, client, base+"/?s="+url.QueryEscape(query)+"&cat="+legacyCategory)
+		// ABB's edge redirects any ?s= value starting with an uppercase ASCII
+		// letter straight to the homepage — confirmed live: "dune", "Dune",
+		// "dune+MESSIAH" and "1dune" all search fine, but "Dune", "DUNE", and
+		// "Abcdef" all bounce. Book titles are naturally Title Case, so an
+		// unlowercased query bounces essentially every real search. Lowercase
+		// the whole query (matching the shelfmark reference client) rather
+		// than just the first rune, to not depend on this edge case being
+		// exactly that narrow forever.
+		searchURL := base + "/?s=" + url.QueryEscape(strings.ToLower(query)) + "&cat=" + legacyCategory
+		listing, finalURL, err := fetch(ctx, client, searchURL)
 		if err != nil {
+			slog.Warn("abb search fetch failed", "base", base, "attempt", attempt+1, "url", searchURL, "err", err)
 			return nil, err
 		}
-		if isHomepageRedirect(finalURL, base) {
+		redirected := isHomepageRedirect(finalURL, base)
+		slog.Info("abb search attempt", "base", base, "attempt", attempt+1, "url", searchURL,
+			"finalURL", finalURL, "redirected", redirected, "bytes", len(listing))
+		if redirected {
 			lastErr = fmt.Errorf("AudioBook Bay redirected the search to its homepage — it is likely rate-limiting or temporarily blocking this IP; try again later")
 			continue
 		}
-		return parseListing(listing, base), nil
+		if strings.TrimSpace(listing) == "" {
+			lastErr = fmt.Errorf("AudioBook Bay returned an empty search page — it is likely rate-limiting or temporarily blocking this IP; try again later")
+			continue
+		}
+		posts := parseListing(listing, base)
+		slog.Info("abb search parsed", "base", base, "attempt", attempt+1, "posts", len(posts))
+		return posts, nil
 	}
 	return nil, lastErr
 }
 
 // Resolve turns a release-page URL into an assembled magnet — called at grab
 // time for exactly the release the user grabbed. It warms a fresh session, then
-// fetches that one page for its info hash + trackers.
+// fetches that one page for its info hash + trackers. A blank page (the same
+// throttle signature a search sees) or a page with no readable hash gets one
+// gentle retry on a fresh session before surfacing the error, mirroring
+// searchBase — this is a single grab-time request, not a per-search fan-out,
+// so the extra attempt doesn't reintroduce the retry-burst problem.
 func (s *searcher) Resolve(ctx context.Context, downloadURL string) (string, error) {
 	if strings.HasPrefix(downloadURL, "magnet:") {
 		return downloadURL, nil // already resolved
@@ -234,21 +275,43 @@ func (s *searcher) Resolve(ctx context.Context, downloadURL string) (string, err
 	if err != nil || u.Host == "" {
 		return "", fmt.Errorf("invalid AudioBook Bay release URL")
 	}
-	client := s.session()
 	home := u.Scheme + "://" + u.Host + "/"
-	_, _, _ = fetch(ctx, client, home) // best-effort warm-up
-	page, _, err := fetch(ctx, client, downloadURL)
-	if err != nil {
-		return "", fmt.Errorf("fetching AudioBook Bay release page: %w", err)
+
+	var lastErr error
+	for attempt := 0; attempt < detailAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(attempt) * searchBackoff):
+			}
+		}
+		client := s.session()
+		_, _, warmErr := fetch(ctx, client, home) // best-effort warm-up
+		page, finalURL, err := fetch(ctx, client, downloadURL)
+		if err != nil {
+			slog.Warn("abb resolve fetch failed", "url", downloadURL, "attempt", attempt+1, "warmErr", warmErr, "err", err)
+			lastErr = fmt.Errorf("fetching AudioBook Bay release page: %w", err)
+			continue
+		}
+		slog.Info("abb resolve attempt", "url", downloadURL, "attempt", attempt+1,
+			"warmErr", warmErr, "finalURL", finalURL, "bytes", len(page))
+		if strings.TrimSpace(page) == "" {
+			lastErr = fmt.Errorf("AudioBook Bay returned an empty release page — it is likely rate-limiting or temporarily blocking this IP; try again later")
+			continue
+		}
+		hash, trackers, _, ok := parseDetail(page)
+		if !ok {
+			slog.Warn("abb resolve no hash", "url", downloadURL, "attempt", attempt+1, "bytes", len(page))
+			lastErr = fmt.Errorf("no info hash on the AudioBook Bay release page (its layout may have changed)")
+			continue
+		}
+		if len(trackers) == 0 {
+			trackers = defaultTrackers
+		}
+		return buildMagnet(hash, titleFromURL(u), trackers), nil
 	}
-	hash, trackers, _, ok := parseDetail(page)
-	if !ok {
-		return "", fmt.Errorf("no info hash on the AudioBook Bay release page (its layout may have changed)")
-	}
-	if len(trackers) == 0 {
-		trackers = defaultTrackers
-	}
-	return buildMagnet(hash, titleFromURL(u), trackers), nil
+	return "", lastErr
 }
 
 // fetch GETs a URL on the given session client and returns the body plus the
@@ -327,9 +390,16 @@ var (
 	audioLinkRe = regexp.MustCompile(`(?i)<a\s+href="([^"]*/audio-?books?/[^"]+)"[^>]*>([^<]+)</a>`)
 	tagRe       = regexp.MustCompile(`(?s)<[^>]+>`)
 
-	// A detail page's 40-hex info hash: the "Info Hash:" label, then the hash
-	// within a short window (lazily skipping any punctuation/markup between).
-	infoHashRe = regexp.MustCompile(`(?is)info\s*hash.{0,40}?([0-9a-f]{40})`)
+	// A detail page's 40- or 64-hex info hash (SHA1 or the newer v2/hybrid
+	// SHA256): the "Info Hash:" label, then the hash within a short window
+	// (lazily skipping any punctuation/markup between). Whitespace is allowed
+	// between hex digits — ABB sometimes wraps the hash across markup — and
+	// stripped before validation in parseDetail.
+	infoHashRe = regexp.MustCompile(`(?is)info\s*hash.{0,80}?((?:[0-9a-f]\s*){40,64})`)
+	// Fallback when the Info Hash table cell is missing or unparsable: some
+	// release pages embed a complete magnet link instead. Matched on the raw
+	// HTML since the link may live inside an href attribute.
+	magnetHashRe = regexp.MustCompile(`(?i)magnet:\?[^"'<>\s]*xt=urn:btih:([0-9a-f]{40,64})`)
 	// Tracker announce URLs (matched on the raw HTML, so hrefs count too).
 	trackerRe = regexp.MustCompile(`(?i)(udp://[^\s"'<>]+|https?://[^\s"'<>]*announce[^\s"'<>]*)`)
 	// "File Size: 512.5 MB" / "Size: 1.2 GB" (matched on tag-stripped text).
@@ -367,16 +437,27 @@ func parseListing(html, base string) []post {
 }
 
 // parseDetail extracts the info hash, tracker list, and size from a release
-// page. ok is false when there's no info hash (nothing to grab). The label and
-// hash often straddle table tags, so hash/size are read from tag-stripped text;
-// trackers are read from the raw HTML so URLs inside attributes still count.
+// page. ok is false when no hash can be found (nothing to grab). The label and
+// hash often straddle table tags, so the primary hash read is from tag-stripped
+// text; if that comes up empty, a raw-HTML magnet link is the fallback (a few
+// releases carry one instead of a usable Info Hash cell). Trackers are read
+// from the raw HTML so URLs inside attributes still count.
 func parseDetail(pageHTML string) (hash string, trackers []string, size int64, ok bool) {
 	text := stripTags(pageHTML)
-	m := infoHashRe.FindStringSubmatch(text)
-	if m == nil {
+	if m := infoHashRe.FindStringSubmatch(text); m != nil {
+		candidate := strings.ToLower(strings.Join(strings.Fields(m[1]), ""))
+		if len(candidate) == 40 || len(candidate) == 64 {
+			hash = candidate
+		}
+	}
+	if hash == "" {
+		if m := magnetHashRe.FindStringSubmatch(pageHTML); m != nil {
+			hash = strings.ToLower(m[1])
+		}
+	}
+	if hash == "" {
 		return "", nil, 0, false
 	}
-	hash = strings.ToLower(m[1])
 
 	seen := map[string]bool{}
 	for _, t := range trackerRe.FindAllString(pageHTML, -1) {

@@ -159,6 +159,32 @@ func newABBServer(t *testing.T, listing string) *abbServer {
 
 const oneResultListing = `<div class="postTitle"><a href="/audio-books/the-hobbit/">The Hobbit</a></div>`
 
+// TestSearchLowercasesQuery: ABB's edge redirects a ?s= value starting with
+// an uppercase letter to the homepage (confirmed against the live site) —
+// and book titles are naturally Title Case ("Dune Messiah"), so an
+// unlowercased query would bounce nearly every real search. The listing
+// request must always carry a lowercased query.
+func TestSearchLowercasesQuery(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s := r.URL.Query().Get("s"); s != "" {
+			gotQuery = s
+			_, _ = w.Write([]byte(oneResultListing))
+			return
+		}
+		_, _ = w.Write([]byte("<html>abb home</html>"))
+	}))
+	defer srv.Close()
+
+	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
+	if _, err := s.Search(context.Background(), "Dune Messiah", "audiobook"); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if gotQuery != "dune messiah" {
+		t.Errorf("search query sent to ABB = %q, want lowercased %q", gotQuery, "dune messiah")
+	}
+}
+
 // TestSearchDefersDetailFetch: a search returns releases whose download URL is
 // the release page (not a magnet), and it never fetches a detail page — the
 // magnet is assembled only when Resolve is called at grab time.
@@ -243,6 +269,103 @@ func TestSearchDetectsHomepageBlock(t *testing.T) {
 	_, err := s.Search(context.Background(), "blocked", "audiobook")
 	if err == nil || !strings.Contains(err.Error(), "homepage") {
 		t.Errorf("expected a homepage-block error, got %v", err)
+	}
+}
+
+// TestSearchRetriesEmptyListing: ABB can bounce a search with an empty body
+// instead of a homepage redirect. That must be retried the same as a
+// redirect, not treated as a (zero-result) success.
+func TestSearchRetriesEmptyListing(t *testing.T) {
+	searchHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("s") == "" {
+			_, _ = w.Write([]byte("<html>abb home</html>"))
+			return
+		}
+		searchHits++
+		if searchHits == 1 {
+			return // empty body, HTTP 200 — the throttle signature
+		}
+		_, _ = w.Write([]byte(oneResultListing))
+	}))
+	defer srv.Close()
+
+	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
+	releases, err := s.Search(context.Background(), "hobbit", "audiobook")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(releases) != 1 {
+		t.Fatalf("releases = %+v, want 1", releases)
+	}
+	if searchHits != 2 {
+		t.Errorf("search requests = %d, want 2 (one retry)", searchHits)
+	}
+}
+
+// TestResolveRetriesEmptyDetailPage: the grab-time detail fetch can hit the
+// same blank-page throttle signature as a search. One retry on a fresh
+// session should recover it instead of failing the grab outright.
+func TestResolveRetriesEmptyDetailPage(t *testing.T) {
+	detailHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/audio-books/") {
+			detailHits++
+			if detailHits == 1 {
+				return // empty body on the first attempt
+			}
+			_, _ = w.Write([]byte(detailHTML))
+			return
+		}
+		_, _ = w.Write([]byte("<html>abb home</html>"))
+	}))
+	defer srv.Close()
+
+	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
+	r := s.(indexer.Resolver)
+	magnet, err := r.Resolve(context.Background(), srv.URL+"/audio-books/the-hobbit/")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !strings.HasPrefix(magnet, "magnet:?xt=urn:btih:0123456789abcdef") {
+		t.Errorf("resolved magnet = %q", magnet)
+	}
+	if detailHits != 2 {
+		t.Errorf("detail requests = %d, want 2 (one retry)", detailHits)
+	}
+}
+
+// TestParseDetailWhitespaceHash: ABB sometimes splits the info hash across
+// whitespace/markup within the table cell; it must still be read as one
+// contiguous hash.
+func TestParseDetailWhitespaceHash(t *testing.T) {
+	html := `<table><tr><td>Info Hash</td><td>0123 4567 89AB CDEF 0123 4567 89AB CDEF 0123 4567</td></tr></table>`
+	hash, _, _, ok := parseDetail(html)
+	if !ok || hash != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("parseDetail whitespace hash = (%q, %v)", hash, ok)
+	}
+}
+
+// TestParseDetailSHA256Hash: a v2/hybrid release lists a 64-hex info hash
+// instead of the usual 40-hex SHA1; it must be accepted, not rejected as
+// malformed.
+func TestParseDetailSHA256Hash(t *testing.T) {
+	hash64 := strings.Repeat("ab", 32) // 64 hex chars
+	html := `<table><tr><td>Info Hash</td><td>` + hash64 + `</td></tr></table>`
+	hash, _, _, ok := parseDetail(html)
+	if !ok || hash != hash64 {
+		t.Fatalf("parseDetail 64-char hash = (%q, %v)", hash, ok)
+	}
+}
+
+// TestParseDetailMagnetFallback: when the Info Hash table cell is missing or
+// unparsable, a complete magnet link elsewhere on the page is a valid
+// fallback source for the hash.
+func TestParseDetailMagnetFallback(t *testing.T) {
+	html := `<a href="magnet:?xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567&dn=x">magnet</a>`
+	hash, _, _, ok := parseDetail(html)
+	if !ok || hash != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("parseDetail magnet fallback = (%q, %v)", hash, ok)
 	}
 }
 
