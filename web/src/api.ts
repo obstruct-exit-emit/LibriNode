@@ -216,6 +216,13 @@ export interface ReleaseCandidate extends Release {
     formats?: string[];
     language?: string;
     retail: boolean;
+    // Manga/comic volume number the release names, and the range end when it
+    // spans several ("v01-v12"); 0/absent for a single-volume release.
+    volume?: number;
+    volumeEnd?: number;
+    // The release declares itself a complete run ("Complete", "Collection")
+    // even without a volume range — e.g. an ebook/audiobook series bundle.
+    pack?: boolean;
   };
   score: number;
   approved: boolean;

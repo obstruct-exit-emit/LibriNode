@@ -11,6 +11,12 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **A "pack" badge on releases in the search browser** flags one that looks
+  like it bundles multiple books/volumes — an explicit volume span
+  ("v01-v12") or a self-declared complete run/collection ("Complete Series",
+  "Box Set") — before you grab it, using the same title-parsed signal the
+  scorer already computed. Hover it to see the volume range when there is
+  one.
 - **Audiobooks now support multi-book pack imports**, matching the existing
   ebook/manga/comic behavior. A bundle that organizes each book into its own
   top-level subfolder ("Author - Series Collection Unabridged/Book 1/",

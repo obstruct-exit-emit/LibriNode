@@ -39,6 +39,13 @@ function leechers(c: ReleaseCandidate): number | null {
   return c.seeders >= 0 && c.peers >= c.seeders ? c.peers - c.seeders : c.peers;
 }
 
+// isPack reports whether the release's parsed title looks like it bundles
+// multiple books/volumes: an explicit volume span ("v01-v12") or a
+// self-declared complete run/collection even without one.
+function isPack(c: ReleaseCandidate): boolean {
+  return c.parsed.pack === true || (c.parsed.volumeEnd ?? 0) > (c.parsed.volume ?? 0);
+}
+
 export default function ReleaseBrowser({
   bookId,
   mediaType,
@@ -300,6 +307,18 @@ export default function ReleaseBrowser({
                     </span>
                   ))}
                   {c.parsed.retail && <span className="pill rb-retail">retail</span>}
+                  {isPack(c) && (
+                    <span
+                      className="pill rb-pack"
+                      title={
+                        c.parsed.volumeEnd
+                          ? `Bundles multiple volumes (${c.parsed.volume}–${c.parsed.volumeEnd})`
+                          : "Declares itself a complete run/collection — likely bundles multiple books"
+                      }
+                    >
+                      pack
+                    </span>
+                  )}
                   {!c.approved && c.rejections && (
                     <span className="rb-why"> — {c.rejections.join(", ")}</span>
                   )}
