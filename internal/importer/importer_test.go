@@ -1358,6 +1358,61 @@ func TestPackSkipsOwnedBookUnlessUpgrade(t *testing.T) {
 	}
 }
 
+// TestPackFillsOtherBooksWhenGrabbedBookAlreadyOwned: the grabbed book
+// already owning a non-upgradeable file must not stop the pack's OTHER
+// monitored books from importing — skipping the primary book is not the
+// same as skipping the whole pack.
+func TestPackFillsOtherBooksWhenGrabbedBookAlreadyOwned(t *testing.T) {
+	f := fixture(t)
+
+	owned := filepath.Join(t.TempDir(), "mort.epub")
+	if err := os.WriteFile(owned, []byte("already-owned"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 1, BookID: f.book.ID, MediaType: "ebook",
+		Path: owned, Size: 13, Format: "epub",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	guards := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "10",
+		Title: "Guards! Guards!", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_epack3", "Terry Pratchett - Two Book Bundle EPUB",
+		"Mort.epub", "Guards! Guards!.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_epack3",
+		Title: "Terry Pratchett - Two Book Bundle EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("imported = %d, want 1 (Guards imported; Mort skipped, not an upgrade): %+v", result.Imported, result)
+	}
+	// Mort keeps its pre-owned file untouched.
+	mortFiles, _ := f.store.ListBookFiles(f.book.ID)
+	if len(mortFiles) != 1 || mortFiles[0].Path != owned {
+		t.Fatalf("Mort files = %+v, want only the pre-owned epub", mortFiles)
+	}
+	// Guards still got filled in from the same pack.
+	if files, _ := f.store.ListBookFiles(guards.ID); len(files) != 1 {
+		t.Fatalf("Guards files = %+v, want the pack extra", files)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusImported || !strings.Contains(grabs[0].Message, "not an upgrade") {
+		t.Errorf("grab = %+v", grabs[0])
+	}
+}
+
 // TestImportAudiobookPackFillsMonitoredBooksByFolderName: a bundle organizing
 // each book into its own top-level subfolder imports the grabbed book
 // (matched by folder name, not size or any individual track's filename) plus

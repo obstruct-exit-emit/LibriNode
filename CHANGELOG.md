@@ -260,6 +260,13 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **A pack whose grabbed book was already owned (and not an upgrade) skipped
+  every other book in the pack too**, not just the one already owned. The
+  early return that correctly skips placing an already-owned, non-upgrade
+  primary book was also skipping the pack-extras step that fills the
+  *other* books — the fix scopes that skip to the primary book only, so a
+  pack still fills its other monitored/wanted books regardless of whether
+  the book you grabbed needed a new file at all.
 - **A multi-book pack could import only one of its books, inconsistently
   which one** — nothing previously stopped the periodic import sweep and a
   manual "Import now" click from overlapping. A pack's cleanup step

@@ -341,36 +341,44 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	}
 
 	// Owned + tracked grab: only proceed when the new format genuinely
-	// upgrades the owned one; the old files are replaced after import.
+	// upgrades the owned one; the old files are replaced after import. Even
+	// when the grabbed book itself isn't an upgrade, a pack's OTHER books
+	// still need placing — skipping the primary must not skip the pack.
 	var replacing []library.BookFile
+	skipPrimary := false
 	if owned {
 		old, better := s.upgradeCheck(book, mediaType, format)
 		if !better {
 			s.resolve(grab, download.GrabStatusImported,
 				"book already has a "+mediaType+" file (not an upgrade)")
 			result.Skipped++
+			skipPrimary = true
+		} else {
+			replacing = old
+		}
+	}
+
+	if !skipPrimary {
+		target, ok := s.placeAndRecord(book, mediaType, format, sources, replacing, item.Title, result)
+		if !ok {
 			return
 		}
-		replacing = old
-	}
 
-	target, ok := s.placeAndRecord(book, mediaType, format, sources, replacing, item.Title, result)
-	if !ok {
-		return
-	}
-
-	if grab != nil {
-		message := "imported to " + target
-		if len(replacing) > 0 {
-			message = "upgraded (" + replacing[0].Format + " → " + format + "), imported to " + target
+		if grab != nil {
+			message := "imported to " + target
+			if len(replacing) > 0 {
+				message = "upgraded (" + replacing[0].Format + " → " + format + "), imported to " + target
+			}
+			s.resolve(grab, download.GrabStatusImported, message)
 		}
-		s.resolve(grab, download.GrabStatusImported, message)
+		result.Imported++
+		slog.Info("imported download", "book", book.Title, "path", target)
 	}
-	result.Imported++
-	slog.Info("imported download", "book", book.Title, "path", target)
 
-	// Multi-book pack: the download's other files fill more books. This reads
-	// from the download folder, so it must run before any cleanup deletes it.
+	// Multi-book pack: the download's other files fill more books, regardless
+	// of whether the grabbed book itself needed (or got) a new file. This
+	// reads from the download folder, so it must run before any cleanup
+	// deletes it.
 	if grab != nil && pack != nil {
 		s.importPackExtras(pack, sources[0], book, mediaType, result)
 	}
