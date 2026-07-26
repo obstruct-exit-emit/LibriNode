@@ -260,6 +260,20 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **A completed download whose files hadn't finished syncing to a network/
+  debrid mount yet (client says done, share shows an empty folder) was
+  immediately abandoned and blocklisted** instead of retried — a real bug,
+  live-reproduced with a TorBox-backed torrent: the exact same release
+  imported fine when given more time, but failed with "no audio files found
+  in download" when an import pass ran seconds after the client reported it
+  seeded, permanently discarding a perfectly good release. This is also what
+  was actually behind "a pack imports only one of its books, seemingly at
+  random" — whichever book's folder had synced by the time an import pass
+  ran got kept; if none had, the whole release was blocklisted. An empty
+  download folder is now retried like any other still-syncing download
+  (same grace period before giving up as an unresolvable path); a folder
+  that has real files, just none of the right kind, is unaffected and still
+  fails immediately as spam/wrong content.
 - **A pack whose grabbed book was already owned (and not an upgrade) skipped
   every other book in the pack too**, not just the one already owned. The
   early return that correctly skips placing an already-owned, non-upgrade

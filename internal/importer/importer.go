@@ -332,6 +332,14 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 			// (parent unreachable) is excluded, so good releases survive it.
 			s.abandon(ctx, item, grab, mediaType,
 				"download completed but its files never became readable (unresolvable path)", result)
+		case grabAge(grab) >= stalePendingGrace:
+			// Past the grace period and still no usable file, even though the
+			// download path itself is reachable (a debrid mount that shows the
+			// folder before its contents finish syncing can report zero
+			// matching files for a while — see errDownloadPending below). Give
+			// up rather than retry forever.
+			s.abandon(ctx, item, grab, mediaType,
+				"download completed but never yielded a usable file after a long wait", result)
 		default:
 			// Files not ready yet (still syncing) or a momentary share hiccup —
 			// leave the grab pending and retry next pass.
@@ -923,9 +931,14 @@ func listAcceptable(path string, accept func(string) bool, kind string) ([]candi
 		return []candidateFile{{path, info.Size()}}, nil
 	}
 	var files []candidateFile
+	anyFile := false
 	err = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !accept(p) {
+		if err != nil || d.IsDir() {
 			return err
+		}
+		anyFile = true
+		if !accept(p) {
+			return nil
 		}
 		if fi, err := d.Info(); err == nil {
 			files = append(files, candidateFile{p, fi.Size()})
@@ -936,6 +949,15 @@ func listAcceptable(path string, accept func(string) bool, kind string) ([]candi
 		return nil, err
 	}
 	if len(files) == 0 {
+		if !anyFile {
+			// The download path itself exists and is reachable, but it's
+			// completely empty — a debrid mount can show a torrent's folder
+			// before its contents finish syncing to the share. Retryable
+			// rather than a hard failure: see errDownloadPending.
+			return nil, fmt.Errorf("no files have appeared in the download yet: %w", errDownloadPending)
+		}
+		// The download has files, just none of the kind wanted — spam/wrong
+		// content, not a sync delay. Not retryable.
 		return nil, fmt.Errorf("no %s found in download", kind)
 	}
 	return files, nil
@@ -1136,17 +1158,22 @@ func splitAudioGroups(root string) (rootFiles []string, named []audioGroup, err 
 	if err != nil {
 		return nil, nil, err
 	}
+	anyFile := false
 	for _, e := range entries {
 		full := filepath.Join(root, e.Name())
 		if !e.IsDir() {
+			anyFile = true
 			if scanner.IsAudioPath(full) {
 				rootFiles = append(rootFiles, full)
 			}
 			continue
 		}
-		files, err := audioFilesUnder(full)
+		files, sawAny, err := audioFilesUnder(full)
 		if err != nil {
 			return nil, nil, err
+		}
+		if sawAny {
+			anyFile = true
 		}
 		if len(files) == 0 {
 			continue
@@ -1157,20 +1184,32 @@ func splitAudioGroups(root string) (rootFiles []string, named []audioGroup, err 
 		}
 		named = append(named, audioGroup{name: e.Name(), files: files})
 	}
+	if !anyFile && len(rootFiles) == 0 && len(named) == 0 {
+		// The download folder exists and is reachable, but it's completely
+		// empty (no files anywhere in it yet) — a debrid mount can show a
+		// torrent's folder before its contents finish syncing to the share.
+		// Retryable rather than a hard failure: see errDownloadPending.
+		return nil, nil, fmt.Errorf("no files have appeared in the download yet: %w", errDownloadPending)
+	}
 	return rootFiles, named, nil
 }
 
-// audioFilesUnder returns every audio file under dir, recursively.
-func audioFilesUnder(dir string) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !scanner.IsAudioPath(p) {
+// audioFilesUnder returns every audio file under dir, recursively, and
+// whether it saw any file at all (matching or not) — used to tell a
+// genuinely empty (still-syncing) subfolder apart from one that has content,
+// just none of it recognized as audio.
+func audioFilesUnder(dir string) (files []string, sawAnyFile bool, err error) {
+	err = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
 			return err
 		}
-		files = append(files, p)
+		sawAnyFile = true
+		if scanner.IsAudioPath(p) {
+			files = append(files, p)
+		}
 		return nil
 	})
-	return files, err
+	return files, sawAnyFile, err
 }
 
 // formatOfLargestAudio is the largest file's extension — the same heuristic
@@ -1218,6 +1257,9 @@ func (s *Service) pickAudioPackAware(path string, grab *download.GrabRecord, boo
 	singleBook := func() ([]string, string, *audioPackPlan, error) {
 		all := append(append([]string{}, rootFiles...), flattenAudioGroups(named)...)
 		if len(all) == 0 {
+			// splitAudioGroups already handles a completely empty download as
+			// retryable; reaching here with nothing means real files exist,
+			// just none recognized as audio — a genuine content mismatch.
 			return nil, "", nil, fmt.Errorf("no audio files found in download")
 		}
 		return all, formatOfLargestAudio(all), nil, nil

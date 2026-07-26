@@ -738,6 +738,85 @@ func TestImportRetriesFreshUnresolvablePath(t *testing.T) {
 	}
 }
 
+// TestImportRetriesEmptyDownloadFolder: a debrid mount can report a torrent
+// "seeded" and show its folder before the folder's actual contents finish
+// syncing to the share — the download path itself exists and is reachable,
+// but nothing is in it yet. A fresh grab must be retried, not abandoned and
+// blocklisted, so a good release isn't discarded for a timing accident.
+// Reproduces a real bug: a TorBox-backed torrent whose files hadn't synced
+// yet got permanently blocklisted seconds after import ran.
+func TestImportRetriesEmptyDownloadFolder(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	empty := t.TempDir() // exists, reachable, but has nothing in it yet
+	f.history = append(f.history, map[string]any{
+		"nzo_id": "nzo_empty", "name": "Terry Pratchett - Mort Retail EPUB",
+		"status": "Completed", "storage": empty, "category": "librinode",
+	})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_empty",
+		Title: "Terry Pratchett - Mort Retail EPUB", GUID: "guid-empty",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 0 || result.Skipped != 1 {
+		t.Fatalf("empty-but-syncing download should be skipped, not failed: %+v", result)
+	}
+	if grabs, _ := f.grabs.ListGrabs(""); grabs[0].Status != download.GrabStatusGrabbed {
+		t.Errorf("fresh grab status = %s, want grabbed (still pending)", grabs[0].Status)
+	}
+	if blocked, _ := f.grabs.BlockedKeys(); blocked["guid-empty"] {
+		t.Error("a merely-still-syncing download must not be blocklisted")
+	}
+}
+
+// TestImportGivesUpOnPermanentlyEmptyDownload: the same empty-folder
+// situation, but the grab is old enough that it's clearly never going to
+// sync — gives up and blocklists rather than retrying forever.
+func TestImportGivesUpOnPermanentlyEmptyDownload(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	empty := t.TempDir()
+	f.history = append(f.history, map[string]any{
+		"nzo_id": "nzo_stale_empty", "name": "Terry Pratchett - Mort Retail EPUB",
+		"status": "Completed", "storage": empty, "category": "librinode",
+	})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_stale_empty",
+		Title: "Terry Pratchett - Mort Retail EPUB", GUID: "guid-stale-empty",
+		Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if _, err := f.db.Exec("UPDATE grabs SET grabbed_at = ? WHERE id = ?",
+		"2020-01-01 00:00:00", grabs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if grabs, _ = f.grabs.ListGrabs(""); grabs[0].Status != download.GrabStatusFailed {
+		t.Errorf("grab status = %s, want failed", grabs[0].Status)
+	}
+	if blocked, _ := f.grabs.BlockedKeys(); !blocked["guid-stale-empty"] {
+		t.Errorf("permanently empty download not blocklisted: %v", blocked)
+	}
+}
+
 // TestImportDeletesDownloadedFilesWhenEnabled: with DeleteCompletedFiles on, a
 // usenet import removes the download from the client WITH its files.
 func TestImportDeletesDownloadedFilesWhenEnabled(t *testing.T) {
