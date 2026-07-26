@@ -960,6 +960,81 @@ func TestImportUpgradeReplacesFile(t *testing.T) {
 	}
 }
 
+// TestImportUpgradeMultiFileToSingleFileKeepsNewFile: an owned multi-file
+// audiobook (its recorded path is the whole book folder) upgraded by a
+// single-file format (m4b) must end up with the new file actually on disk —
+// not wiped out by the old-folder cleanup landing on top of it. Regression
+// for the bug where RemoveAll(old.Path) deleted the book folder (and the
+// just-placed replacement inside it) because the safety check only caught an
+// exact path match, not "new file nested inside old directory".
+func TestImportUpgradeMultiFileToSingleFileKeepsNewFile(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	// Owned: a multi-file mp3 audiobook, recorded (per the folder-based
+	// placement audiobooks use) with the whole book folder as its path.
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
+	if err := os.MkdirAll(bookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldTracks := []string{"Mort - 01.mp3", "Mort - 02.mp3"}
+	for _, name := range oldTracks {
+		if err := os.WriteFile(filepath.Join(bookDir, name), []byte("old-mp3"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: 2, BookID: f.book.ID, MediaType: "audiobook", Path: bookDir, Format: "mp3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A tracked grab delivers a single M4B (ranks above mp3 in the default
+	// audiobook profile) — a genuine upgrade.
+	f.completedDownload(t, "nzo_m4b", "Terry Pratchett - Mort Unabridged", "Mort.m4b")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_m4b",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 || files[0].Format != "m4b" {
+		t.Fatalf("files after upgrade = %+v", files)
+	}
+
+	// The new file must actually exist on disk — this is what the bug broke.
+	if _, err := os.Stat(files[0].Path); err != nil {
+		t.Fatalf("upgraded m4b missing from disk at %s: %v", files[0].Path, err)
+	}
+	// The old tracks are gone.
+	for _, name := range oldTracks {
+		if _, err := os.Stat(filepath.Join(bookDir, name)); !os.IsNotExist(err) {
+			t.Errorf("old track %s still on disk", name)
+		}
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusImported ||
+		!strings.Contains(grabs[0].Message, "upgraded (mp3 → m4b)") {
+		t.Fatalf("grab = %+v", grabs[0])
+	}
+}
+
 func TestImportNotAnUpgradeSkips(t *testing.T) {
 	f := fixture(t)
 

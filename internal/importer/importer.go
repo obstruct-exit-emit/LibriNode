@@ -555,12 +555,22 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 		return "", false
 	}
 
-	// Upgrade: the replaced files leave disk and library together.
+	// Upgrade: the replaced files leave disk and library together. A
+	// multi-file audiobook's old path is its whole book folder; if the new
+	// format placed a single file inside that same folder (or the OPF
+	// sidecar just written above), RemoveAll-ing the old path wholesale would
+	// destroy what was just placed there — remove everything else in the
+	// folder instead of the folder itself in that case.
+	keep := []string{target, filepath.Join(place.Dir, "metadata.opf")}
 	for _, old := range replacing {
 		if strings.EqualFold(old.Path, target) {
 			continue
 		}
-		if err := os.RemoveAll(old.Path); err != nil {
+		if dir, err := isDir(old.Path); err == nil && dir {
+			if err := removeExcept(old.Path, keep); err != nil {
+				result.note("removing upgraded file %s: %v", old.Path, err)
+			}
+		} else if err := os.RemoveAll(old.Path); err != nil {
 			result.note("removing upgraded file %s: %v", old.Path, err)
 		}
 		if err := s.store.DeleteBookFile(old.ID); err != nil && !errorsIsNotFound(err) {
@@ -568,6 +578,48 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 		}
 	}
 	return target, true
+}
+
+// isDir reports whether path exists and is a directory.
+func isDir(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	return info.IsDir(), nil
+}
+
+// removeExcept deletes every direct entry under dir except the paths in keep
+// (matched exactly, or as an ancestor of one), removing dir itself too if
+// nothing in keep actually lived there. Used to clean up an old multi-file
+// placement's folder without touching a just-placed replacement inside it.
+func removeExcept(dir string, keep []string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	remaining := 0
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		kept := false
+		for _, k := range keep {
+			if p == k || strings.HasPrefix(k, p+string(filepath.Separator)) {
+				kept = true
+				break
+			}
+		}
+		if kept {
+			remaining++
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil {
+			return err
+		}
+	}
+	if remaining == 0 {
+		return os.Remove(dir)
+	}
+	return nil
 }
 
 // importPackExtras imports the remaining files of a multi-book release
