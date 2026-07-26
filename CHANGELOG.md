@@ -11,6 +11,17 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Added
+- **AudioBook Bay results carry file size and posted date** straight from the
+  search listing (no extra request needed), and the release scorer's author
+  check now falls back to a post's own tag list when a series/collection
+  post's title omits the author — a bare "Dune Messiah" post used to always
+  reject with "does not mention the author" even though ABB's own Keywords for
+  that post name the author directly.
+- **A "direct" protocol filter** joins usenet/torrent in the release browser —
+  named after the shared backend protocol rather than any one indexer, so it
+  covers Library Genesis today and any future direct-download source for free.
+  The filter bar now lists whichever protocols are actually present in the
+  results instead of assuming exactly two.
 - **Sort controls on the Books, Wanted, and Missing lists.** A compact ⇅
   dropdown in each section header re-orders it by title, release date, or rating;
   Missing keeps its series grouping as the default (choose a sort to flatten it),
@@ -220,6 +231,24 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **AudioBook Bay searches for ordinary book titles ("Dune Messiah", "The
+  Hobbit") mostly failed with what looked like rate-limiting — that wasn't the
+  real cause.** ABB's edge silently redirects any search whose query starts
+  with an uppercase letter back to its homepage, and book titles are naturally
+  Title Case, so nearly every real search hit it; the failure is
+  indistinguishable from genuine throttling at the HTTP level (same redirect,
+  same error message), which is why it read as intermittent rate-limiting
+  rather than a deterministic bug. The query is now lowercased before it's
+  searched. Bundled into the same pass: a blank listing or detail page (not
+  just a homepage redirect) now gets the same one-retry treatment a redirect
+  already had; the grab-time detail fetch gets a retry too, where before a
+  single blip failed the whole grab; and the info-hash regex now tolerates
+  whitespace and 64-char SHA256/v2 hashes, falling back to a raw magnet link
+  when the Info Hash cell is missing.
+- Release list: a torrent source with no swarm data (AudioBook Bay) now reads
+  **"N/A"** for seeders/leechers instead of the same bare dash a genuinely dead
+  torrent shows, and usenet and direct-protocol results — which have no such
+  concept at all — no longer carry empty seeder/leecher placeholders.
 - **An author's "missing" list drops foreign editions, box sets, and
   anthologies.** Hardcover catalogs every translation as its own book under the
   author, lists multi-author anthologies and magazine issues the author has one

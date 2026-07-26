@@ -44,22 +44,37 @@ The built-in sources today:
   torrent that goes through qBittorrent like any other. AudioBook Bay temp-bans
   IPs that crawl, so a **search makes a single listing request** and the
   per-release detail fetch is deferred — the magnet is assembled only when you
-  grab a result. Requests ride a warmed-up, browser-like session (full
-  navigation headers), and a search bounced to the homepage — ABB rate-limiting
-  the IP — is retried a few times with backoff before the error is surfaced.
-  Rate-limiting is far more likely on a **shared or VPN exit IP**: expect
-  occasional homepage bounces, or a search that comes back empty, when the IP is
-  throttled — a residential IP or a quieter VPN region is much more reliable.
+  grab a result. Requests ride a warmed-up session (a homepage fetch first,
+  matching ABB's own PHPSESSID-gated behavior) with a plain browser user agent;
+  a search bounced to the homepage or answered with an empty page — ABB
+  rate-limiting the IP — gets one retry on a fresh session before the error is
+  surfaced, and the grab-time detail fetch gets the same one-retry treatment.
+  **The search query is always lowercased**: ABB's edge silently redirects any
+  query starting with an uppercase letter to the homepage, and book titles are
+  naturally Title Case — this, not rate-limiting, was the main cause of
+  searches "not working" for real book titles. True rate-limiting is still far
+  more likely on a **shared or VPN exit IP**; a residential IP or a quieter VPN
+  region is more reliable. Each result carries its **file size and posted
+  date** read straight from the listing (no extra request), and the author —
+  read from the title, or from the post's own tag list when a series/
+  collection post's title omits it — so the release scorer's author check
+  doesn't wrongly reject a release ABB itself associates with the right author.
 - **Library Genesis** (ebooks) is the built-in ebook source: it searches
   libgen.li and downloads through its `ads.php` → `get.php` mirror by each
   file's MD5, using the `direct` protocol (below). No account needed. Its
   domain rotates, so set the **Site URL** to a live mirror if the default
-  stops answering. Each result carries its **author, year, language, and file
-  format** from the results table, so an interactive or automatic search keeps
-  only the book you asked for in the language and format your quality profile
-  wants — a Spanish edition, a wrong-author book, or an `fb2` when your profile
-  lists only epub/mobi/azw3/pdf are all filtered out. (Libgen has many `fb2`
-  scans; add `fb2` to your ebook quality profile if you want them.)
+  stops answering. Each result carries its **author, edition year, language,
+  and file format** from the results table, so an interactive or automatic
+  search keeps only the book you asked for in the language and format your
+  quality profile wants — a Spanish edition, a wrong-author book, or an `fb2`
+  when your profile lists only epub/mobi/azw3/pdf are all filtered out.
+  (Libgen has many `fb2` scans; add `fb2` to your ebook quality profile if you
+  want them.) Results never show an **age**: libgen.li's search results carry
+  no date, only the edition year (already used above); a real added-to-Libgen
+  timestamp exists but only on each result's own detail page, and fetching
+  that for every row (searches return up to 100) would multiply one search
+  into up to 100 requests — the same per-result fan-out AudioBook Bay's design
+  specifically avoids.
 
 Each rotating-domain source takes an optional **Site URL** override plus an
 optional **fallback site URL** (comma-separated); searches try them in order.
