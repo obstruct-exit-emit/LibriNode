@@ -58,9 +58,10 @@ export function SortSelect({
 }
 
 // DirectionButtons is the ascending/descending counterpart to SortSelect — a
-// pair of toggle buttons (↑/↓) applying to whichever sort key is currently
-// chosen, matching the app's other button-pair filters (approved/all,
-// usenet/torrent/direct) rather than a dropdown.
+// pair of toggle buttons (↓/↑, descending left/ascending right) applying to
+// whichever sort key is currently chosen, matching the app's other
+// button-pair filters (approved/all, usenet/torrent/direct) rather than a
+// dropdown.
 export function DirectionButtons({
   value,
   onChange,
@@ -72,21 +73,21 @@ export function DirectionButtons({
     <span className="sort-dir-buttons">
       <button
         type="button"
-        className={value === "asc" ? "toggle on" : "toggle"}
-        title="Ascending"
-        aria-label="Sort ascending"
-        onClick={() => onChange("asc")}
-      >
-        ↑
-      </button>
-      <button
-        type="button"
         className={value === "desc" ? "toggle on" : "toggle"}
         title="Descending"
         aria-label="Sort descending"
         onClick={() => onChange("desc")}
       >
         ↓
+      </button>
+      <button
+        type="button"
+        className={value === "asc" ? "toggle on" : "toggle"}
+        title="Ascending"
+        aria-label="Sort ascending"
+        onClick={() => onChange("asc")}
+      >
+        ↑
       </button>
     </span>
   );
