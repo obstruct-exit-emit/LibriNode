@@ -231,6 +231,12 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Activity/queue could show another app's downloads.** A qBittorrent or
+  SABnzbd instance shared with another *arr app (common with debrid-service
+  bridges like TorBox) sometimes doesn't honor the category filter LibriNode
+  already requests server-side, returning every app's items regardless. Both
+  clients now also filter client-side by each item's own reported category, so
+  another app's downloads never show up as LibriNode's.
 - **An owned audiobook upgraded to a different-shaped format (e.g. a multi-file
   mp3 set upgraded by a single m4b) could end up "owned" with no file at all.**
   Multi-file audiobooks are recorded by their whole book folder; a single-file
