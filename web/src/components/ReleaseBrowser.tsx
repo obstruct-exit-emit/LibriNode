@@ -9,9 +9,12 @@ import { formatBytes } from "../format";
 // the same in every library.
 
 type SortKey = "score" | "size" | "seeders" | "age";
-type ProtoFilter = "all" | "usenet" | "torrent";
+type ProtoFilter = "all" | "usenet" | "torrent" | "direct";
 
-const protoIcon = (p: string) => (p === "usenet" ? "📡" : "🧲");
+// "direct" covers any non-P2P, non-Newznab source that hands back a plain
+// downloadable file (Library Genesis today; deliberately not named after any
+// one indexer, so a future direct-download source falls under it for free).
+const protoIcon = (p: string) => (p === "usenet" ? "📡" : p === "direct" ? "⬇️" : "🧲");
 
 function fmtAge(publishDate?: string): string {
   if (!publishDate) return "";
@@ -145,8 +148,12 @@ export default function ReleaseBrowser({
     );
   }
 
-  const torrents = releases.some((c) => c.protocol === "torrent");
-  const usenet = releases.some((c) => c.protocol === "usenet");
+  // Only offered as filters when actually present, and only shown at all once
+  // there's a real choice between 2+ protocols among the results.
+  const presentProtocols = (["usenet", "torrent", "direct"] as const).filter((p) =>
+    releases.some((c) => c.protocol === p),
+  );
+  const torrents = presentProtocols.includes("torrent");
 
   return (
     <div className="release-browser">
@@ -169,16 +176,22 @@ export default function ReleaseBrowser({
           >
             all
           </button>
-          {usenet && torrents && (
+          {presentProtocols.length > 1 && (
             <>
               <span className="rb-sep" />
-              {(["all", "usenet", "torrent"] as const).map((p) => (
+              <button
+                className={proto === "all" ? "toggle on" : "toggle"}
+                onClick={() => setProto("all")}
+              >
+                any
+              </button>
+              {presentProtocols.map((p) => (
                 <button
                   key={p}
                   className={proto === p ? "toggle on" : "toggle"}
                   onClick={() => setProto(p)}
                 >
-                  {p === "all" ? "both" : `${protoIcon(p)} ${p}`}
+                  {protoIcon(p)} {p}
                 </button>
               ))}
             </>
