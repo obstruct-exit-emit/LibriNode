@@ -171,3 +171,10 @@ client's list so a slow response never loses the grab.
   book (an `.exe` instead of a media file), and completed downloads whose
   files never become readable. The blocklist is managed from the Activity
   page.
+- **Removing a download** from the Activity queue deletes it (and its data)
+  from the client and resolves its pending grab, without blocklisting it — the
+  release can be grabbed again right away. If a grab is ever stuck reporting
+  "pending" with no matching entry left in the queue above (its download is
+  already gone from the client), **Activity → History** shows a **cancel**
+  button on that entry: it clears LibriNode's own record directly, unblocking
+  a new search or grab for that book.
