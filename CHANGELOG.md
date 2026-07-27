@@ -274,6 +274,17 @@ in progress. Highlights from the hardening period, newest first:
   (same grace period before giving up as an unresolvable path); a folder
   that has real files, just none of the right kind, is unaffected and still
   fails immediately as spam/wrong content.
+- **A pack whose books sync one folder at a time could silently drop
+  whichever one wasn't ready yet, with no error and nothing to retry** — a
+  narrower case the fix above didn't cover: the *whole* download wasn't
+  empty (one book's folder already had its files), so it never hit the
+  "completely empty, retry" path; it just looked like an ordinary
+  single-book download and imported only the one that was ready. Now: a
+  named subfolder that's itself still empty while a sibling isn't is
+  treated as "not fully synced yet" for the whole download, not silently
+  skipped — same retry-then-give-up handling as everywhere else. The same
+  fix applies to the equivalent ebook/manga/comic case (the grabbed book's
+  own file not yet appearing among an otherwise-present pack).
 - **A pack whose grabbed book was already owned (and not an upgrade) skipped
   every other book in the pack too**, not just the one already owned. The
   early return that correctly skips placing an already-owned, non-upgrade

@@ -893,7 +893,13 @@ func (s *Service) pickPackAware(path string, accept func(string) bool, kind stri
 		}
 	}
 	if match == "" {
-		return "", nil, fmt.Errorf("multi-file download has no file matching %q", book.Title)
+		// Could be a genuine mismatch (wrong release), but could just as
+		// easily be a pack whose files are syncing one at a time and the
+		// grabbed book's own file simply isn't there yet — the same
+		// sync-delay case errDownloadPending exists for elsewhere. Retryable;
+		// a truly permanent mismatch still eventually gives up (see
+		// stalePendingGrace in the caller).
+		return "", nil, fmt.Errorf("multi-file download has no file matching %q: %w", book.Title, errDownloadPending)
 	}
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
@@ -1159,6 +1165,7 @@ func splitAudioGroups(root string) (rootFiles []string, named []audioGroup, err 
 		return nil, nil, err
 	}
 	anyFile := false
+	partial := false // a non-disc subfolder exists but is itself still empty
 	for _, e := range entries {
 		full := filepath.Join(root, e.Name())
 		if !e.IsDir() {
@@ -1176,6 +1183,15 @@ func splitAudioGroups(root string) (rootFiles []string, named []audioGroup, err 
 			anyFile = true
 		}
 		if len(files) == 0 {
+			// A disc/part folder shipping empty isn't a sync signal on its
+			// own — nothing else expects content from it. A NAMED (book)
+			// folder with nothing in it yet, sitting alongside others that
+			// do, is a different story: a finished torrent has no reason to
+			// ship a genuinely empty book folder, so this is almost always a
+			// sibling folder that just hasn't synced yet.
+			if !scanner.IsDiscFolder(e.Name()) {
+				partial = true
+			}
 			continue
 		}
 		if scanner.IsDiscFolder(e.Name()) {
@@ -1190,6 +1206,13 @@ func splitAudioGroups(root string) (rootFiles []string, named []audioGroup, err 
 		// torrent's folder before its contents finish syncing to the share.
 		// Retryable rather than a hard failure: see errDownloadPending.
 		return nil, nil, fmt.Errorf("no files have appeared in the download yet: %w", errDownloadPending)
+	}
+	if partial {
+		// Some of the download's own folders are ready, at least one isn't —
+		// a pack whose books sync one at a time would otherwise import
+		// whichever ones happened to be ready and silently drop the rest,
+		// with no error and nothing to retry. Wait for the whole thing.
+		return nil, nil, fmt.Errorf("some of the download's folders haven't synced yet: %w", errDownloadPending)
 	}
 	return rootFiles, named, nil
 }
