@@ -1492,6 +1492,104 @@ func TestPackFillsOtherBooksWhenGrabbedBookAlreadyOwned(t *testing.T) {
 	}
 }
 
+// TestPackMatchNotAmbiguousWhenOtherBookTitleIsSubstring: a short book title
+// that's a literal substring/prefix of another of the author's book titles
+// ("Dune" inside "Dune Messiah" — the real case this reproduces) must not
+// make a release named after the longer title alone look ambiguous, or look
+// like it's still waiting on a "Dune"-sized sibling that was never actually
+// part of this download. Before bestBookMatches existed, match() saw "Storm"
+// as matching first, then found "Storm Warning" also matched under a
+// different book ID and bailed out as ambiguous — so the grabbed book's own
+// file was never recognized, and the pack held it back forever waiting for
+// a sibling that could never arrive.
+func TestPackMatchNotAmbiguousWhenOtherBookTitleIsSubstring(t *testing.T) {
+	f := fixture(t)
+
+	short := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "20",
+		Title: "Storm", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(short); err != nil {
+		t.Fatal(err)
+	}
+	long := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "21",
+		Title: "Storm Warning", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(long); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_storm", "Terry Pratchett - Storm Warning (2010) epub",
+		"Storm Warning.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: long.ID, ClientConfigID: 1, ClientItemID: "nzo_storm",
+		Title: "Terry Pratchett - Storm Warning (2010) epub", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v, want Storm Warning imported (not mistaken for an ambiguous/incomplete pack)", result)
+	}
+	if files, _ := f.store.ListBookFiles(long.ID); len(files) != 1 {
+		t.Errorf("Storm Warning files = %+v, want 1", files)
+	}
+	if files, _ := f.store.ListBookFiles(short.ID); len(files) != 0 {
+		t.Errorf("Storm files = %+v, want none (it was never in this download)", files)
+	}
+}
+
+// TestPackMatchNotAmbiguousForDuplicateSplitEditionEntry: a messy
+// bibliography can carry duplicate/split-edition rows for the same book
+// ("Dune Messiah (1 of 2)", "Dune Messiah (2 of 2)") whose title, once
+// TitleKeys strips the trailing parenthetical, is identical to the real
+// book's own title. Before bestBookMatches preferred a primary-title match
+// over a same-text fallback-key match, these duplicates tied with the real
+// book on every one of its own releases and match() bailed out as
+// ambiguous — so the file was never recognized as belonging to the book at
+// all, and a plain single-book download was held back forever waiting for
+// siblings that were never real.
+func TestPackMatchNotAmbiguousForDuplicateSplitEditionEntry(t *testing.T) {
+	f := fixture(t)
+
+	real := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "30",
+		Title: "Dune Messiah", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(real); err != nil {
+		t.Fatal(err)
+	}
+	part1 := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "31",
+		Title: "Dune Messiah (1 of 2)"}
+	if err := f.store.UpsertBook(part1); err != nil {
+		t.Fatal(err)
+	}
+	part2 := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "32",
+		Title: "Dune Messiah (2 of 2)"}
+	if err := f.store.UpsertBook(part2); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_dune", "Herbert, Frank - Dune Messiah (1965) english epub",
+		"Dune Messiah.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: real.ID, ClientConfigID: 1, ClientItemID: "nzo_dune",
+		Title: "Herbert, Frank - Dune Messiah (1965) english epub", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v, want Dune Messiah imported (not stuck behind a false duplicate-entry ambiguity)", result)
+	}
+	if files, _ := f.store.ListBookFiles(real.ID); len(files) != 1 {
+		t.Errorf("Dune Messiah files = %+v, want 1", files)
+	}
+}
+
 // TestPackEbookWaitsForTitlePromisedSiblingFile: the same debrid sync-delay
 // problem audiobook packs guard against, but for ebooks: a multi-file
 // download can populate one book's file before the other's has arrived, and

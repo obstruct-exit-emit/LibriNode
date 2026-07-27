@@ -226,6 +226,66 @@ func TestScoreFlagsPackWhenReleaseNamesAnotherBook(t *testing.T) {
 	}
 }
 
+// TestScoreDoesNotFlagPackWhenOtherTitleIsSubstringOfWantedBook: a series
+// where one book's own title is a substring of another's ("Dune" inside
+// "Dune Messiah") must not have every one of the longer book's releases
+// falsely flagged as a pack — titleMentioned finds "dune" as a whole word
+// in "Dune Messiah" regardless, since that's just the wanted book's own name
+// containing it, not a second book bundled alongside it.
+func TestScoreDoesNotFlagPackWhenOtherTitleIsSubstringOfWantedBook(t *testing.T) {
+	prefs := DefaultEbookPreferences()
+	book := &library.Book{Title: "Dune Messiah", ReleaseDate: "1969-01-01"}
+	author := &library.Author{Name: "Frank Herbert"}
+	otherTitles := []string{"Dune", "Dune Messiah", "Children of Dune", "God Emperor of Dune"}
+
+	single := Score(rel("Frank Herbert - Dune Messiah (2010) english epub", indexer.ProtocolUsenet, 1<<20, -1),
+		prefs, book, author, otherTitles)
+	if !single.Approved {
+		t.Fatalf("release rejected: %v", single.Rejections)
+	}
+	if single.Parsed.Pack {
+		t.Error("a single Dune Messiah release must not be flagged as a pack just because \"Dune\" is a substring of its own title")
+	}
+
+	// A genuine bundle of two distinct, non-nested titles must still flag.
+	bundle := Score(rel("Frank Herbert - Dune Messiah & Children of Dune EPUB", indexer.ProtocolUsenet, 1<<20, -1),
+		prefs, book, author, otherTitles)
+	if !bundle.Parsed.Pack {
+		t.Error("a release naming two distinct books should still be flagged as a pack")
+	}
+}
+
+// TestScoreDoesNotFlagPackForDuplicateSplitEditionEntry: a messy bibliography
+// can carry duplicate/split-edition rows for the same book ("Dune Messiah (1
+// of 2)", "Dune Messiah (2 of 2)") whose title, once TitleKeys strips the
+// trailing parenthetical, is identical to the real book's own title — that
+// must not make every single release of the real book look like it also
+// bundles these duplicates. A bare-author-name row (a stray anthology/bio
+// credit off provider metadata) must likewise never count, since the
+// author's name appears in essentially every release.
+func TestScoreDoesNotFlagPackForDuplicateSplitEditionEntry(t *testing.T) {
+	prefs := DefaultEbookPreferences()
+	book := &library.Book{Title: "Dune Messiah", ReleaseDate: "1969-01-01"}
+	author := &library.Author{Name: "Frank Herbert"}
+	otherTitles := []string{
+		"Dune", "Dune Messiah", "Dune Messiah (1 of 2)", "Dune Messiah (2 of 2)",
+		"Frank Herbert", // bare author-name garbage row
+	}
+
+	for _, title := range []string{
+		"Frank Herbert - Dune Messiah (2010) english epub",
+		"Herbert, Frank - Dune Messiah (1965) english epub",
+	} {
+		c := Score(rel(title, indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, otherTitles)
+		if !c.Approved {
+			t.Fatalf("%q: release rejected: %v", title, c.Rejections)
+		}
+		if c.Parsed.Pack {
+			t.Errorf("%q: flagged as a pack — should only match its own duplicate/split-edition rows and the author's own name", title)
+		}
+	}
+}
+
 // TestScoreAuthorFallsBackToKeywords: AudioBook Bay's series/collection posts
 // often omit the author from the title but carry it in a separate tag list
 // (Release.Keywords) instead — that must satisfy the author check just like

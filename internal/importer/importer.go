@@ -756,24 +756,79 @@ func (m *packMatcher) match(path string) *library.Book {
 		return nil
 	default: // ebook
 		norm := scanner.Normalize(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
-		var match *library.Book
-		for i := range m.books {
-			b := &m.books[i]
-			if b.MediaType != "book" {
-				continue
-			}
-			for _, key := range scanner.TitleKeys(b.Title) {
-				if key != "" && strings.Contains(norm, key) {
-					if match != nil && match.ID != b.ID {
-						return nil // ambiguous — two different books match
-					}
-					match = b
-					break
-				}
+		matches := bestBookMatches(norm, m.books)
+		if len(matches) != 1 {
+			return nil // no match, or two distinct books genuinely tie
+		}
+		return matches[0]
+	}
+}
+
+// bestBookMatches finds every prose book whose title appears in norm, then
+// discards two kinds of false "second book" evidence:
+//
+//   - A shorter matched key that's a substring of another matched book's
+//     longer key ("Dune" inside "Dune Messiah") — spillover from the more
+//     specific title being present, not an independent second book.
+//   - A tie on the exact same matched text where the winning book only
+//     reaches it through a fallback key (TitleKeys' parenthetical-stripped
+//     variant), while another book reaches the identical text through its
+//     own primary, undecorated title. A messy bibliography's duplicate or
+//     split-edition rows ("Dune Messiah (1 of 2)", "Dune Messiah (2 of 2)")
+//     strip down to exactly the real book's title; without this, they'd
+//     tie with it on every one of its own releases and the file would
+//     never resolve to just the one real book.
+//
+// What's left are the titles norm genuinely, distinctly names; two or more
+// remaining (rather than one merging into the other) is a real tie.
+func bestBookMatches(norm string, books []library.Book) []*library.Book {
+	type candidate struct {
+		book *library.Book
+		key  string // longest matching key for this book
+		// priority is this key's index within TitleKeys — 0 is the book's
+		// own primary title, higher indexes are fallback variants reached
+		// only by stripping a subtitle or parenthetical suffix.
+		priority int
+	}
+	var candidates []candidate
+	for i := range books {
+		b := &books[i]
+		if b.MediaType != "book" {
+			continue
+		}
+		best := -1
+		var bestKey string
+		for idx, key := range scanner.TitleKeys(b.Title) {
+			if key != "" && strings.Contains(norm, key) && len(key) > len(bestKey) {
+				best, bestKey = idx, key
 			}
 		}
-		return match
+		if best != -1 {
+			candidates = append(candidates, candidate{b, bestKey, best})
+		}
 	}
+	var out []*library.Book
+	for i, c := range candidates {
+		dominated := false
+		for j, other := range candidates {
+			if i == j {
+				continue
+			}
+			switch {
+			case len(other.key) > len(c.key) && strings.Contains(other.key, c.key):
+				dominated = true
+			case other.key == c.key && other.priority < c.priority:
+				dominated = true
+			}
+			if dominated {
+				break
+			}
+		}
+		if !dominated {
+			out = append(out, c.book)
+		}
+	}
+	return out
 }
 
 // expectedBookCount estimates how many distinct books a release's own title
@@ -792,19 +847,7 @@ func (m *packMatcher) expectedBookCount(releaseTitle string) int {
 		return 1
 	}
 	relNorm := scanner.Normalize(releaseTitle)
-	count := 0
-	for i := range m.books {
-		b := &m.books[i]
-		if b.MediaType != "book" {
-			continue
-		}
-		for _, key := range scanner.TitleKeys(b.Title) {
-			if key != "" && strings.Contains(relNorm, key) {
-				count++
-				break
-			}
-		}
-	}
+	count := len(bestBookMatches(relNorm, m.books))
 	if count < 1 {
 		return 1
 	}

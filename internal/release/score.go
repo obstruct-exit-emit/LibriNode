@@ -92,6 +92,53 @@ func titleMentioned(relNorm string, keys []string) bool {
 	return false
 }
 
+// titleCoveredByAny reports whether every one of keys is itself equal to, or
+// a substring of, some key in of — meaning keys names nothing beyond what of
+// already covers ("dune" contributes nothing next to "dune messiah"; a
+// duplicate row's stripped title contributes nothing when it lands on
+// exactly one of of's own keys).
+func titleCoveredByAny(keys, of []string) bool {
+	for _, k := range keys {
+		if k == "" {
+			continue
+		}
+		covered := false
+		for _, o := range of {
+			if o == k || strings.Contains(o, k) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return len(keys) > 0
+}
+
+// independentKeys returns the keys in tKeys not covered (equal to, or a
+// substring of) any key in bookKeys — the parts of an other title that
+// genuinely name something beyond the wanted book's own title.
+func independentKeys(tKeys, bookKeys []string) []string {
+	var out []string
+	for _, k := range tKeys {
+		if k == "" {
+			continue
+		}
+		covered := false
+		for _, bk := range bookKeys {
+			if bk == k || strings.Contains(bk, k) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // Preferences drive scoring. Each media type's default quality profile
 // produces these (PreferencesFor); the Default*Preferences constructors are
 // the built-in fallbacks when no profile exists.
@@ -435,11 +482,34 @@ func (c *Candidate) matchBook(book *library.Book, author *library.Author, otherT
 	// Boat of a Million Years") bundles two books without using any of those
 	// words at all.
 	if !c.Parsed.Pack {
+		bookKeys := scanner.TitleKeys(book.Title)
+		var authorNorm string
+		if author != nil {
+			authorNorm = scanner.Normalize(author.Name)
+		}
 		for _, t := range otherTitles {
 			if t == "" || strings.EqualFold(t, book.Title) {
 				continue
 			}
-			if titleMentioned(relNorm, scanner.TitleKeys(t)) {
+			// A book title that's nothing but the author's own name (a
+			// stray anthology/bio credit in a messy bibliography) proves
+			// nothing — the author's name appears in essentially every
+			// release for them.
+			if authorNorm != "" && titleCoveredByAny(scanner.TitleKeys(t), []string{authorNorm}) {
+				continue
+			}
+			// Keep only the keys this other title carries that the wanted
+			// book's own title doesn't already reach on its own — a
+			// duplicate or split-edition row for the *same* book ("Dune
+			// Messiah (1 of 2)") strips down to exactly the wanted book's
+			// title and must not count as a second book just because that
+			// stripped form, unsurprisingly, also appears in every one of
+			// the wanted book's own releases.
+			independent := independentKeys(scanner.TitleKeys(t), bookKeys)
+			if len(independent) == 0 {
+				continue
+			}
+			if titleMentioned(relNorm, independent) {
 				c.Parsed.Pack = true
 				break
 			}

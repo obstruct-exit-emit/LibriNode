@@ -260,6 +260,30 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **A series with a messy bibliography (duplicate rows, split-edition
+  entries, or a stray title that's just the author's own name) could flag
+  nearly every one of its releases as a "pack" and could make a real ebook
+  fail to import at all, stuck waiting on a sibling that could never
+  arrive.** Frank Herbert's Dune is the case that surfaced it: the author's
+  bibliography carries entries like "Dune Messiah (1 of 2)" and "Dune
+  Messiah (2 of 2)" alongside the real "Dune Messiah" — once title-matching
+  strips their parenthetical suffix for comparison, all three reduce to the
+  identical text, so every genuine "Dune Messiah" release looked like it
+  also bundled two more books, and the importer's own file-matcher saw the
+  same three-way tie and refused to pick one, treating an ordinary
+  single-book download as unresolvably ambiguous. A book title that's
+  nothing but the author's own name (stray bio/anthology metadata) had the
+  same effect, since the author's name appears in virtually every release
+  for them. Both the release-browser "pack" badge and the importer's
+  title-based file matching now discount a candidate title once it reduces
+  to text the wanted book's own title, or the author's name, already
+  covers, and — when several candidates tie on the exact same matched
+  text — prefer whichever one matched through its own primary title rather
+  than through a fallback/stripped variant. Verified live: every Frank
+  Herbert "Dune Messiah" release dropped from 119/119 falsely flagged as a
+  pack to the one release that's genuinely a 3-book bundle, and a real
+  "Children of Dune" release (whose bibliography carries the identical
+  "(1 of 2)"/"(2 of 2)" duplicates) imported cleanly on the first try.
 - **The same title-based "expected book count" fix below (audiobook packs
   waiting for a sibling folder the release's own title promises) now also
   covers ebook/manga/comic packs**, whose files can arrive one at a time in
