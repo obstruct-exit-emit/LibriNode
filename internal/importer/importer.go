@@ -920,17 +920,43 @@ func (s *Service) pickPackAware(path string, accept func(string) bool, kind stri
 	if err != nil {
 		return "", nil, err
 	}
-	if grab == nil || len(files) < 2 {
+	if grab == nil {
 		return largestFile(files), nil, nil
 	}
+
 	matcher := s.newPackMatcher(book, mediaType)
 	var match string
 	var matchSize int64
+	matchedBooks := map[int64]bool{}
 	for _, f := range files {
 		b := matcher.match(f.path)
-		if b != nil && b.ID == book.ID && f.size > matchSize {
+		if b == nil {
+			continue
+		}
+		matchedBooks[b.ID] = true
+		if b.ID == book.ID && f.size > matchSize {
 			match, matchSize = f.path, f.size
 		}
+	}
+
+	// The release's own title can promise more books than have appeared as
+	// files yet (manga/comic always report 1 here — their volume count comes
+	// from series metadata, never guessed from a title) — the same
+	// folder-by-folder sync delay audiobook packs already guard against, just
+	// file-by-file here. Only applies once at least one file has been
+	// attributed to a book: a lone file that matches nothing by title is a
+	// naming mismatch, not evidence of a pack, and must not be held up
+	// waiting for siblings that were never promised in a way we can see.
+	if len(matchedBooks) > 0 {
+		if expected := matcher.expectedBookCount(grab.Title); len(matchedBooks) < expected && grabAge(grab) < stalePendingGrace {
+			return "", nil, fmt.Errorf(
+				"release names %d of this author's books, only %d have appeared in the download so far: %w",
+				expected, len(matchedBooks), errDownloadPending)
+		}
+	}
+
+	if len(files) < 2 {
+		return largestFile(files), nil, nil
 	}
 	if match == "" {
 		// Could be a genuine mismatch (wrong release), but could just as
@@ -941,6 +967,7 @@ func (s *Service) pickPackAware(path string, accept func(string) bool, kind stri
 		// stalePendingGrace in the caller).
 		return "", nil, fmt.Errorf("multi-file download has no file matching %q: %w", book.Title, errDownloadPending)
 	}
+
 	paths := make([]string, 0, len(files))
 	for _, f := range files {
 		paths = append(paths, f.path)

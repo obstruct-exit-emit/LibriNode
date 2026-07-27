@@ -260,6 +260,24 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **The same title-based "expected book count" fix below (audiobook packs
+  waiting for a sibling folder the release's own title promises) now also
+  covers ebook/manga/comic packs**, whose files can arrive one at a time in
+  a shared download folder the same way audiobook folders do. Previously
+  the ebook path only checked "does at least one file match the grabbed
+  book" — a two-book release that had only synced its first file would
+  import immediately rather than waiting for the second. It now also
+  cross-references the release's own title against the author's
+  bibliography and holds off until as many of those books have appeared as
+  files as the title promises (manga/comic are unaffected — their volume
+  count comes from series metadata, not a guessed title count). A lone
+  file that matches no book by title at all is left alone (still imports
+  immediately) so an oddly-named single-book download is never mistaken
+  for a stalled pack. Verified live against a real 44-file torrent
+  (`Poul Anderson collection sci-fi [epub]`, via TorBox): partway through
+  the download only 2 of 5 newly-monitored target books had synced, and the
+  final pass — once the rest arrived — correctly imported all 66 matched
+  books in one go, including all 5 targets.
 - **A pack could still silently drop a book even when nothing on disk was
   empty** — the deepest layer of the sync-delay issue above, and the one
   that needed live, repeated verification against a real TorBox-backed pack

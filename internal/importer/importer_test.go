@@ -1492,6 +1492,93 @@ func TestPackFillsOtherBooksWhenGrabbedBookAlreadyOwned(t *testing.T) {
 	}
 }
 
+// TestPackEbookWaitsForTitlePromisedSiblingFile: the same debrid sync-delay
+// problem audiobook packs guard against, but for ebooks: a multi-file
+// download can populate one book's file before the other's has arrived, and
+// nothing about the single file present says whether this is a genuine
+// single-book release or a pack still filling in. The release's own title
+// naming a second one of this author's books is the only independent signal,
+// and a fresh grab must wait for it rather than importing early.
+func TestPackEbookWaitsForTitlePromisedSiblingFile(t *testing.T) {
+	f := fixture(t)
+
+	guards := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "10",
+		Title: "Guards! Guards!", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only Mort's file has synced so far; Guards! Guards! hasn't appeared on
+	// disk at all yet — but the release title names both.
+	f.completedDownload(t, "nzo_ewaiting", "Terry Pratchett - Mort & Guards! Guards! EPUB",
+		"Mort.epub",
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_ewaiting",
+		Title: "Terry Pratchett - Mort & Guards! Guards! EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 0 || result.Failed != 0 || result.Skipped != 1 {
+		t.Fatalf("result = %+v, want skipped (waiting for Guards! Guards! to appear)", result)
+	}
+	if grabs, _ := f.grabs.ListGrabs(""); grabs[0].Status != download.GrabStatusGrabbed {
+		t.Errorf("grab status = %s, want grabbed (still pending)", grabs[0].Status)
+	}
+	if files, _ := f.store.ListBookFiles(f.book.ID); len(files) != 0 {
+		t.Error("Mort must not import early — it's part of a pack still waiting on its sibling")
+	}
+}
+
+// TestPackEbookGivesUpAfterGraceAndImportsWhatSynced: same setup, but the
+// grab is old enough that waiting stops being reasonable — imports the one
+// book that did sync rather than holding a good release hostage forever
+// because its sibling never showed up.
+func TestPackEbookGivesUpAfterGraceAndImportsWhatSynced(t *testing.T) {
+	f := fixture(t)
+
+	guards := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "10",
+		Title: "Guards! Guards!", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(guards); err != nil {
+		t.Fatal(err)
+	}
+
+	f.completedDownload(t, "nzo_egaveup", "Terry Pratchett - Mort & Guards! Guards! EPUB",
+		"Mort.epub",
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_egaveup",
+		Title: "Terry Pratchett - Mort & Guards! Guards! EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if _, err := f.db.Exec("UPDATE grabs SET grabbed_at = ? WHERE id = ?",
+		"2020-01-01 00:00:00", grabs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v, want Mort imported (Guards! Guards! never showed up)", result)
+	}
+	files, _ := f.store.ListBookFiles(f.book.ID)
+	if len(files) != 1 {
+		t.Error("Mort should have imported after giving up on its never-appearing sibling")
+	}
+	if files, _ := f.store.ListBookFiles(guards.ID); len(files) != 0 {
+		t.Errorf("Guards! Guards! files = %+v, want none (it never synced)", files)
+	}
+}
+
 // TestImportAudiobookPackWaitsForTitlePromisedSiblingFolder: a debrid mount
 // can populate a multi-book download's folders one at a time — nothing on
 // disk tells "this genuinely is a single-book release" apart from "the
