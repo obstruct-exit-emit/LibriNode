@@ -260,6 +260,24 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **A pack could still silently drop a book even when nothing on disk was
+  empty** — the deepest layer of the sync-delay issue above, and the one
+  that needed live, repeated verification against a real TorBox-backed pack
+  to actually confirm fixed. If one book's folder hadn't appeared *at all*
+  yet while a sibling's had, the download looked, from the filesystem alone,
+  exactly like an ordinary single-book release — there was nothing left to
+  detect. The release's own title is the only independent signal available:
+  it's now cross-referenced against the author's bibliography (the same
+  signal behind the search browser's "pack" badge) to estimate how many
+  books should eventually show up, and the import waits for that many
+  folders — not just "more than one" — before settling for what's currently
+  on disk. Also fixed: the "still syncing, retry" path never recorded why,
+  so a manual "Import now" showed a bare skip count with no way to tell a
+  sync delay from anything else; it now notes the reason, which is what
+  made this last layer possible to pin down at all. Verified live: a
+  two-book pack correctly held off on either book for ~15 seconds while its
+  second folder was still absent, then imported both correctly in the same
+  pass once it appeared.
 - **A completed download whose files hadn't finished syncing to a network/
   debrid mount yet (client says done, share shows an empty folder) was
   immediately abandoned and blocklisted** instead of retried — a real bug,

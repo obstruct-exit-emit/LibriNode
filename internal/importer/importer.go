@@ -342,7 +342,12 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 				"download completed but never yielded a usable file after a long wait", result)
 		default:
 			// Files not ready yet (still syncing) or a momentary share hiccup —
-			// leave the grab pending and retry next pass.
+			// leave the grab pending and retry next pass. Noted (not just
+			// counted) so a manual "Import now" surfaces why, instead of a
+			// bare skip count with no way to tell a sync delay from anything
+			// else — the periodic sweep's own summary log line never carried
+			// this detail at all.
+			result.note("%s: %v", item.Title, err)
 			result.Skipped++
 		}
 		return
@@ -769,6 +774,41 @@ func (m *packMatcher) match(path string) *library.Book {
 		}
 		return match
 	}
+}
+
+// expectedBookCount estimates how many distinct books a release's own title
+// promises, by counting how many of the author's book titles it mentions —
+// the same signal release.Score uses to flag a release as a pack. Used to
+// tell "this genuinely is a single-book download" apart from "this is a pack
+// whose folders haven't all appeared on disk yet, so it currently LOOKS like
+// a single-book download" — the two are indistinguishable from the
+// filesystem alone; the release's own name is the only independent signal
+// of how many books should eventually show up. Manga/comic packs don't need
+// this: a series' volume count is already known from its own metadata, not
+// guessed from a title. Returns 1 (never less) when nothing more than the
+// grabbed book itself is named, or the matcher has no bibliography loaded.
+func (m *packMatcher) expectedBookCount(releaseTitle string) int {
+	if m.mediaType == "manga" || m.mediaType == "comic" {
+		return 1
+	}
+	relNorm := scanner.Normalize(releaseTitle)
+	count := 0
+	for i := range m.books {
+		b := &m.books[i]
+		if b.MediaType != "book" {
+			continue
+		}
+		for _, key := range scanner.TitleKeys(b.Title) {
+			if key != "" && strings.Contains(relNorm, key) {
+				count++
+				break
+			}
+		}
+	}
+	if count < 1 {
+		return 1
+	}
+	return count
 }
 
 // monitoredFor reports whether the book is monitored for the media type —
@@ -1287,11 +1327,34 @@ func (s *Service) pickAudioPackAware(path string, grab *download.GrabRecord, boo
 		}
 		return all, formatOfLargestAudio(all), nil, nil
 	}
-	if grab == nil || len(named) < 2 || len(rootFiles) > 0 {
+	if grab == nil {
 		return singleBook()
 	}
 
 	matcher := s.newPackMatcher(book, "audiobook")
+
+	// A pack whose books sync into their folders one at a time looks, for a
+	// while, exactly like an ordinary single-book download — nothing on disk
+	// distinguishes "this is all there ever will be" from "the rest hasn't
+	// appeared yet". The release's own title is the only independent signal:
+	// if it names more of this author's books than have shown up as folders,
+	// wait for them rather than settling for what's currently visible —
+	// until waiting stops being a reasonable explanation.
+	if expected := matcher.expectedBookCount(grab.Title); len(rootFiles) == 0 && len(named) < expected {
+		if grabAge(grab) < stalePendingGrace {
+			return nil, "", nil, fmt.Errorf(
+				"release names %d of this author's books, only %d folder(s) have synced so far: %w",
+				expected, len(named), errDownloadPending)
+		}
+		// Waited long enough with no more folders appearing — proceed with
+		// whatever did sync (below) rather than hold a good partial release
+		// hostage forever.
+	}
+
+	if len(named) < 2 || len(rootFiles) > 0 {
+		return singleBook()
+	}
+
 	var primary audioGroup
 	found := false
 	for _, g := range named {
