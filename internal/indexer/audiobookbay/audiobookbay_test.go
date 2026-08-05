@@ -225,12 +225,15 @@ func TestSearchLowercasesQuery(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	// "The Hobbit" is Title Case (leading uppercase, the shape ABB's edge
+	// bounces) and matches the fixture listing, so the search also passes the
+	// relevance guard once lowercased.
 	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
-	if _, err := s.Search(context.Background(), "Dune Messiah", "audiobook"); err != nil {
+	if _, err := s.Search(context.Background(), "The Hobbit", "audiobook"); err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if gotQuery != "dune messiah" {
-		t.Errorf("search query sent to ABB = %q, want lowercased %q", gotQuery, "dune messiah")
+	if gotQuery != "the hobbit" {
+		t.Errorf("search query sent to ABB = %q, want lowercased %q", gotQuery, "the hobbit")
 	}
 }
 
@@ -346,6 +349,67 @@ func TestSearchRetriesEmptyListing(t *testing.T) {
 	}
 	if len(releases) != 1 {
 		t.Fatalf("releases = %+v, want 1", releases)
+	}
+	if searchHits != 2 {
+		t.Errorf("search requests = %d, want 2 (one retry)", searchHits)
+	}
+}
+
+// homepageFeedListing is what ABB serves at the search URL when it soft-blocks a
+// throttled IP: a real-looking listing of its "Latest" posts, HTTP 200 and no
+// redirect, none of them related to the query. Only a relevance check catches it.
+const homepageFeedListing = `<div class="postTitle"><a href="/audio-books/atomic-habits/">Atomic Habits</a></div>` +
+	`<div class="postTitle"><a href="/audio-books/the-silent-patient/">The Silent Patient</a></div>`
+
+// TestSearchDetectsHomepageFeedSoftBlock: a throttled ABB answers the search
+// with HTTP 200 and its unrelated homepage feed (never a redirect). The search
+// must reject it as a block, not hand back the feed's posts as bogus matches.
+func TestSearchDetectsHomepageFeedSoftBlock(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("s") != "" {
+			_, _ = w.Write([]byte(homepageFeedListing))
+			return
+		}
+		_, _ = w.Write([]byte("<html>abb home</html>"))
+	}))
+	defer srv.Close()
+
+	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
+	releases, err := s.Search(context.Background(), "dune messiah", "audiobook")
+	if err == nil {
+		t.Fatalf("expected a soft-block error, got %d releases", len(releases))
+	}
+	if !strings.Contains(err.Error(), "unrelated") {
+		t.Errorf("error = %v, want it to mention unrelated results", err)
+	}
+}
+
+// TestSearchRecoversFromHomepageFeed: the unrelated feed on the first attempt,
+// real results on the retry — the fresh-session retry must recover it, exactly
+// like the empty-page and redirect cases.
+func TestSearchRecoversFromHomepageFeed(t *testing.T) {
+	searchHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("s") == "" {
+			_, _ = w.Write([]byte("<html>abb home</html>"))
+			return
+		}
+		searchHits++
+		if searchHits == 1 {
+			_, _ = w.Write([]byte(homepageFeedListing))
+			return
+		}
+		_, _ = w.Write([]byte(`<div class="postTitle"><a href="/audio-books/dune-messiah/">Dune Messiah</a></div>`))
+	}))
+	defer srv.Close()
+
+	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
+	releases, err := s.Search(context.Background(), "dune messiah", "audiobook")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(releases) != 1 {
+		t.Fatalf("releases = %+v, want 1 (recovered on retry)", releases)
 	}
 	if searchHits != 2 {
 		t.Errorf("search requests = %d, want 2 (one retry)", searchHits)

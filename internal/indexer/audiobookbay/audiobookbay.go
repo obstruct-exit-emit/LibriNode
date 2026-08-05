@@ -260,6 +260,21 @@ func (s *searcher) searchBase(ctx context.Context, base, query string) ([]post, 
 			continue
 		}
 		posts := parseListing(listing, base)
+		// Soft-block guard (the shelfmark reference client's key trick): when ABB
+		// throttles an IP it can serve its homepage "Latest" feed at the search
+		// URL — HTTP 200, no redirect, a normal-looking listing — instead of real
+		// results. isHomepageRedirect can't catch that (the URL never changes),
+		// so without this check those unrelated posts leak through as matches and
+		// the grab downstream rejects them: the search "works" but the user sees
+		// nothing relevant. If not one parsed post shares a word with the query,
+		// treat it as a throttle and retry on a fresh session, same as an empty
+		// page or a redirect.
+		if len(posts) > 0 && !anyRelevant(posts, query) {
+			slog.Info("abb search only unrelated results (likely homepage feed on a throttled IP)",
+				"base", base, "attempt", attempt+1, "posts", len(posts))
+			lastErr = fmt.Errorf("AudioBook Bay returned only results unrelated to the query — it is likely rate-limiting or temporarily blocking this IP; try again later")
+			continue
+		}
 		slog.Info("abb search parsed", "base", base, "attempt", attempt+1, "posts", len(posts))
 		return posts, nil
 	}
@@ -352,6 +367,41 @@ func fetch(ctx context.Context, client *http.Client, rawURL string) (body, final
 		final = resp.Request.URL.String()
 	}
 	return string(b), final, nil
+}
+
+// queryWords splits a query into lowercased words long enough to discriminate a
+// relevant result — 1–2 char words ("a", "of", "to") match almost any title and
+// so are dropped from the relevance check.
+func queryWords(query string) []string {
+	var out []string
+	for _, w := range strings.Fields(strings.ToLower(query)) {
+		if len([]rune(w)) > 2 {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// anyRelevant reports whether at least one post's title shares a meaningful word
+// with the query. It's the discriminator for the soft-block guard in searchBase:
+// a real search returns posts whose titles echo the query, whereas ABB's
+// homepage "Latest" feed (served on a throttled IP) is unrelated to it. When the
+// query has no usable words to match on, relevance can't be judged and the
+// posts are accepted as-is.
+func anyRelevant(posts []post, query string) bool {
+	words := queryWords(query)
+	if len(words) == 0 {
+		return true
+	}
+	for _, p := range posts {
+		title := strings.ToLower(p.Title)
+		for _, w := range words {
+			if strings.Contains(title, w) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // isHomepageRedirect reports whether a search landed back on the site's
