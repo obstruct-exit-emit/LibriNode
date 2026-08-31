@@ -190,6 +190,14 @@ func (s *Store) Delete(id int64) error {
 // instead of each stampeding the clients.
 const queueCacheTTL = 15 * time.Second
 
+// lastGoodMaxAge bounds how long a client's last successful List() result is
+// trusted as a stand-in after it fails to answer a sweep (see Queue). Long
+// enough to bridge the transient blip this exists for — a download vanishing
+// from Activity for a couple seconds, then reappearing — short enough that a
+// client genuinely down for a while shows nothing rather than an indefinitely
+// frozen, increasingly inaccurate progress bar.
+const lastGoodMaxAge = 5 * time.Minute
+
 // Service picks clients and aggregates across them.
 type Service struct {
 	store *Store
@@ -200,6 +208,13 @@ type Service struct {
 	cachedErr    []string
 	cachedFailed map[int64]bool // client config id -> failed to answer, this snapshot
 	clients      map[int64]clientEntry
+	// lastGood/lastGoodAt hold each client's most recent successful List()
+	// result, keyed by client config id, used as a fallback when that client
+	// fails a single sweep (see Queue). Accessed only from within a sweep,
+	// which sweepMu already serializes against other sweeps while the local
+	// per-sweep mutex serializes against the sweep's own goroutines.
+	lastGood   map[int64][]Item
+	lastGoodAt map[int64]time.Time
 	// sweepMu serializes cold queue sweeps: concurrent callers wait for the
 	// one in flight and then read its snapshot instead of re-hitting clients.
 	sweepMu sync.Mutex
@@ -351,7 +366,12 @@ func (s *Service) Remove(ctx context.Context, configID int64, itemID string, del
 // Queue aggregates the download queues of all enabled clients, serving a
 // short-lived cached snapshot (queueCacheTTL) so concurrent UI pollers don't
 // stampede the clients. Client failures come back as messages, not errors, so
-// one dead client doesn't blank the whole view.
+// one dead client doesn't blank the whole view. A client that fails just one
+// sweep (a transient blip, a slow response past its timeout) falls back to its
+// last successful List() result (lastGood, capped at lastGoodMaxAge) so an
+// in-progress download doesn't flicker out of Activity for a single poll — the
+// failure is still recorded in errs/failed, so a client that's actually down
+// stays visible as such.
 func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 	s.mu.Lock()
 	if time.Since(s.cachedAt) < queueCacheTTL {
@@ -398,6 +418,9 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 				mu.Lock()
 				errs = append(errs, fmt.Sprintf("%s: %v", cfg.Name, err))
 				failed[cfg.ID] = true
+				if stale, ok := s.lastGood[cfg.ID]; ok && time.Since(s.lastGoodAt[cfg.ID]) < lastGoodMaxAge {
+					items = append(items, stale...)
+				}
 				mu.Unlock()
 				return
 			}
@@ -407,9 +430,18 @@ func (s *Service) Queue(ctx context.Context) ([]Item, []string, error) {
 			if err != nil {
 				errs = append(errs, fmt.Sprintf("%s: %v", cfg.Name, err))
 				failed[cfg.ID] = true
+				if stale, ok := s.lastGood[cfg.ID]; ok && time.Since(s.lastGoodAt[cfg.ID]) < lastGoodMaxAge {
+					items = append(items, stale...)
+				}
 				return
 			}
 			items = append(items, found...)
+			if s.lastGood == nil {
+				s.lastGood = map[int64][]Item{}
+				s.lastGoodAt = map[int64]time.Time{}
+			}
+			s.lastGood[cfg.ID] = found
+			s.lastGoodAt[cfg.ID] = time.Now()
 		}()
 	}
 	wg.Wait()
