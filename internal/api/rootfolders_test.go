@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"path/filepath"
 	"testing"
 )
 
@@ -60,5 +61,31 @@ func TestRootFolderVariants(t *testing.T) {
 	}
 	if byType["manga:"+mono] != "mono" || byType["manga:"+color] != "color" || byType["ebook:"+ebook] != "" {
 		t.Fatalf("listed variants wrong: %+v", byType)
+	}
+}
+
+// TestRootFolderRequiresAbsolutePath: a relative path (or one carrying "../")
+// must be rejected or cleaned, not stored unresolved — a relative one would
+// resolve against the service's working directory, and a "../"-laden one
+// would break the path-prefix assumptions scanning and organize rely on.
+func TestRootFolderRequiresAbsolutePath(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	// A relative path is rejected outright, before the existence check.
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": "some/relative/dir"}, nil), http.StatusBadRequest)
+
+	// An absolute path with a redundant ".." segment is cleaned to the real
+	// directory before storage (Clean collapses it), then accepted.
+	dir := t.TempDir()
+	messy := filepath.Join(dir, "sub") + string(filepath.Separator) + ".." // == dir, written with traversal
+	type rf struct {
+		Path string `json:"path"`
+	}
+	var got rf
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": messy}, &got), http.StatusCreated)
+	if got.Path != dir {
+		t.Fatalf("stored path = %q, want cleaned %q", got.Path, dir)
 	}
 }

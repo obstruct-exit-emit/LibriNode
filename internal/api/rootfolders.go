@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 )
@@ -87,6 +88,18 @@ func (s *server) handleAddRootFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Path == "" {
 		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	// Clean and require an absolute path before anything else touches it: a
+	// raw path with "../" segments passes dirExists (os.Stat resolves ".."
+	// transparently) but gets stored as typed — a root whose saved path
+	// doesn't match what it points at, breaking the path-prefix assumptions
+	// scanning and organize rely on. A relative path silently resolves
+	// against the service's own working directory, and would resolve
+	// somewhere else (or nowhere) if that ever changed.
+	req.Path = filepath.Clean(req.Path)
+	if !filepath.IsAbs(req.Path) {
+		writeError(w, http.StatusBadRequest, "path must be absolute")
 		return
 	}
 	if !dirExists(req.Path) {
