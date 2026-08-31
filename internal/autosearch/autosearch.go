@@ -6,6 +6,7 @@ package autosearch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -227,6 +228,12 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 	}
 
 	result, _, err := s.downloads.GrabRelease(ctx, best.Protocol, best.DownloadURL, best.Title, best.GUID, book.ID, mediaType)
+	if errors.Is(err, download.ErrGrabInFlight) {
+		// A concurrent grab (a manual click, or an overlapping sweep) claimed
+		// this book first — not a failure; it's already on its way.
+		outcome.Message = "a grab is already pending for this book"
+		return outcome, nil
+	}
 	if err != nil {
 		outcome.Message = "grab failed: " + err.Error()
 		return outcome, nil
@@ -477,9 +484,12 @@ func (s *Service) searchMagazine(ctx context.Context, series *library.Series) ([
 		}
 		outcome := BookOutcome{BookID: book.ID, BookTitle: book.Title, MediaType: "magazine"}
 		result, _, err := s.downloads.GrabRelease(ctx, cand.Protocol, cand.DownloadURL, cand.Title, cand.GUID, book.ID, "magazine")
-		if err != nil {
+		switch {
+		case errors.Is(err, download.ErrGrabInFlight):
+			outcome.Message = "a grab is already pending for this issue"
+		case err != nil:
 			outcome.Message = "grab failed: " + err.Error()
-		} else {
+		default:
 			outcome.Grabbed = true
 			outcome.Release = cand.Title
 			outcome.Client = result.Client

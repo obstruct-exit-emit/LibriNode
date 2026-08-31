@@ -211,6 +211,10 @@ func (s *server) handleGrabRelease(w http.ResponseWriter, r *http.Request) {
 			"no enabled "+req.Protocol+" download client — add one under Settings")
 		return
 	}
+	if errors.Is(err, download.ErrGrabInFlight) {
+		writeError(w, http.StatusConflict, "a grab for this book is already in progress")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return

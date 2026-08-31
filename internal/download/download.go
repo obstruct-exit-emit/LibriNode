@@ -329,12 +329,42 @@ func (s *Service) Grab(ctx context.Context, protocol, url, title string) (*GrabR
 // Handling can import the result. Used by both the grab endpoint and
 // automatic search.
 func (s *Service) GrabRelease(ctx context.Context, protocol, url, title, guid string, bookID int64, mediaType string) (*GrabResult, *GrabRecord, error) {
+	// A tracked grab claims its book BEFORE the client network call: a
+	// double-clicked grab, or an autosearch sweep overlapping a manual grab,
+	// would otherwise send the same book to the client twice (autosearch's own
+	// pending-book pre-filter isn't atomic with the grab). ClaimGrab records
+	// the pending row only when no other grab for this book+media type is
+	// already pending; the loser gets ErrGrabInFlight and never reaches the
+	// client. A client rejection releases the claim so a retry can proceed —
+	// a plain unique constraint AFTER the send would instead leave an orphaned
+	// download in the client.
+	if bookID > 0 {
+		grab := &GrabRecord{
+			BookID: bookID, Title: title, GUID: guid,
+			Protocol: protocol, MediaType: mediaType,
+		}
+		if err := s.store.ClaimGrab(grab); err != nil {
+			return nil, nil, err // ErrGrabInFlight, or a real DB error
+		}
+		result, err := s.Grab(ctx, protocol, url, title)
+		if err != nil {
+			_ = s.store.DeleteGrab(grab.ID) // release the claim; the book stays grabbable
+			return nil, nil, err
+		}
+		if err := s.store.FinishGrabClaim(grab.ID, result.ClientID, result.ID); err != nil {
+			return result, nil, fmt.Errorf("recording grab: %w", err)
+		}
+		grab.ClientConfigID = result.ClientID
+		grab.ClientItemID = result.ID
+		return result, grab, nil
+	}
+
+	// Untracked grab (no book to dedup against): send, then record.
 	result, err := s.Grab(ctx, protocol, url, title)
 	if err != nil {
 		return nil, nil, err
 	}
 	grab := &GrabRecord{
-		BookID:         bookID,
 		ClientConfigID: result.ClientID,
 		ClientItemID:   result.ID,
 		Title:          title,

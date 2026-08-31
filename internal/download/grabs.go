@@ -13,6 +13,11 @@ const (
 	GrabStatusFailed   = "failed"
 )
 
+// ErrGrabInFlight is returned by ClaimGrab when a grab for the same book and
+// media type is already pending — the compare-and-swap that stops a
+// double-clicked, or concurrently-swept, grab from reaching the client twice.
+var ErrGrabInFlight = errors.New("a grab for this book is already in flight")
+
 // GrabRecord tracks one release sent to a download client and its outcome.
 type GrabRecord struct {
 	ID             int64  `json:"id"`
@@ -61,6 +66,67 @@ func (s *Store) AddGrab(g *GrabRecord) error {
 		RETURNING id, grabbed_at`,
 		bookID, configID, g.ClientItemID, g.Title, g.GUID, g.Protocol, g.MediaType, g.Status,
 	).Scan(&g.ID, &g.GrabbedAt)
+}
+
+// ClaimGrab atomically records a pending grab for a book, but only when no
+// other grab for the same book and media type is already pending. It is the
+// compare-and-swap that must run BEFORE the client network call (see
+// Service.GrabRelease): two grabs racing for the same book — a double-click,
+// or an autosearch sweep overlapping a manual grab — would otherwise both
+// reach the client, since autosearch's own pending-book pre-filter isn't
+// atomic with the grab. The loser gets ErrGrabInFlight. The row carries no
+// client details yet: FinishGrabClaim fills them in once the client accepts,
+// or DeleteGrab releases the claim if it doesn't.
+func (s *Store) ClaimGrab(g *GrabRecord) error {
+	if g.MediaType == "" {
+		g.MediaType = "ebook"
+	}
+	bookID := sql.NullInt64{Int64: g.BookID, Valid: g.BookID > 0}
+	// One atomic statement: INSERT ... SELECT ... WHERE NOT EXISTS runs under
+	// SQLite's single-writer lock, so two concurrent claims can't both pass
+	// the existence check — the second inserts zero rows, so RETURNING yields
+	// sql.ErrNoRows.
+	err := s.db.QueryRow(`
+		INSERT INTO grabs (book_id, client_config_id, client_item_id, title, guid, protocol, media_type, status)
+		SELECT ?, NULL, '', ?, ?, ?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM grabs WHERE book_id = ? AND media_type = ? AND status = ?)
+		RETURNING id, grabbed_at`,
+		bookID, g.Title, g.GUID, g.Protocol, g.MediaType, GrabStatusGrabbed,
+		g.BookID, g.MediaType, GrabStatusGrabbed,
+	).Scan(&g.ID, &g.GrabbedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrGrabInFlight
+	}
+	if err != nil {
+		return err
+	}
+	g.Status = GrabStatusGrabbed
+	return nil
+}
+
+// FinishGrabClaim fills in the client details on a grab claimed by ClaimGrab,
+// once the download client has accepted the release.
+func (s *Store) FinishGrabClaim(id, configID int64, clientItemID string) error {
+	cfg := sql.NullInt64{Int64: configID, Valid: configID > 0}
+	res, err := s.db.Exec(
+		`UPDATE grabs SET client_config_id = ?, client_item_id = ? WHERE id = ?`,
+		cfg, clientItemID, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteGrab removes a grab row outright — used to release a ClaimGrab claim
+// when the client never accepted the release, leaving no phantom "grabbed" row
+// behind so the book is immediately grabbable again.
+func (s *Store) DeleteGrab(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM grabs WHERE id = ?`, id)
+	return err
 }
 
 // GrabHistory returns grab history newest first with paging and an optional
