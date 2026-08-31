@@ -239,7 +239,11 @@ func (s *Service) writeOPF(book *library.Book, mediaType, target, dir string) er
 func matchGrab(pending []download.GrabRecord, item *download.Item) *download.GrabRecord {
 	for i := range pending {
 		g := &pending[i]
-		if g.ClientItemID != "" && g.ClientItemID == item.ID {
+		// Case-insensitive: magnetHash stores a torrent's info hash lowercase,
+		// but a qBittorrent-compatible debrid bridge may echo it back in the
+		// original magnet's case — a straight == would then miss a healthy
+		// download and the orphan sweep would fail it as vanished.
+		if g.ClientItemID != "" && strings.EqualFold(g.ClientItemID, item.ID) {
 			return g
 		}
 	}

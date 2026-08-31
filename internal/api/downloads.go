@@ -369,12 +369,16 @@ func (s *server) enrichQueue(items []download.Item) []queueItem {
 	for i := range pending {
 		g := &pending[i]
 		if g.ClientItemID != "" {
-			byID[g.ClientItemID] = g
+			// Lowercased: magnetHash stores a torrent's info hash lowercase,
+			// but a qBittorrent-compatible debrid bridge may echo it back in
+			// the original magnet's case — normalize both sides so the queue
+			// line stays linked to its grab.
+			byID[strings.ToLower(g.ClientItemID)] = g
 		}
 		byTitle[scanner.Normalize(g.Title)] = g
 	}
 	for i := range out {
-		g := byID[out[i].ID]
+		g := byID[strings.ToLower(out[i].ID)]
 		if g == nil {
 			g = byTitle[scanner.Normalize(out[i].Title)]
 		}
@@ -429,7 +433,7 @@ func (s *server) handleRemoveQueueItem(w http.ResponseWriter, r *http.Request) {
 		for i := range pending {
 			g := &pending[i]
 			if g.ID == grabID ||
-				(g.ClientItemID != "" && g.ClientItemID == itemID && g.ClientConfigID == configID) {
+				(g.ClientItemID != "" && strings.EqualFold(g.ClientItemID, itemID) && g.ClientConfigID == configID) {
 				_ = s.downloads.Store().ResolveGrab(g.ID, download.GrabStatusFailed, "removed from queue")
 				break
 			}
