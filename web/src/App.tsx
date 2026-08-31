@@ -370,6 +370,7 @@ function AppInner() {
           ))}
         {connected && page.name === "author" && (
           <AuthorDetailView
+            key={`${page.id}-${page.library}`}
             id={page.id}
             library={page.library}
             onError={onError}
@@ -399,6 +400,7 @@ function AppInner() {
         )}
         {connected && page.name === "series-detail" && (
           <SeriesDetailView
+            key={`${page.id}-${page.mediaType}`}
             id={page.id}
             mediaType={page.mediaType}
             onError={onError}

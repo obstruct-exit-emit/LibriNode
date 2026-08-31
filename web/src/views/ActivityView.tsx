@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type BlockEntry, type GrabRecord, type QueueItem } from "../api";
 import { relativeTime } from "../format";
 import { RowsSkeleton } from "../components/Skeleton";
@@ -22,32 +22,47 @@ export default function ActivityView({
   const [removing, setRemoving] = useState("");
   const [notice, setNotice] = useState("");
 
+  // historyToken guards against an out-of-order response: reload() (the 10s
+  // poll and every action handler) and the debounced filter effect below both
+  // independently call api.history and write straight to history/histTotal.
+  // Typing into the filter re-runs the poll effect too (reload's identity
+  // depends on histFilter/histLimit), so a just-typed keystroke's debounced
+  // call and the poll's own immediate call can both be in flight together —
+  // whichever resolves last would win regardless of which reflects the current
+  // filter. Only the most recently issued call's response is applied now.
+  const historyToken = useRef(0);
+  const applyHistory = (h: { records: GrabRecord[]; total: number }, token: number) => {
+    if (historyToken.current !== token) return;
+    setHistory(h.records);
+    setHistTotal(h.total);
+  };
+
   const reload = useCallback(() => {
+    const token = ++historyToken.current;
     Promise.all([api.queue(), api.history(histFilter, histLimit), api.blocklist()])
       .then(([q, h, b]) => {
         setItems(q.items);
         setClientErrors(q.errors);
-        setHistory(h.records);
-        setHistTotal(h.total);
+        applyHistory(h, token);
         setBlocked(b);
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onError, histFilter, histLimit]);
 
   // The filter re-queries as you type — debounced so each keystroke doesn't
   // hit the API.
   useEffect(() => {
+    const token = ++historyToken.current;
     const t = window.setTimeout(() => {
       api
         .history(histFilter, histLimit)
-        .then((h) => {
-          setHistory(h.records);
-          setHistTotal(h.total);
-        })
+        .then((h) => applyHistory(h, token))
         .catch(() => {});
     }, 250);
     return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [histFilter, histLimit]);
 
   const removeItem = async (it: QueueItem) => {
