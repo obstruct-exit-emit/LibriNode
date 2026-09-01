@@ -209,15 +209,11 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 
 	mux.HandleFunc("GET /api/v1/indexer", s.requireAdmin(s.handleListIndexers))
 	mux.HandleFunc("POST /api/v1/indexer", s.requireAdmin(s.handleAddIndexer))
-	mux.HandleFunc("GET /api/v1/indexer/schema", s.requireAdmin(s.handleIndexerSchema))
 	mux.HandleFunc("GET /api/v1/indexer/native", s.requireAdmin(s.handleListNativeIndexers))
 	mux.HandleFunc("GET /api/v1/indexer/{id}", s.requireAdmin(s.handleGetIndexer))
 	mux.HandleFunc("PUT /api/v1/indexer/{id}", s.requireAdmin(s.handleUpdateIndexer))
 	mux.HandleFunc("DELETE /api/v1/indexer/{id}", s.requireAdmin(s.handleDeleteIndexer))
 	mux.HandleFunc("POST /api/v1/indexer/test", s.requireAdmin(s.handleTestIndexer))
-	mux.HandleFunc("GET /api/v1/tag", s.requireAdmin(s.handleListTags))
-	// Readarr-only capability Prowlarr reads during app sync (see handler).
-	mux.HandleFunc("GET /api/v1/metadataprofile", s.requireAdmin(s.handleListMetadataProfiles))
 	// Release search/grab is normal app usage (acquiring wanted content), not
 	// server configuration — members keep this.
 	mux.HandleFunc("GET /api/v1/release", s.auth(s.handleSearchReleases))

@@ -21,7 +21,7 @@ curl -H "X-Api-Key: <key>" http://localhost:7845/api/v1/system/status
 | Series | `GET/POST /series`, `GET/DELETE /series/{id}` (`?deleteFiles=true`), `PUT /series/{id}/monitor`, `PUT /series/{id}/provider` (per-series provider override; `""` follows settings), `POST /series/{id}/refresh`, `POST /series/{id}/search` (this series' wanted volumes only; magazines answer with an organize-only notice) |
 | Libraries | `GET /libraries`, `GET /home`, `GET /wanted?library=X`, `GET /calendar?past=30&days=90` |
 | Files | `POST /library/scan` (`?mediaType=` scopes to one library's roots; absent scans all), `POST /library/refresh` (`{"mediaType":"…"}` — background metadata re-sync of the whole library, one at a time; magazines refused),  `GET/POST /library/rename` (preview/apply; `?bookId=`, `?authorId=`/`{"authorId":N}`, `?seriesId=`/`{"seriesId":N}`, or `?mediaType=`/`{"mediaType":"…"}` — one library — scopes, otherwise everything), `GET /bookfile?unmatched=true`, `GET /bookfile/unmatched/options?mediaType=` (existing-file import: per-file suggestion + 0–100 confidence, candidates, duplicate info — all five media types), `POST /bookfile/import-matched` `{"mediaType":"…"}` (bulk-import every confident match), `POST /bookfile/{id}/match` (`{"bookId":N}`, or `{"seriesId":N,"issue":"…"}` to materialize a magazine issue), `POST /bookfile/{id}/replace` `{"bookId":N}` (this file replaces the book's owned copy, which is deleted; manga replaces only the matching variant), `DELETE /bookfile/{id}` (`?deleteFiles=true` also deletes from disk), `DELETE /library/covers/cache` (clear extracted comic covers) |
-| Indexers | `GET/POST /indexer` (native rows are hidden when the caller is Prowlarr), `GET/PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /indexer/schema`, `GET /indexer/native` (built-in native source catalog: name, protocol, media types, URL/key needs), `GET /release?term=` or `?bookId=N&mediaType=` (magazines rejected — organize-only), `GET /release/packs?seriesId=N` (whole-series pack candidates for manga/comics; grab one via the normal grab endpoint with the returned `grabBookId`) |
+| Indexers | `GET/POST /indexer`, `GET/PUT/DELETE /indexer/{id}`, `POST /indexer/test`, `GET /indexer/native` (built-in native source catalog: name, protocol, media types, URL/key needs — includes Prowlarr), `GET /release?term=` or `?bookId=N&mediaType=` (magazines rejected — organize-only), `GET /release/packs?seriesId=N` (whole-series pack candidates for manga/comics; grab one via the normal grab endpoint with the returned `grabBookId`) |
 | Quality | `GET/POST /qualityprofile`, `PUT/DELETE /qualityprofile/{id}`, `PUT /qualityprofile/{id}/default` |
 | Downloads | `GET/POST /downloadclient` (types: `qbittorrent`, `sabnzbd`, `direct` — the built-in HTTP fetcher, whose `host` is a local download folder), `PUT/DELETE /downloadclient/{id}`, `POST /downloadclient/test`, `POST /release/grab` (protocols `torrent`\|`usenet`\|`direct`; magazines rejected — organize-only), `GET /queue` (each item enriched with its book/grab and live progress; short-cached snapshot), `DELETE /queue/{clientId}/{itemId}` (remove one download + its data, no blocklist), `POST /grab/{id}/cancel` (manually resolve a pending grab as failed, without touching any client — for one whose queue entry is already gone and stuck reporting "pending"), `GET /history?search=&limit=&offset=` (paged: `{"records": […], "total": N}`), `POST /library/import`, `GET /blocklist`, `DELETE /blocklist/{id}` |
 | Auto search | `POST /book/{id}/search?mediaType=`, `POST /library/search` |
@@ -41,14 +41,11 @@ Notes:
 - The per-author **Missing** section (bibliography gaps not yet monitored
   or owned in a format library) is `GET /author/{id}/missing?library=`;
   one-click monitor is the existing `PUT /book/{id}/library`.
-- The Prowlarr-facing surface emulates Readarr v1 (`/api/v1/indexer` accepts
-  Readarr resources; `/system/status` reports a Readarr-compatible
-  `version`, LibriNode's own in `appVersion`). During application sync
-  Prowlarr also reads `/api/v1/rootfolder`, `/qualityprofile`,
-  `/metadataprofile` (Readarr-only), and `/downloadclient` — these return
-  Readarr-shaped resources (download clients carry `protocol` so torrent
-  indexers sync) when the caller's User-Agent is Prowlarr, native JSON
-  otherwise.
+- Prowlarr is a **native indexer type** (`GET /indexer/native` lists it): add
+  it with your instance's URL + API key and it searches every indexer Prowlarr
+  has configured, each queried in parallel through Prowlarr's own
+  `/api/v1/search`. (LibriNode no longer emulates a Readarr application for
+  Prowlarr to push indexers into — that surface is gone.)
 - Book metadata (`/search?type=book`, `POST /author`/`/book`) is served by the
   active provider with the configured fallbacks behind it: a fallback answers
   only when the active provider finds nothing, and a record found that way is

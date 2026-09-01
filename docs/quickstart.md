@@ -35,9 +35,10 @@
    one click (or all confident matches at once), resolve duplicates, or add
    the missing author/series/magazine right from the row.
 
-6. **Automate acquisition.** Add indexers (**Settings → Indexers**, or sync
-   them from Prowlarr by adding LibriNode as a *Readarr* application — plus
-   optional built-in **native sources** for sites Prowlarr can't reach) and a
+6. **Automate acquisition.** Add indexers (**Settings → Indexers** — add your
+   **Prowlarr** as one indexer with its URL + API key to search everything
+   inside it, or enter Newznab/Torznab endpoints directly, plus optional
+   built-in **native sources** for sites no aggregator can reach) and a
    download client (**Settings → Download Clients**, with **Test** buttons).
    Monitored items are searched automatically every six hours; **Search
    wanted**, per-item **Auto grab**, and interactive **Search releases**

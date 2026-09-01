@@ -34,8 +34,8 @@ LibriNode is an **alternative** to tools like Readarr (books; development has en
 | Magazines | Provider-less, added by name *(organize-only today)* | pdf, epub, cbz |
 
 **🔍 One acquisition pipeline**
-- **Prowlarr application sync** — add LibriNode as a *Readarr* app and Prowlarr pushes its indexers automatically; manual Newznab/Torznab entry works too
-- **Native indexers** for sources Prowlarr can't reach (AudioBook Bay, Library Genesis) — built-in, off by default, user-enabled
+- **Prowlarr** — add your Prowlarr instance as one indexer (URL + API key) and it searches every indexer configured inside it, each queried in parallel; manual Newznab/Torznab entry works too
+- **Native indexers** for sources no aggregator can reach (AudioBook Bay, Library Genesis) — built-in, off by default, user-enabled
 - Release parsing and scoring that understands formats, retail editions, narrators, volume ranges, and whole-series packs
 - Quality profiles with upgrade handling, a failed-release blocklist, and per-indexer failure backoff
 
@@ -80,7 +80,7 @@ Then open `http://localhost:7845` — a first-run wizard walks you through your 
 - **Backend:** Go — one self-contained binary per OS, no runtime dependencies
 - **Frontend:** React (Vite), embedded in the binary, served on one port
 - **Database:** SQLite (pure Go, no cgo) with embedded, tested migrations
-- **API:** versioned REST (`/api/v1`) with API-key auth — the same API the UI uses; Prowlarr-compatible surface for app sync
+- **API:** versioned REST (`/api/v1`) with API-key auth — the same API the UI uses
 - **Default port:** `7845` · **License:** GPL-3.0
 
 ## Security

@@ -7,18 +7,25 @@ setting below is kept for when acquisition returns.)
 
 ## Indexers
 
-Two ways in:
+Three ways in:
 
-- **Manually** under **Settings → Indexers**: any Newznab (usenet) or
-  Torznab (torrent) endpoint, including per-indexer feed URLs from Prowlarr
-  or Jackett. Test buttons on the form and on every saved indexer.
-- **Prowlarr sync**: in Prowlarr, add an application of type **Readarr**
-  with LibriNode's URL and API key. Prowlarr pushes its indexers into
-  LibriNode and keeps them in sync (LibriNode emulates the Readarr v1 API).
+- **Prowlarr** (recommended): add it as an indexer under **Settings →
+  Indexers**, type **Prowlarr**, with your Prowlarr instance's URL and API
+  key. One connection searches *every* indexer configured inside Prowlarr —
+  no per-indexer setup here, and no application-sync handshake to keep
+  working. LibriNode queries each of Prowlarr's own sub-indexers in parallel,
+  so one slow indexer never holds up the rest. (This replaces the old model
+  where LibriNode emulated a Readarr app for Prowlarr to push indexers into;
+  if you set that up before, remove the LibriNode "application" from Prowlarr
+  and add Prowlarr here instead.)
+- **Manually**: any single Newznab (usenet) or Torznab (torrent) endpoint,
+  including a per-indexer feed URL from Prowlarr or Jackett. Test buttons on
+  the form and on every saved indexer.
 
-Each indexer carries per-type category lists: books `7000,7020`, audio
-`3030`, comics/manga `7030`, magazines `7010` — adjust per indexer if yours
-differ.
+Manual Newznab/Torznab indexers carry per-type category lists: books
+`7000,7020`, audio `3030`, comics/manga `7030`, magazines `7010` — adjust per
+indexer if yours differ. (The Prowlarr source uses these same defaults per
+media type.)
 
 An indexer that keeps failing **rests with exponential backoff** (5 minutes
 doubling up to 6 hours) instead of being retried every sweep; one success
@@ -26,12 +33,11 @@ clears it.
 
 ### Native indexers
 
-Some sites speak no Newznab/Torznab API, so Prowlarr structurally can't reach
-them. A **native** indexer is a built-in source, selected as the indexer's
-*type* under **Settings → Indexers** (no URL to paste) — it feeds the same
-search, scoring, and grab pipeline as everything else. Native indexers are
-LibriNode-managed only and are hidden from Prowlarr, so it never treats them as
-indexers it owns.
+A **native** indexer is a built-in Go source, selected as the indexer's *type*
+under **Settings → Indexers** — it feeds the same search, scoring, and grab
+pipeline as everything else. Two kinds: the **Prowlarr** connection above (an
+API client — needs your instance's URL + API key), and scraped sites that
+speak no Newznab/Torznab API at all (no URL to paste, or a rotating one).
 
 > ⚠️ **The native sources are a work in progress.** Scraping these sites
 > reliably still needs work — expect failed searches and grabs. The Settings

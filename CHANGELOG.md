@@ -10,6 +10,22 @@ shook out the release CI); `v0.9.0` will be the first stable tag.
 Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardening
 in progress. Highlights from the hardening period, newest first:
 
+### Changed
+- **Prowlarr is now a native indexer (a direct connection), replacing the
+  Readarr application-sync emulation.** Add your Prowlarr instance under
+  Settings → Indexers (type **Prowlarr**, URL + API key) and one connection
+  searches every indexer configured inside Prowlarr — LibriNode queries each of
+  Prowlarr's own sub-indexers in parallel through its `/api/v1/search`, each
+  with its own failure backoff, so one slow indexer never holds up the rest,
+  and a result keeps its real per-indexer protocol (torrent or usenet). This
+  removes the old model where LibriNode pretended to be a Readarr application
+  for Prowlarr to push indexers into — the emulated Readarr v1 endpoints and
+  the `/indexer/schema`, `/tag`, and `/metadataprofile` routes are gone.
+  **Upgrade note:** if you used the old sync, remove the LibriNode
+  "application" from Prowlarr and add Prowlarr as an indexer here instead;
+  indexers Prowlarr previously synced remain as ordinary Newznab/Torznab rows
+  and keep working.
+
 ### Added
 - **A "pack" badge on releases in the search browser** flags one that looks
   like it bundles multiple books/volumes — an explicit volume span

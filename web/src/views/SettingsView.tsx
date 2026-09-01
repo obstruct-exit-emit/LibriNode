@@ -1600,8 +1600,9 @@ function IndexersCard({
   const draftValid = nativeDef
     ? draft.name.trim() !== "" &&
       (!nativeDef.needsApiKey || draft.apiKey.trim() !== "") &&
-      // Site URLs are optional, but every entered one (primary + fallbacks,
-      // comma-separated) must be a real http(s) URL.
+      (!nativeDef.needsBaseUrl || draft.baseUrl.trim() !== "") &&
+      // Site URLs are optional (unless needsBaseUrl), but every entered one
+      // (primary + fallbacks, comma-separated) must be a real http(s) URL.
       draft.baseUrl
         .split(",")
         .map((s) => s.trim())
@@ -1737,12 +1738,34 @@ function IndexersCard({
               </p>
             )}
             <p className="muted field-note">
-              <strong>{nativeDef.displayName}</strong> is a built-in scraped
-              source — no Newznab/Torznab endpoint. It's off until you enable it,
-              user-configured, and yours to use responsibly; it stays hidden from
-              Prowlarr. Serves: {nativeDef.mediaTypes.join(", ") || "all media"}.
+              {nativeDef.needsBaseUrl ? (
+                <>
+                  <strong>{nativeDef.displayName}</strong> connects to your own
+                  self-hosted {nativeDef.displayName} and searches every indexer
+                  configured inside it — no per-indexer setup here, and no
+                  application-sync to keep working. Serves:{" "}
+                  {nativeDef.mediaTypes.join(", ") || "all media"}.
+                </>
+              ) : (
+                <>
+                  <strong>{nativeDef.displayName}</strong> is a built-in scraped
+                  source — no Newznab/Torznab endpoint. It's off until you enable
+                  it, user-configured, and yours to use responsibly; it stays
+                  hidden from Prowlarr. Serves:{" "}
+                  {nativeDef.mediaTypes.join(", ") || "all media"}.
+                </>
+              )}
             </p>
-            {nativeDef.defaultBaseUrl !== "" &&
+            {nativeDef.needsBaseUrl ? (
+              <label>
+                Server URL
+                <input
+                  placeholder="http://localhost:9696"
+                  value={draft.baseUrl}
+                  onChange={(e) => set({ baseUrl: e.target.value })}
+                />
+              </label>
+            ) : nativeDef.defaultBaseUrl !== "" ? (
               (() => {
                 // The base-URL field stores "primary,fallback"; the form edits
                 // them as two inputs (the site runs mirror domains).
@@ -1771,7 +1794,8 @@ function IndexersCard({
                     </label>
                   </>
                 );
-              })()}
+              })()
+            ) : null}
             <label>
               {nativeDef.needsApiKey
                 ? "API key / membership token"

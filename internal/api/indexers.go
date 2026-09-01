@@ -25,31 +25,12 @@ func writeIndexerError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, err.Error())
 }
 
-// decodeIndexer reads and validates an indexer definition from the body.
-// Two dialects arrive here: LibriNode's native flat JSON and the Readarr v1
-// resource Prowlarr pushes (marked by an "implementation" key with fields[]).
+// decodeIndexer reads and validates an indexer definition from the body —
+// LibriNode's own native flat JSON, from the Settings UI.
 func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		return nil, "reading body"
-	}
-
-	var probe struct {
-		Implementation string `json:"implementation"`
-	}
-	if json.Unmarshal(body, &probe) == nil && probe.Implementation != "" {
-		var res arrIndexerResource
-		if err := json.Unmarshal(body, &res); err != nil {
-			return nil, "invalid JSON body"
-		}
-		in, err := res.toIndexer()
-		if err != nil {
-			return nil, err.Error()
-		}
-		if in.Name == "" {
-			return nil, "name is required"
-		}
-		return in, ""
 	}
 
 	var in indexer.Indexer
@@ -83,6 +64,9 @@ func decodeIndexer(r *http.Request) (*indexer.Indexer, string) {
 			cleaned = append(cleaned, p)
 		}
 		in.BaseURL = strings.Join(cleaned, ",")
+		if def.NeedsBaseURL && in.BaseURL == "" {
+			return nil, def.DisplayName + " needs a base URL (your instance's address)"
+		}
 		if def.NeedsAPIKey && in.APIKey == "" {
 			return nil, def.DisplayName + " needs an API key"
 		}
@@ -124,6 +108,7 @@ func (s *server) handleListNativeIndexers(w http.ResponseWriter, r *http.Request
 			"mediaTypes":     d.MediaTypes,
 			"defaultBaseUrl": d.DefaultBaseURL,
 			"needsApiKey":    d.NeedsAPIKey,
+			"needsBaseUrl":   d.NeedsBaseURL,
 			"wip":            d.WIP,
 		})
 	}
@@ -136,18 +121,7 @@ func (s *server) handleListIndexers(w http.ResponseWriter, r *http.Request) {
 		writeIndexerError(w, err)
 		return
 	}
-	// Native sources are LibriNode-managed only: hide them from Prowlarr so it
-	// never treats them as indexers it owns (and prunes them on sync). The
-	// app's own UI (any non-Prowlarr caller) still sees them.
-	prowlarr := isProwlarr(r)
-	resources := make([]map[string]any, 0, len(indexers))
-	for i := range indexers {
-		if prowlarr && indexer.IsNativeType(indexers[i].Type) {
-			continue
-		}
-		resources = append(resources, mergedIndexerResource(&indexers[i]))
-	}
-	writeJSON(w, http.StatusOK, resources)
+	writeJSON(w, http.StatusOK, indexers)
 }
 
 func (s *server) handleGetIndexer(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +135,7 @@ func (s *server) handleGetIndexer(w http.ResponseWriter, r *http.Request) {
 		writeIndexerError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, mergedIndexerResource(ind))
+	writeJSON(w, http.StatusOK, ind)
 }
 
 func (s *server) handleAddIndexer(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +149,7 @@ func (s *server) handleAddIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.refreshHealth()
-	writeJSON(w, http.StatusCreated, mergedIndexerResource(in))
+	writeJSON(w, http.StatusCreated, in)
 }
 
 func (s *server) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +174,7 @@ func (s *server) handleUpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.refreshHealth()
-	writeJSON(w, http.StatusOK, mergedIndexerResource(updated))
+	writeJSON(w, http.StatusOK, updated)
 }
 
 func (s *server) handleDeleteIndexer(w http.ResponseWriter, r *http.Request) {

@@ -25,11 +25,10 @@ func init() {
 	})
 }
 
-// TestNativeIndexerAddAndProwlarrExclusion: a native indexer needs no URL,
-// appears in the app's own listing, is offered by the native-impls endpoint,
-// but is hidden from Prowlarr (identified by its User-Agent) so it can't be
-// treated as an indexer Prowlarr owns and prunes.
-func TestNativeIndexerAddAndProwlarrExclusion(t *testing.T) {
+// TestNativeIndexerAdd: a native indexer needs no Newznab/Torznab URL, appears
+// in the app's own indexer listing, and is offered by the native-impls
+// endpoint the Settings dropdown reads.
+func TestNativeIndexerAdd(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 
 	// It shows up in the list of selectable native implementations.
@@ -54,13 +53,6 @@ func TestNativeIndexerAddAndProwlarrExclusion(t *testing.T) {
 	a.want(a.call("GET", "/api/v1/indexer", nil, &uiList), http.StatusOK)
 	if !hasIndexerType(uiList, "test-native") {
 		t.Errorf("app listing should include the native indexer: %+v", uiList)
-	}
-
-	// Prowlarr (its UA) must NOT see it.
-	var prowlarrList []map[string]any
-	a.want(a.callUA("Prowlarr/1.30.0", "GET", "/api/v1/indexer", nil, &prowlarrList), http.StatusOK)
-	if hasIndexerType(prowlarrList, "test-native") {
-		t.Errorf("native indexer leaked to Prowlarr: %+v", prowlarrList)
 	}
 }
 

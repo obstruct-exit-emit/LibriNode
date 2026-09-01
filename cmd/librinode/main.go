@@ -21,6 +21,7 @@ import (
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/indexer/audiobookbay"
 	"github.com/librinode/librinode/internal/indexer/libgen"
+	"github.com/librinode/librinode/internal/indexer/prowlarr"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/logging"
 	"github.com/librinode/librinode/internal/metadata"
@@ -163,6 +164,7 @@ func run(dataDir string) error {
 	// implementation selectable when a user deliberately adds it.
 	indexer.RegisterNative(audiobookbay.Def())
 	indexer.RegisterNative(libgen.Def())
+	indexer.RegisterNative(prowlarr.Def())
 
 	providers := metadata.NewManager()
 	// ProviderSettings carries the global metadata preferences (language,

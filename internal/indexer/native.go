@@ -51,6 +51,11 @@ type NativeDef struct {
 	DefaultBaseURL string
 	// NeedsAPIKey marks sources that require a key (e.g. a membership token).
 	NeedsAPIKey bool
+	// NeedsBaseURL marks sources with no default URL that the user MUST supply
+	// one for (e.g. Prowlarr — a self-hosted instance's own address). Unlike a
+	// rotating-domain source with a DefaultBaseURL fallback, an empty base URL
+	// here is a configuration error, rejected on add.
+	NeedsBaseURL bool
 	// WIP flags an experimental source — scraped sites that are fragile and
 	// need more work; the UI surfaces a "work in progress" warning so a user
 	// knows what they're enabling.

@@ -53,8 +53,9 @@ fine-grained record of every change lives in the [CHANGELOG](CHANGELOG.md).
 
 - **Newznab/Torznab** indexer framework: per-type categories, Test buttons,
   per-indexer exponential failure backoff
-- **Prowlarr application sync** (live-verified) — add LibriNode as a *Readarr*
-  application and Prowlarr pushes both usenet and torrent indexers automatically
+- **Prowlarr** as a native indexer — add your instance's URL + API key and it
+  searches every indexer configured inside Prowlarr (both usenet and torrent),
+  each sub-indexer queried in parallel with its own failure backoff
 - Release parsing + scoring: formats, retail, language, year, narrators,
   bitrate, volume ranges, issue dates — book-aware search rejects wrong matches
   and ranks the rest
@@ -120,10 +121,10 @@ engine stays in the tree for when it returns.
 Extending past what the standard *arr APIs can see:
 
 - **Native indexer framework**: built-in Go sources selected as an indexer
-  *type* — no Newznab endpoint — feeding the same search/scoring/grab
-  pipeline, and hidden from Prowlarr so sync never collides. **Off by
-  default, user-enabled, user-responsible** (the same dual-use posture as
-  Prowlarr's own definitions)
+  *type*, feeding the same search/scoring/grab pipeline. Includes the
+  **Prowlarr** connection (an API client) and scraped sites with no
+  Newznab/Torznab API. The scraped ones are **off by default, user-enabled,
+  user-responsible** (the same dual-use posture as Prowlarr's own definitions)
 - **AudioBook Bay** (audiobooks): scrapes listings and assembles the magnet
   from the on-page info hash + trackers; rides the normal torrent path;
   primary + fallback site URLs for its rotating domains

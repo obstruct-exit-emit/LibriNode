@@ -137,6 +137,8 @@ export interface NativeIndexer {
   mediaTypes: string[];
   defaultBaseUrl: string;
   needsApiKey: boolean;
+  // A source with no default URL that the user MUST supply one for (Prowlarr).
+  needsBaseUrl: boolean;
   // Experimental scraped source — the UI shows a work-in-progress warning.
   wip: boolean;
 }
