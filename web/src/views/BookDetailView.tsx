@@ -161,13 +161,6 @@ export default function BookDetailView({
             >
               {showReleases ? "Hide releases" : "Search releases"}
             </button>
-            <button
-              className="danger"
-              title={`Remove from the ${library} library (the other library is untouched)`}
-              onClick={() => setConfirmRemove(!confirmRemove)}
-            >
-              Remove from library
-            </button>
             {grabNotice && (
               <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
             )}
@@ -217,6 +210,20 @@ export default function BookDetailView({
               </button>
             )}
           </div>
+          <details className="disclosure">
+            <summary>Advanced</summary>
+            <div className="disclosure-body">
+              <div className="settings-actions">
+                <button
+                  className="danger"
+                  title={`Remove from the ${library} library (the other library is untouched)`}
+                  onClick={() => setConfirmRemove(!confirmRemove)}
+                >
+                  Remove from library
+                </button>
+              </div>
+            </div>
+          </details>
           {confirmRemove && (
             <RemovePanel
               message={`Remove "${book.title}" from the ${library === "ebook" ? "Ebooks" : "Audiobooks"} library? The other library is untouched.`}

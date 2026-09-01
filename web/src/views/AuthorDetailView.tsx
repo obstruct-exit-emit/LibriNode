@@ -245,32 +245,39 @@ export default function AuthorDetailView({
             >
               Refresh metadata
             </button>
-            {providerOptions.length > 0 && (
-              <select
-                disabled={busy}
-                title="Metadata provider override for this author — beats Settings → Metadata (including None) on the next refresh"
-                value={author.providerOverride}
-                onChange={(e) =>
-                  headerAction(async () => {
-                    await api.setAuthorProvider(author.id, e.target.value);
-                    return e.target.value
-                      ? `✓ Provider pinned to ${e.target.value}`
-                      : "✓ Provider follows Settings → Metadata";
-                  })
-                }
-              >
-                <option value="">Provider: follow settings</option>
-                {providerOptions.map((name) => (
-                  <option key={name} value={name}>
-                    Provider: {name[0].toUpperCase() + name.slice(1)}
-                  </option>
-                ))}
-              </select>
-            )}
-            <button className="danger" disabled={busy} onClick={() => setConfirmRemove(!confirmRemove)}>
-              Remove from {label}
-            </button>
           </div>
+          <details className="disclosure">
+            <summary>Advanced</summary>
+            <div className="disclosure-body">
+              <div className="settings-actions">
+                {providerOptions.length > 0 && (
+                  <select
+                    disabled={busy}
+                    title="Metadata provider override for this author — beats Settings → Metadata (including None) on the next refresh"
+                    value={author.providerOverride}
+                    onChange={(e) =>
+                      headerAction(async () => {
+                        await api.setAuthorProvider(author.id, e.target.value);
+                        return e.target.value
+                          ? `✓ Provider pinned to ${e.target.value}`
+                          : "✓ Provider follows Settings → Metadata";
+                      })
+                    }
+                  >
+                    <option value="">Provider: follow settings</option>
+                    {providerOptions.map((name) => (
+                      <option key={name} value={name}>
+                        Provider: {name[0].toUpperCase() + name.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button className="danger" disabled={busy} onClick={() => setConfirmRemove(!confirmRemove)}>
+                  Remove from {label}
+                </button>
+              </div>
+            </div>
+          </details>
           {notice && <p className="muted">{notice}</p>}
           {renamePlan && renamePlan.length > 0 && (
             <div className="rename-plan">
