@@ -148,8 +148,9 @@ Extending past what the standard *arr APIs can see:
 
 Turning "works on the dev box" into "trustable release". Done so far:
 
-- ✅ Live end-to-end verification: Prowlarr sync, torrents and NZBs through a
-  TorBox/Real-Debrid bridge — search → grab → download → import → organized file
+- ✅ Live end-to-end verification: Prowlarr and direct indexers, torrents and
+  NZBs through a TorBox/Real-Debrid bridge — search → grab → download → import
+  → organized file
 - ✅ Automated **migration testing** (old-schema fixtures driven through the
   full chain — migration bugs are data-loss bugs) and an automated
   **clean-machine restore drill**

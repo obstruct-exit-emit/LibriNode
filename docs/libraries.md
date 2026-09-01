@@ -23,11 +23,13 @@ libraries with explicit membership** — for both authors and books:
 
 Browsing: library grid (authors) → **author page** → **book page**.
 
-The author page has a portrait, bio, and author-scoped actions (**Search
-wanted**, **Organize…**, **Scan files**, **Refresh metadata**, **Remove
-from Ebooks/Audiobooks** — all touch only this author's books in this
-library), a poster grid of every book they have enrolled here (monitored or
-not), and a **Missing** section below it:
+The author page has a portrait, bio, and author-scoped actions — **Search
+wanted**, **Organize…**, **Scan files**, **Refresh metadata** in the main
+row, with the metadata **provider override** and **Remove from
+Ebooks/Audiobooks** tucked under an **Advanced** disclosure (all touch only
+this author's books in this library). Its poster grid of every book enrolled
+here (monitored or not) has a Grid/Compact/List toggle that's remembered
+between visits, and a **Missing** section below it:
 the rest of the bibliography, grouped by series (then standalones by year),
 each row expandable to a thumbnail + blurb with a one-click **+ Monitor**
 that enrolls the book and starts searching. Adding an author pulls their
@@ -39,9 +41,10 @@ zero visible books still shows, with an empty grid pointing at Missing,
 instead of disappearing.
 
 The book page has cover art, description, the monitor toggle, **Auto
-grab**/**Search releases**, remove-from-library (with an opt-in
-delete-files checkbox), and cross-add to the other format — once a book is
-in both, this switches to a status badge instead of a button.
+grab**/**Search releases**, and cross-add to the other format — once a book
+is in both, this switches to a status badge instead of a button. An
+**Advanced** disclosure holds **Remove from library** (an opt-in delete-files
+checkbox, plus a final confirmation before anything on disk is deleted).
 
 - Add from the Ebooks page → the author/book joins the Ebooks library.
 - Cross-add from the book page (**+ Add to Audiobooks/Ebooks**, with a

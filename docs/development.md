@@ -32,7 +32,8 @@ internal/library/     domain model + SQLite store (authors/books/series)
 internal/metadata/    provider registry + fallback chain; hardcover/,
                       anilist/, comicvine/, openlibrary/, googlebooks/
 internal/indexer/     Newznab/Torznab clients, search fan-out, backoff;
-                      native-source registry + audiobookbay/, libgen/
+                      native-source registry + audiobookbay/, libgen/,
+                      prowlarr/ (direct Prowlarr connection)
 internal/release/     release parsing + scoring
 internal/download/    qBittorrent/SABnzbd/direct clients, grabs, blocklist
 internal/autosearch/  wanted-list sweeps, per-book search

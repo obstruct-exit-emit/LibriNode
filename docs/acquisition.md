@@ -195,3 +195,11 @@ queue's book linking working regardless of what name the bridge shows.
   already gone from the client), **Activity → History** shows a **cancel**
   button on that entry: it clears LibriNode's own record directly, unblocking
   a new search or grab for that book.
+- **Retrying a failed grab**: a failed entry in **Activity → History** carries
+  a **Search again** button that re-runs that book's automatic search on the
+  spot — no need to open the book — so a transient failure isn't a dead end.
+- **Clearing history**: **Activity → History** has a **Clear history** button
+  (with a confirmation) that deletes all resolved grab records — imported and
+  failed. Pending grabs are kept, so an in-flight download is never forgotten.
+- **Import now**: the Activity page's **Import now** button runs Completed
+  Download Handling immediately instead of waiting for the next sweep.

@@ -25,8 +25,23 @@ in progress. Highlights from the hardening period, newest first:
   "application" from Prowlarr and add Prowlarr as an indexer here instead;
   indexers Prowlarr previously synced remain as ordinary Newznab/Torznab rows
   and keep working.
+- **The author and book detail pages moved their less-common actions behind an
+  "Advanced" disclosure** — the main row keeps the everyday actions (search,
+  scan, organize, refresh) while the metadata provider override and the
+  destructive Remove button sit under a collapsed "Advanced" section, so the
+  irreversible action isn't one stray click away. Deleting files from disk also
+  gets a final confirmation on top of the opt-in checkbox.
+- **The author page's Grid/Compact/List view choice is remembered** between
+  visits (per browser) instead of resetting to grid every time.
 
 ### Added
+- **Retry a failed grab from Activity.** A failed entry in Activity → History
+  now carries a "Search again" button that re-runs that book's automatic
+  search in place — no need to open the book, so a transient failure isn't a
+  dead end.
+- **Clear history** button on Activity → History (confirmation-guarded) that
+  deletes all resolved grab records (imported and failed) while keeping pending
+  grabs, so an in-flight download is never forgotten.
 - **A "pack" badge on releases in the search browser** flags one that looks
   like it bundles multiple books/volumes — an explicit volume span
   ("v01-v12"), a self-declared complete run/collection ("Complete Series",
@@ -276,6 +291,28 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **A downloading file no longer flickers out of Activity** when its client
+  misses a single queue poll (a transient blip, a slow response). Each client's
+  last successful queue result is kept as a fallback for one failed sweep
+  (capped at 5 minutes) so an in-progress download stays visible; a client
+  that's genuinely down is still reported as failed.
+- **Case-insensitive torrent info-hash matching.** A qBittorrent-compatible
+  debrid bridge that echoes a magnet's info hash back in a different case no
+  longer breaks the queue↔grab link — the importer's match, the Activity
+  queue's grab enrichment, and manual queue removal all compare the hash
+  case-insensitively (a healthy download was being failed as "vanished").
+- **A double-clicked (or concurrently-swept) grab can no longer be sent to the
+  download client twice.** A book's grab is now claimed atomically before the
+  client is called; the loser bails out cleanly ("already in progress") instead
+  of adding the same book a second time.
+- **Adding a root folder now requires an absolute, cleaned path.** A relative
+  or `../`-laden path is rejected rather than stored unresolved (it would
+  otherwise resolve against the service's working directory and break the
+  path-prefix assumptions scanning and organizing rely on).
+- **Three frontend stale-response races** fixed: the author and series detail
+  pages remount fresh on navigation (no bleed-through from the previously
+  viewed one), and the Activity history and folder browser apply only their
+  most recently issued request's response.
 - **A series with a messy bibliography (duplicate rows, split-edition
   entries, or a stray title that's just the author's own name) could flag
   nearly every one of its releases as a "pack" and could make a real ebook
