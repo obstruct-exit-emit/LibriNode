@@ -124,6 +124,25 @@ func TestProwlarrTest(t *testing.T) {
 	}
 }
 
+// TestProwlarrSkipsUnresolvableProtocol: a result whose protocol isn't
+// torrent or usenet (absent, or an unrecognized value) can't be routed to a
+// download client, so it's dropped rather than surfaced as an un-grabbable
+// candidate autosearch would re-pick every sweep.
+func TestProwlarrSkipsUnresolvableProtocol(t *testing.T) {
+	body := []byte(`[
+		{"guid":"ok","title":"Good","protocol":"torrent","downloadUrl":"http://x/t"},
+		{"guid":"none","title":"NoProtocol","downloadUrl":"http://x/n"},
+		{"guid":"weird","title":"Unknown","protocol":"carrier-pigeon","downloadUrl":"http://x/w"}
+	]`)
+	rels, err := parseReleases(body, &indexer.Indexer{ID: 1, Name: "Prowlarr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rels) != 1 || rels[0].GUID != "ok" {
+		t.Fatalf("parseReleases = %+v, want only the torrent result (unresolvable protocols dropped)", rels)
+	}
+}
+
 func TestProwlarrCategoriesPerMediaType(t *testing.T) {
 	cases := map[string]string{
 		"ebook":     "7000,7020",

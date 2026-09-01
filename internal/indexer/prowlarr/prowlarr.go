@@ -198,7 +198,17 @@ func parseReleases(body []byte, ind *indexer.Indexer) ([]indexer.Release, error)
 	}
 	releases := make([]indexer.Release, 0, len(results))
 	for _, r := range results {
-		releases = append(releases, r.toRelease(ind))
+		rel := r.toRelease(ind)
+		// Drop a result whose protocol didn't resolve to torrent or usenet.
+		// A grab is routed to a download client by protocol, so a result with
+		// no usable protocol can't be grabbed — and since the failed grab
+		// records nothing, it wouldn't be blocklisted either, so autosearch
+		// could re-pick and re-fail it every sweep. Prowlarr virtually always
+		// sets a protocol; this only drops genuinely unusable results.
+		if rel.Protocol != indexer.ProtocolTorrent && rel.Protocol != indexer.ProtocolUsenet {
+			continue
+		}
+		releases = append(releases, rel)
 	}
 	return releases, nil
 }
