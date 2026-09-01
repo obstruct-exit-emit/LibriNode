@@ -42,7 +42,26 @@ export default function AuthorDetailView({
   const [providerOptions, setProviderOptions] = useState<string[]>([]);
   const [booksSort, setBooksSort] = useState("title");
   const [booksDir, setBooksDir] = useState<SortDir>(defaultDirFor("title"));
-  const [booksView, setBooksView] = useState<BooksView>("grid");
+  // The Grid/Compact/List choice is a per-viewer display preference, remembered
+  // in localStorage so it survives navigation and reloads instead of resetting
+  // to grid every visit.
+  const [booksView, setBooksViewState] = useState<BooksView>(() => {
+    try {
+      const v = localStorage.getItem("librinode.booksView");
+      if (v === "grid" || v === "compact" || v === "list") return v;
+    } catch {
+      /* localStorage unavailable (private mode, blocked) — fall back */
+    }
+    return "grid";
+  });
+  const setBooksView = (v: BooksView) => {
+    setBooksViewState(v);
+    try {
+      localStorage.setItem("librinode.booksView", v);
+    } catch {
+      /* ignore — the choice just won't persist */
+    }
+  };
   // Picking a new sort key starts at that key's own natural direction; the
   // direction buttons then apply to whichever key is currently chosen.
   const changeBooksSort = (key: string) => {
