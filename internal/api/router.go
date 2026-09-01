@@ -235,6 +235,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("DELETE /api/v1/blocklist/{id}", s.auth(s.handleUnblock))
 	mux.HandleFunc("POST /api/v1/library/import", s.auth(s.handleImport))
 	mux.HandleFunc("GET /api/v1/history", s.auth(s.handleHistory))
+	mux.HandleFunc("DELETE /api/v1/history", s.auth(s.handleClearHistory))
 	mux.HandleFunc("POST /api/v1/grab/{id}/cancel", s.auth(s.handleCancelGrab))
 	mux.HandleFunc("POST /api/v1/book/{id}/search", s.auth(s.handleAutoSearchBook))
 	mux.HandleFunc("POST /api/v1/library/search", s.auth(s.handleSearchWanted))

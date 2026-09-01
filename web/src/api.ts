@@ -241,6 +241,7 @@ export interface SearchOutcome {
 export interface GrabRecord {
   id: number;
   bookId?: number;
+  mediaType?: string;
   title: string;
   protocol: string;
   status: "grabbed" | "imported" | "failed";
@@ -805,6 +806,8 @@ export const api = {
     request<{ records: GrabRecord[]; total: number }>(
       `/api/v1/history?search=${encodeURIComponent(search)}&limit=${limit}&offset=${offset}`,
     ),
+  clearHistory: () =>
+    request<{ cleared: number }>("/api/v1/history", { method: "DELETE" }),
   cancelGrab: (id: number) =>
     request<{ cancelled: number }>(`/api/v1/grab/${id}/cancel`, { method: "POST" }),
   runImport: () =>

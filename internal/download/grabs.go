@@ -129,6 +129,18 @@ func (s *Store) DeleteGrab(id int64) error {
 	return err
 }
 
+// ClearHistory deletes resolved grab history (imported or failed), leaving
+// pending ("grabbed") records untouched so an in-flight download is never
+// forgotten. Returns the number of rows removed.
+func (s *Store) ClearHistory() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM grabs WHERE status != ?`, GrabStatusGrabbed)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // GrabHistory returns grab history newest first with paging and an optional
 // case-insensitive title filter; the second return is the total matching
 // count so the UI can page through a busy instance's full history.

@@ -88,3 +88,38 @@ func TestClaimGrabIsExclusivePerBookAndMediaType(t *testing.T) {
 		t.Fatalf("claim after DeleteGrab released the prior claim should succeed: %v", err)
 	}
 }
+
+// TestClearHistoryKeepsPendingGrabs: clearing history removes resolved records
+// (imported/failed) but must never drop a still-pending grab — an in-flight
+// download would otherwise be forgotten.
+func TestClearHistoryKeepsPendingGrabs(t *testing.T) {
+	store := newTestService(t).Store()
+
+	// book_id 0 stores NULL (no FK), so these need no seeded book.
+	grabs := []*GrabRecord{
+		{Title: "still pending", Protocol: ProtocolTorrent, MediaType: "ebook", Status: GrabStatusGrabbed},
+		{Title: "imported one", Protocol: ProtocolTorrent, MediaType: "ebook", Status: GrabStatusImported},
+		{Title: "failed one", Protocol: ProtocolTorrent, MediaType: "ebook", Status: GrabStatusFailed},
+	}
+	for _, g := range grabs {
+		if err := store.AddGrab(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := store.ClearHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("ClearHistory removed %d rows, want 2 (imported + failed)", n)
+	}
+
+	remaining, err := store.ListGrabs("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].Status != GrabStatusGrabbed {
+		t.Fatalf("remaining = %+v, want only the pending grab", remaining)
+	}
+}

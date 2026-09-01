@@ -20,6 +20,7 @@ export default function ActivityView({
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [removing, setRemoving] = useState("");
+  const [retrying, setRetrying] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
 
   // historyToken guards against an out-of-order response: reload() (the 10s
@@ -91,6 +92,41 @@ export default function ActivityView({
     if (!ok) return;
     api
       .cancelGrab(g.id)
+      .then(reload)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  };
+
+  // Retry a failed grab: re-run the auto-search for its book, so a dead-end
+  // failure in history isn't a dead end — no need to navigate to the book.
+  const retryGrab = (g: GrabRecord) => {
+    if (!g.bookId) return;
+    setRetrying(g.id);
+    setNotice("");
+    api
+      .autoSearchBook(g.bookId, g.mediaType ?? "ebook")
+      .then((o) => {
+        setNotice(
+          o.grabbed
+            ? `✓ Grabbed "${o.release}" → ${o.client}`
+            : `✗ ${o.message ?? "nothing grabbed"}`,
+        );
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setRetrying(null));
+  };
+
+  const clearHistory = async () => {
+    const ok = await confirmDlg({
+      title: "Clear history",
+      message:
+        "Delete all resolved grab history (imported and failed)? Pending grabs above are kept. This can't be undone.",
+      confirmLabel: "Clear history",
+      danger: true,
+    });
+    if (!ok) return;
+    api
+      .clearHistory()
       .then(reload)
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   };
@@ -237,6 +273,15 @@ export default function ActivityView({
                 setHistLimit(100);
               }}
             />
+            <div className="settings-actions">
+              <button
+                className="danger"
+                onClick={clearHistory}
+                title="Delete all resolved grab history (pending grabs are kept)"
+              >
+                Clear history
+              </button>
+            </div>
             {history.length === 0 && (
               <p className="muted">No grabs match the filter.</p>
             )}
@@ -256,6 +301,16 @@ export default function ActivityView({
                       <span className={`owned ${g.status === "failed" ? "no" : "yes"}`}>
                         {g.status}
                       </span>
+                      {g.status === "failed" && g.bookId && (
+                        <button
+                          className="toggle"
+                          disabled={retrying === g.id}
+                          title="Search indexers again and grab the best release for this book"
+                          onClick={() => retryGrab(g)}
+                        >
+                          {retrying === g.id ? "Searching…" : "Search again"}
+                        </button>
+                      )}
                       {g.status === "grabbed" && (
                         <button
                           className="danger"
