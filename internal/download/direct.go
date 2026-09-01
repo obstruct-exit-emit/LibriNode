@@ -41,8 +41,13 @@ import (
 const (
 	// directTimeout bounds one download end to end.
 	directTimeout = 2 * time.Hour
-	// directUA is sent on every request; some file hosts refuse blank agents.
-	directUA = "LibriNode"
+	// directUA is sent on every request. It must be a real browser User-Agent,
+	// not a bare app name: shadow-library hosts (libgen.li) serve a stub
+	// "Welcome to nginx!" page with no download link to an unrecognized agent,
+	// so a bare "LibriNode" made every libgen grab fail to resolve. The libgen
+	// and AudioBook Bay scrapers already send this same browser UA hitting the
+	// same sites.
+	directUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 )
 
 type directItem struct {

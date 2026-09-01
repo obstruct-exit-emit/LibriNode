@@ -69,6 +69,30 @@ func TestDirectDownloadsFile(t *testing.T) {
 	}
 }
 
+// TestDirectSendsBrowserUserAgent guards a real bug found live: with a bare
+// "LibriNode" User-Agent, libgen.li served a stub "Welcome to nginx!" page
+// (no download link) and every direct grab failed to resolve at 0%. The client
+// must send a browser User-Agent, like the libgen/AudioBook Bay scrapers do.
+func TestDirectSendsBrowserUserAgent(t *testing.T) {
+	var gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "application/epub+zip")
+		_, _ = w.Write([]byte("epub-bytes"))
+	}))
+	defer srv.Close()
+
+	d := newTestDirect(t)
+	id, err := d.Add(context.Background(), srv.URL+"/book", "A Book")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	waitDone(t, d, id)
+	if !strings.Contains(gotUA, "Mozilla") {
+		t.Errorf("direct client User-Agent = %q, want a browser UA (contains Mozilla) — a bare agent gets stubbed by shadow-library hosts", gotUA)
+	}
+}
+
 // TestDirectMirrorFailover: the first mirror 503s; the second delivers.
 func TestDirectMirrorFailover(t *testing.T) {
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
