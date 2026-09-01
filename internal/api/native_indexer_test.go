@@ -23,6 +23,16 @@ func init() {
 		MediaTypes:  []string{"audiobook"},
 		New:         func(*indexer.Indexer, *http.Client) indexer.Searcher { return testNativeSearcher{} },
 	})
+	// A "serves all" native (nil MediaTypes, like Prowlarr): its media types
+	// must serialize as [] not null, or the UI's mediaTypes.join(...) crashes.
+	indexer.RegisterNative(indexer.NativeDef{
+		Name:         "test-native-all",
+		DisplayName:  "Test Native All",
+		Protocol:     indexer.ProtocolMixed,
+		NeedsBaseURL: true,
+		NeedsAPIKey:  true,
+		New:          func(*indexer.Indexer, *http.Client) indexer.Searcher { return testNativeSearcher{} },
+	})
 }
 
 // TestNativeIndexerAdd: a native indexer needs no Newznab/Torznab URL, appears
@@ -38,6 +48,11 @@ func TestNativeIndexerAdd(t *testing.T) {
 	for _, im := range impls {
 		if im["name"] == "test-native" {
 			found = true
+		}
+		// Every native's mediaTypes must be a JSON array, never null — the
+		// Settings UI calls mediaTypes.join(...) and a null crashes the page.
+		if im["mediaTypes"] == nil {
+			t.Errorf("native %v returned null mediaTypes (must be [])", im["name"])
 		}
 	}
 	if !found {

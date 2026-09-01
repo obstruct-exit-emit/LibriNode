@@ -101,11 +101,18 @@ func (s *server) handleListNativeIndexers(w http.ResponseWriter, r *http.Request
 	defs := indexer.NativeImplementations()
 	out := make([]map[string]any, 0, len(defs))
 	for _, d := range defs {
+		// A nil MediaTypes ("serves all", e.g. Prowlarr) must serialize as []
+		// not null: the Settings UI calls mediaTypes.join(...), and a null
+		// would throw and blank the whole page.
+		mediaTypes := d.MediaTypes
+		if mediaTypes == nil {
+			mediaTypes = []string{}
+		}
 		out = append(out, map[string]any{
 			"name":           d.Name,
 			"displayName":    d.DisplayName,
 			"protocol":       d.Protocol,
-			"mediaTypes":     d.MediaTypes,
+			"mediaTypes":     mediaTypes,
 			"defaultBaseUrl": d.DefaultBaseURL,
 			"needsApiKey":    d.NeedsAPIKey,
 			"needsBaseUrl":   d.NeedsBaseURL,

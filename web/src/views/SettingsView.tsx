@@ -1720,7 +1720,7 @@ function IndexersCard({
                 {natives.map((n) => (
                   <option key={n.name} value={n.name}>
                     {n.displayName}
-                    {n.wip ? " ⚠ WIP" : ""} ({n.mediaTypes.join(", ") || "all"})
+                    {n.wip ? " ⚠ WIP" : ""} ({(n.mediaTypes ?? []).join(", ") || "all"})
                   </option>
                 ))}
               </optgroup>
@@ -1744,7 +1744,7 @@ function IndexersCard({
                   self-hosted {nativeDef.displayName} and searches every indexer
                   configured inside it — no per-indexer setup here, and no
                   application-sync to keep working. Serves:{" "}
-                  {nativeDef.mediaTypes.join(", ") || "all media"}.
+                  {(nativeDef.mediaTypes ?? []).join(", ") || "all media"}.
                 </>
               ) : (
                 <>
@@ -1752,7 +1752,7 @@ function IndexersCard({
                   source — no Newznab/Torznab endpoint. It's off until you enable
                   it, user-configured, and yours to use responsibly; it stays
                   hidden from Prowlarr. Serves:{" "}
-                  {nativeDef.mediaTypes.join(", ") || "all media"}.
+                  {(nativeDef.mediaTypes ?? []).join(", ") || "all media"}.
                 </>
               )}
             </p>
