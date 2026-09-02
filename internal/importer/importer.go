@@ -320,7 +320,22 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	var audioPack *audioPackPlan // set when an audiobook download is a multi-book release
 	switch mediaType {
 	case "audiobook":
-		sources, format, audioPack, err = s.pickAudioPackAware(item.Path, grab, book)
+		// An audiobook shipped as one or more .zip/.rar archives (no loose
+		// audio) is extracted to a temp dir first, then imported from there —
+		// the temp dir lives until this import pass returns (defer), after the
+		// files have been copied into the library.
+		audioPath := item.Path
+		if tmp, cleanup, exErr := s.extractAudioArchives(item.Path); exErr != nil {
+			// Unreadable archive: most often truncated because a debrid mount
+			// hasn't finished syncing it. Retry, and give up past the grace
+			// period like any other not-ready download (handled by the caller).
+			err = fmt.Errorf("audiobook archive not readable yet (%v): %w", exErr, errDownloadPending)
+			break
+		} else if tmp != "" {
+			defer cleanup()
+			audioPath = tmp
+		}
+		sources, format, audioPack, err = s.pickAudioPackAware(audioPath, grab, book)
 	case "manga", "comic":
 		var source string
 		source, pack, err = s.pickPackAware(item.Path, scanner.IsComicPath, "comic archive", grab, book, mediaType)

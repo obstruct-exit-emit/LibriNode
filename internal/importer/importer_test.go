@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"archive/zip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -344,6 +345,149 @@ func TestImportAudiobookTitledDiscFoldersKeepOrder(t *testing.T) {
 	}
 	if files, _ := f.store.ListBookFiles(f.book.ID); len(files) != 1 || files[0].Path != bookDir {
 		t.Fatalf("files = %+v", files)
+	}
+}
+
+// writeTestZip creates a zip at path holding the given name->bytes entries.
+func writeTestZip(t *testing.T, path string, entries map[string][]byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	for name, data := range entries {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// completedArchiveDownload registers a finished download whose folder holds a
+// pre-built archive (rather than loose files).
+func (f *fx) completedArchiveDownload(t *testing.T, nzoID, title string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), title)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.history = append(f.history, map[string]any{
+		"nzo_id": nzoID, "name": title, "status": "Completed", "storage": dir, "category": "librinode",
+	})
+	return dir
+}
+
+// TestImportAudiobookFromZipArchive: an audiobook shipped as a single .zip with
+// no loose audio is extracted and imported, disc subfolders inside the archive
+// survive (order preserved), and a non-audio entry (cover art) is left behind.
+func TestImportAudiobookFromZipArchive(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+	dlDir := f.completedArchiveDownload(t, "nzo_zip", "Terry Pratchett - Mort Unabridged")
+	writeTestZip(t, filepath.Join(dlDir, "Mort.zip"), map[string][]byte{
+		filepath.ToSlash(filepath.Join("CD1", "01 - Opening.mp3")): []byte("audio-cd1-01"),
+		filepath.ToSlash(filepath.Join("CD1", "02 - Death.mp3")):   []byte("audio-cd1-02"),
+		filepath.ToSlash(filepath.Join("CD2", "01 - Opening.mp3")): []byte("audio-cd2-01"), // same name as CD1's
+		"cover.jpg": []byte("not audio"),
+	})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_zip",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v, want the zipped audiobook extracted and imported", result)
+	}
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
+	for _, rel := range []string{
+		filepath.Join("CD1", "01 - Opening.mp3"),
+		filepath.Join("CD1", "02 - Death.mp3"),
+		filepath.Join("CD2", "01 - Opening.mp3"),
+	} {
+		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
+			t.Errorf("extracted track missing (disc structure should survive): %v", err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(bookDir, "cover.jpg")); err == nil {
+		t.Error("a non-audio archive entry (cover.jpg) was imported")
+	}
+}
+
+// TestImportAudiobookFromMultipleDiscArchives: a release split into one archive
+// per disc (CD1.zip, CD2.zip) extracts into a disc folder named for each
+// archive, so identically-named tracks don't collide and stay in disc order.
+func TestImportAudiobookFromMultipleDiscArchives(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+	dlDir := f.completedArchiveDownload(t, "nzo_zips", "Terry Pratchett - Mort Unabridged")
+	writeTestZip(t, filepath.Join(dlDir, "CD1.zip"), map[string][]byte{"01 - Track.mp3": []byte("a")})
+	writeTestZip(t, filepath.Join(dlDir, "CD2.zip"), map[string][]byte{"01 - Track.mp3": []byte("b")})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_zips",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
+	for _, rel := range []string{
+		filepath.Join("CD1", "01 - Track.mp3"),
+		filepath.Join("CD2", "01 - Track.mp3"),
+	} {
+		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
+			t.Errorf("per-disc archive not extracted to its disc folder: %v", err)
+		}
+	}
+}
+
+// TestExtractAudioZipRejectsTraversal: a "Zip Slip" entry whose path escapes
+// the destination is refused, so a malicious archive can't write outside the
+// temp dir.
+func TestExtractAudioZipRejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "evil.zip")
+	writeTestZip(t, zipPath, map[string][]byte{"../escape.mp3": []byte("x")})
+	if _, err := extractAudioZip(zipPath, filepath.Join(dir, "out")); err == nil {
+		t.Fatal("expected a traversal entry to be rejected")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "escape.mp3")); err == nil {
+		t.Error("traversal entry escaped the destination directory")
 	}
 }
 
