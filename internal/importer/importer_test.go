@@ -298,6 +298,55 @@ func TestImportAudiobookDiscSubfolders(t *testing.T) {
 	}
 }
 
+// TestImportAudiobookTitledDiscFoldersKeepOrder: disc folders carrying an "of
+// N" count ("Disc 1 of 3") — a very common real-world layout — are kept as
+// subfolders like CD1/CD2, not flattened. The three discs hold an
+// identically-named track, so flattening would both collide them and scramble
+// play order (disc 2/3's tracks, qualified with their folder name, would sort
+// around disc 1's unqualified track). Keeping the folders preserves order.
+func TestImportAudiobookTitledDiscFoldersKeepOrder(t *testing.T) {
+	f := fixture(t)
+	ctx := context.Background()
+
+	abRoot := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot); err != nil {
+		t.Fatal(err)
+	}
+	f.completedDownload(t, "nzo_titled", "Terry Pratchett - Mort Unabridged",
+		filepath.Join("Disc 1 of 3", "01 - Track.mp3"),
+		filepath.Join("Disc 2 of 3", "01 - Track.mp3"), // same track name across discs
+		filepath.Join("Disc 3 of 3", "01 - Track.mp3"),
+	)
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_titled",
+		Title: "Terry Pratchett - Mort Unabridged", Protocol: download.ProtocolUsenet,
+		MediaType: "audiobook",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
+	for _, rel := range []string{
+		filepath.Join("Disc 1 of 3", "01 - Track.mp3"),
+		filepath.Join("Disc 2 of 3", "01 - Track.mp3"),
+		filepath.Join("Disc 3 of 3", "01 - Track.mp3"),
+	} {
+		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
+			t.Errorf("disc track not kept at its folder (order scrambles if flattened): %v", err)
+		}
+	}
+	if files, _ := f.store.ListBookFiles(f.book.ID); len(files) != 1 || files[0].Path != bookDir {
+		t.Fatalf("files = %+v", files)
+	}
+}
+
 // TestImportAudiobookFlattensNonDiscNesting: non-disc nesting (an "mp3s"
 // wrapper folder) is flattened — the scanner only recognizes book folders
 // holding files and disc subfolders — and a name collision while flattening is

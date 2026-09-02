@@ -66,9 +66,14 @@ func IsMagazinePath(name string) bool {
 }
 
 // discFolder matches disc-style subdivisions of a multi-file audiobook folder
-// (CD1, Disc 02, Part 3, Vol. 1) — the one kind of subfolder a book folder may
-// contain (Audiobookshelf convention).
-var discFolder = regexp.MustCompile(`(?i)^(cd|disc|disk|part|vol(?:ume)?)[ ._-]*\d+$`)
+// — the one kind of subfolder a book folder may contain (Audiobookshelf
+// convention). A prefixed form (CD1, Disc 02, Part 3, Pt 2, Vol. 1) may carry
+// trailing text: a disc title ("Disc 1 - Introduction") or an "of N" count
+// ("CD 1 of 12"), both common and both previously flattened, which scrambled
+// track order when a book's discs held identically-named files. A bare number
+// ("1", "02") also counts, but only when the whole name is digits, so a stray
+// "1 Hour Version" or a "2012" year folder is never mistaken for a disc.
+var discFolder = regexp.MustCompile(`(?i)^(?:(?:cd|disc|disk|part|pt|vol(?:ume)?)[ ._-]*\d{1,3}(?:[ ._-].*)?|\d{1,3})$`)
 
 // IsDiscFolder reports whether a directory name is a disc-style subdivision of
 // an audiobook folder.

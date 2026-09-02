@@ -891,6 +891,32 @@ func TestVolumeFromName(t *testing.T) {
 	}
 }
 
+func TestIsDiscFolder(t *testing.T) {
+	disc := []string{
+		"CD1", "CD 1", "CD_1", "CD-1", "CD.1",
+		"Disc 02", "Disk 3", "Part 3", "Pt 2", "Vol 1", "Vol. 1", "Volume 1",
+		"CD 1 of 12", "Disc 01 of 10", // "of N" counts — previously flattened
+		"Disc 1 - Introduction", "CD2 - The Reckoning", // titled discs
+		"1", "02", "100", // bare disc numbers
+	}
+	notDisc := []string{
+		"", "Mort", "Bonus", "Extras", "Chapter One", "Disc One", // worded, no digits
+		"2012", "1999", // year folders (4 digits)
+		"1 Hour Version", "3 Discs", // bare number with trailing text is not a disc
+		"Terry Pratchett", "Soundtrack",
+	}
+	for _, n := range disc {
+		if !IsDiscFolder(n) {
+			t.Errorf("IsDiscFolder(%q) = false, want true", n)
+		}
+	}
+	for _, n := range notDisc {
+		if IsDiscFolder(n) {
+			t.Errorf("IsDiscFolder(%q) = true, want false", n)
+		}
+	}
+}
+
 func TestVolumeRangeFromName(t *testing.T) {
 	type span struct {
 		start, end float64
