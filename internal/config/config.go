@@ -295,6 +295,12 @@ type ImportSettings struct {
 	// DeleteCompletedFiles also deletes the downloaded files from disk when a
 	// download is removed after import. On by default; implies RemoveCompleted.
 	DeleteCompletedFiles bool `yaml:"delete_completed_files" json:"deleteCompletedFiles"`
+	// AllowUnseededTorrents keeps torrent releases that report zero seeders
+	// instead of rejecting them. OFF by default (a dead torrent is useless).
+	// Turn it on for a debrid / cached-torrent download client (e.g. TorBox),
+	// which serves a torrent from its own cache regardless of the swarm, so
+	// seeder count no longer reflects whether the release is grabbable.
+	AllowUnseededTorrents bool `yaml:"allow_unseeded_torrents" json:"allowUnseededTorrents"`
 }
 
 // PathMapping translates a download client's reported path prefix into the

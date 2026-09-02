@@ -306,6 +306,9 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prefs := release.PreferencesFor(s.store, mediaType)
+	if s.cfg.ImportSettings().AllowUnseededTorrents {
+		prefs.AllowNoSeeders = true
+	}
 	candidates := make([]release.Candidate, 0, len(found))
 	for _, rel := range found {
 		if seriesTitle != "" {

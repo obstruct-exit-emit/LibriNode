@@ -426,6 +426,7 @@ export interface ImportSettings {
   packImportAll: boolean;
   removeCompleted: boolean;
   deleteCompletedFiles: boolean;
+  allowUnseededTorrents: boolean;
 }
 
 // PathMapping translates a download client's reported path prefix into the

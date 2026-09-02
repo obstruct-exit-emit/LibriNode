@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/indexer"
@@ -15,12 +16,13 @@ import (
 )
 
 type fx struct {
-	svc    *Service
-	store  *library.Store
-	grabs  *download.Store
-	book   *library.Book // wanted
-	owned  *library.Book // has a file, must not be searched
-	sabAdd []string      // URLs sent to the mock SAB
+	svc      *Service
+	store    *library.Store
+	grabs    *download.Store
+	book     *library.Book         // wanted
+	owned    *library.Book         // has a file, must not be searched
+	sabAdd   []string              // URLs sent to the mock SAB
+	settings config.ImportSettings // scoring toggles (e.g. AllowUnseededTorrents)
 }
 
 func fixture(t *testing.T, searchXML string) *fx {
@@ -101,7 +103,7 @@ func fixture(t *testing.T, searchXML string) *fx {
 		t.Fatal(err)
 	}
 
-	f.svc = New(store, indexers, downloads)
+	f.svc = New(store, indexers, downloads, func() config.ImportSettings { return f.settings })
 	return f
 }
 

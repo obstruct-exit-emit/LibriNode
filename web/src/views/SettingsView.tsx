@@ -1045,6 +1045,7 @@ const DEFAULT_IMPORT_SETTINGS: ImportSettings = {
   packImportAll: true,
   removeCompleted: true,
   deleteCompletedFiles: true,
+  allowUnseededTorrents: false,
 };
 
 function ImportOptions({ onError }: { onError: (message: string) => void }) {
@@ -1145,6 +1146,27 @@ function ImportOptions({ onError }: { onError: (message: string) => void }) {
             On (default): LibriNode copies imported files into the library, then
             deletes the originals (this also removes the download from the
             client). Turn off if the download folder is shared with other apps.
+          </p>
+        </div>
+
+        <div className="opt">
+          <label className="check">
+            <span>
+              <input
+                type="checkbox"
+                checked={settings.allowUnseededTorrents}
+                onChange={(e) =>
+                  update({ allowUnseededTorrents: e.target.checked })
+                }
+              />{" "}
+              Allow torrents with no seeders
+            </span>
+          </label>
+          <p className="muted opt-help">
+            Off (default): a torrent reporting zero seeders is rejected as dead.
+            Turn on for a debrid / cached-torrent download client (e.g. TorBox),
+            which serves a torrent from its own cache regardless of the swarm —
+            so seeder count no longer reflects whether the release is grabbable.
           </p>
         </div>
 

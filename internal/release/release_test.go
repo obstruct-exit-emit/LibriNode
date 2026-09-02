@@ -444,6 +444,42 @@ func TestScoreVolume(t *testing.T) {
 	}
 }
 
+// TestScoreNoSeedersOptIn: a zero-seeder torrent is rejected by default (dead),
+// but a debrid/cached-torrent client (AllowNoSeeders) makes it grabbable — the
+// cache serves it regardless of the swarm. A seeded torrent and usenet are
+// unaffected either way.
+func TestScoreNoSeedersOptIn(t *testing.T) {
+	prefs := DefaultMangaPreferences()
+	dead := rel("Berserk v05 (Digital) CBZ", indexer.ProtocolTorrent, 50<<20, 0)
+
+	def := Score(dead, prefs, nil, nil, nil)
+	if def.Approved {
+		t.Errorf("zero-seeder torrent approved by default: %+v", def)
+	}
+	hasNoSeeders := false
+	for _, rj := range def.Rejections {
+		if rj == "no seeders" {
+			hasNoSeeders = true
+		}
+	}
+	if !hasNoSeeders {
+		t.Errorf("want a 'no seeders' rejection, got %v", def.Rejections)
+	}
+
+	prefs.AllowNoSeeders = true
+	on := Score(dead, prefs, nil, nil, nil)
+	if !on.Approved {
+		t.Errorf("zero-seeder torrent still rejected with AllowNoSeeders: %+v", on.Rejections)
+	}
+
+	// A well-seeded torrent approves either way and its larger seeder bonus
+	// still outranks the cached zero-seeder one's flat availability bump.
+	seeded := Score(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolTorrent, 50<<20, 20), prefs, nil, nil, nil)
+	if !seeded.Approved || seeded.Score <= on.Score {
+		t.Errorf("well-seeded torrent (%+v) should approve and outscore the cached zero-seeder one (%d)", seeded, on.Score)
+	}
+}
+
 func TestScoreMagazine(t *testing.T) {
 	prefs := DefaultMagazinePreferences()
 	owned := map[string]bool{"2026-06-27": true}

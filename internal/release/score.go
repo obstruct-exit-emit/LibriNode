@@ -197,6 +197,11 @@ type Preferences struct {
 	// (the real format is read from the files at import). Ebooks/audiobooks
 	// keep requiring a recognized format.
 	AllowUnknownFormat bool
+	// AllowNoSeeders keeps a torrent with zero seeders instead of rejecting it.
+	// Off by default (a dead torrent is useless); turned on for a debrid /
+	// cached-torrent download client (e.g. TorBox), which serves a torrent from
+	// its own cache regardless of the swarm, so seeder count doesn't gate it.
+	AllowNoSeeders bool
 }
 
 // unknownFormatScore is the baseline a format-less release gets when
@@ -392,15 +397,20 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 	}
 
 	// Protocol health: dead torrents are useless; live ones get a bounded
-	// seeder bonus, usenet a flat availability bonus.
-	if rel.Protocol == indexer.ProtocolTorrent {
-		if rel.Seeders == 0 {
-			c.reject("no seeders")
-		} else if rel.Seeders > 0 {
-			c.Score += min(rel.Seeders, 20)
-		}
-	} else {
+	// seeder bonus, usenet a flat availability bonus. A debrid/cached-torrent
+	// client (AllowNoSeeders) serves from its own cache, so 0 seeders isn't
+	// fatal there — it earns the same flat availability bump as usenet.
+	switch {
+	case rel.Protocol != indexer.ProtocolTorrent:
 		c.Score += 10
+	case rel.Seeders > 0:
+		c.Score += min(rel.Seeders, 20)
+	case rel.Seeders == 0 && prefs.AllowNoSeeders:
+		c.Score += 10
+	case rel.Seeders == 0:
+		c.reject("no seeders")
+		// Seeders < 0 (unknown, as some torznab results report): neither
+		// rejected nor bonused, unchanged from before.
 	}
 
 	// A release without a download link can never be grabbed — surface why

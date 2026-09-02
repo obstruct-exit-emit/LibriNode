@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
@@ -29,10 +30,22 @@ type Service struct {
 	store     *library.Store
 	indexers  *indexer.Service
 	downloads *download.Service
+	settings  func() config.ImportSettings
 }
 
-func New(store *library.Store, indexers *indexer.Service, downloads *download.Service) *Service {
-	return &Service{store: store, indexers: indexers, downloads: downloads}
+func New(store *library.Store, indexers *indexer.Service, downloads *download.Service, settings func() config.ImportSettings) *Service {
+	return &Service{store: store, indexers: indexers, downloads: downloads, settings: settings}
+}
+
+// prefsFor resolves scoring preferences for a media type and applies the
+// global toggles that live outside the quality profile — currently just
+// whether a debrid/cached-torrent client makes zero-seeder torrents grabbable.
+func (s *Service) prefsFor(mediaType string) release.Preferences {
+	prefs := release.PreferencesFor(s.store, mediaType)
+	if s.settings != nil && s.settings().AllowUnseededTorrents {
+		prefs.AllowNoSeeders = true
+	}
+	return prefs
 }
 
 // BookOutcome reports what one book's automatic search did.
@@ -158,7 +171,7 @@ func (s *Service) upgradeMinScore(book *library.Book, mediaType string) (int, bo
 
 func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType string, minFormatScore int) (*BookOutcome, error) {
 	outcome := &BookOutcome{BookID: book.ID, BookTitle: book.Title, MediaType: mediaType}
-	prefs := release.PreferencesFor(s.store, mediaType)
+	prefs := s.prefsFor(mediaType)
 	prefs.MinFormatScore = minFormatScore
 
 	var query string
@@ -299,7 +312,7 @@ func (s *Service) SearchSeriesPacks(ctx context.Context, seriesID int64) (*PackS
 		return nil, fmt.Errorf("every volume of %s already has a file", series.Title)
 	}
 
-	prefs := release.PreferencesFor(s.store, series.MediaType)
+	prefs := s.prefsFor(series.MediaType)
 	found, indexerErrs, err := s.indexers.SearchAll(ctx, series.Title, series.Title, series.MediaType)
 	if err != nil {
 		return nil, err
@@ -425,7 +438,7 @@ func (s *Service) SearchMagazineSeries(ctx context.Context, series *library.Seri
 // issues are materialized as books and grabbed (capped per pass so a fresh
 // magazine doesn't flood the download client).
 func (s *Service) searchMagazine(ctx context.Context, series *library.Series) ([]BookOutcome, error) {
-	prefs := release.PreferencesFor(s.store, "magazine")
+	prefs := s.prefsFor("magazine")
 
 	// Everything already in the library — by identifier — is not wanted.
 	volumes, err := s.store.ListVolumes(series.ID)
