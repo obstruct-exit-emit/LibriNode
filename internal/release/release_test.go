@@ -421,6 +421,23 @@ func TestScoreVolume(t *testing.T) {
 	if !tagged.Approved {
 		t.Errorf("tagged release wrongly rejected: %v", tagged.Rejections)
 	}
+	// A longer, DIFFERENT series that merely ENDS with the wanted series' name
+	// must be rejected — the name has to lead the release, not trail it
+	// ("Saga" is not "Fate The Winx Saga" or "Spider-Man - Clone Saga").
+	suffixSeries := ScoreVolume(rel("Fate The Winx Saga v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1)
+	if suffixSeries.Approved {
+		t.Errorf("suffix-title series wrongly approved: %+v", suffixSeries.Rejections)
+	}
+	cloneSaga := ScoreVolume(rel("Spider-Man - Clone Saga v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1)
+	if cloneSaga.Approved {
+		t.Errorf("mid-title series wrongly approved: %+v", cloneSaga.Rejections)
+	}
+	// A leading bracketed scanlation/publisher tag before the series still
+	// matches — the tag is stripped before anchoring on the series name.
+	bracketTagged := ScoreVolume(rel("[Some-Group] Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if !bracketTagged.Approved {
+		t.Errorf("bracket-tagged release wrongly rejected: %v", bracketTagged.Rejections)
+	}
 	epubUnderComic := ScoreVolume(rel("Berserk v05 EPUB", indexer.ProtocolUsenet, 50<<20, -1), DefaultComicPreferences(), "Berserk", 5)
 	if epubUnderComic.Approved {
 		t.Error("epub approved under comic prefs")

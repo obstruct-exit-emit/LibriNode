@@ -2,6 +2,7 @@ package release
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -63,6 +64,39 @@ func titleMatches(relNorm string, keys []string) bool {
 				if next >= len(relWords) || !titleStopwords[relWords[next]] {
 					return true
 				}
+			}
+		}
+	}
+	return false
+}
+
+// leadingTags matches one or more bracketed/parenthesized groups at the very
+// start of a release name — the scanlation-group or publisher tags scene
+// manga/comic names sometimes carry before the series title ("[Group] Berserk
+// v05", "(Digital) Saga #1"). Stripped before the series-title anchor so the
+// tag doesn't push the series name off the front.
+var leadingTags = regexp.MustCompile(`^\s*(?:[\(\[][^\)\]]*[\)\]]\s*)+`)
+
+// seriesTitleMatches reports whether a release names the wanted series as the
+// FIRST thing in its title, not merely somewhere inside it. Series releases
+// lead with the series name ("Saga v12 (2025) (Zone-Empire)"), optionally
+// behind a leading bracket tag; anchoring at the start rejects a longer,
+// DIFFERENT series that merely ends with the same word ("Fate The Winx Saga",
+// "Spider-Man - Clone Saga") — which titleMatches' match-anywhere wrongly
+// accepts. The trailing-stopword guard still rejects a series title that is
+// itself the prefix of a longer one ("Saga" vs "Saga of the Swamp Thing").
+// Prose books keep titleMatches: their releases are "Author - Title", so the
+// title genuinely sits mid-name and must not be anchored to the front.
+func seriesTitleMatches(rawTitle string, keys []string) bool {
+	relWords := strings.Fields(scanner.Normalize(leadingTags.ReplaceAllString(rawTitle, "")))
+	for _, key := range keys {
+		kw := strings.Fields(key)
+		if len(kw) == 0 || len(kw) > len(relWords) {
+			continue
+		}
+		if slices.Equal(relWords[:len(kw)], kw) {
+			if next := len(kw); next >= len(relWords) || !titleStopwords[relWords[next]] {
+				return true
 			}
 		}
 	}
@@ -389,8 +423,7 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, number float64) Candidate {
 	c := Score(rel, prefs, nil, nil, nil)
 
-	relNorm := scanner.Normalize(rel.Title)
-	if !titleMatches(relNorm, scanner.TitleKeys(seriesTitle)) {
+	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(seriesTitle)) {
 		c.reject("does not contain the series title")
 	}
 
@@ -418,8 +451,7 @@ func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string,
 	prefs.MaxSize = 100 << 30
 	c := Score(rel, prefs, nil, nil, nil)
 
-	relNorm := scanner.Normalize(rel.Title)
-	if !titleMatches(relNorm, scanner.TitleKeys(seriesTitle)) {
+	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(seriesTitle)) {
 		c.reject("does not contain the series title")
 	}
 
@@ -452,8 +484,7 @@ func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string,
 func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned map[string]bool) (Candidate, string) {
 	c := Score(rel, prefs, nil, nil, nil)
 
-	relNorm := scanner.Normalize(rel.Title)
-	if !titleMatches(relNorm, scanner.TitleKeys(title)) {
+	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(title)) {
 		c.reject("does not contain the magazine title")
 	}
 
