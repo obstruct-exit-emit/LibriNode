@@ -608,3 +608,29 @@ func Rank(candidates []Candidate) {
 		return candidates[i].Score > candidates[j].Score
 	})
 }
+
+// MaxBrowseRejected caps how many rejected candidates a browse/search response
+// carries. Approved candidates are never capped.
+const MaxBrowseRejected = 50
+
+// CapRejected keeps every approved candidate and at most maxRejected rejected
+// ones, dropping the rest. Run Rank first: with approved before rejected and
+// best score first, the rejected that survive are the highest-scoring
+// near-misses — the ones actually worth a "grab anyway" — while a junk-heavy
+// result (a common-word series search returning hundreds of wrong-series or
+// wrong-volume rejects) no longer bloats the response or the browse view.
+func CapRejected(cands []Candidate, maxRejected int) []Candidate {
+	out := make([]Candidate, 0, len(cands))
+	rejected := 0
+	for i := range cands {
+		if cands[i].Approved {
+			out = append(out, cands[i])
+			continue
+		}
+		if rejected < maxRejected {
+			out = append(out, cands[i])
+			rejected++
+		}
+	}
+	return out
+}

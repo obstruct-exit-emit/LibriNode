@@ -318,6 +318,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	release.Rank(candidates)
+	candidates = release.CapRejected(candidates, release.MaxBrowseRejected)
 	writeJSON(w, http.StatusOK, map[string]any{"releases": candidates, "errors": errs})
 }
 

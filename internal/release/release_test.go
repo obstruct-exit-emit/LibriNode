@@ -480,6 +480,38 @@ func TestScoreNoSeedersOptIn(t *testing.T) {
 	}
 }
 
+// TestCapRejected: every approved candidate survives; rejected are capped to
+// the highest-scoring few (a common-word search returns hundreds of junk
+// rejects that shouldn't bloat the response).
+func TestCapRejected(t *testing.T) {
+	mk := func(approved bool, score int) Candidate { return Candidate{Approved: approved, Score: score} }
+	// Rank order: approved first, then rejected by descending score.
+	cands := []Candidate{
+		mk(true, 100), mk(true, 90),
+		mk(false, 50), mk(false, 40), mk(false, 30), mk(false, 20), mk(false, 10),
+	}
+	out := CapRejected(cands, 3)
+
+	var approved, rejected int
+	for _, c := range out {
+		if c.Approved {
+			approved++
+		} else {
+			rejected++
+		}
+	}
+	if approved != 2 {
+		t.Errorf("approved kept = %d, want 2 (never capped)", approved)
+	}
+	if rejected != 3 {
+		t.Errorf("rejected kept = %d, want 3 (capped)", rejected)
+	}
+	// The highest-scoring rejected are the ones kept.
+	if out[2].Score != 50 || out[4].Score != 30 {
+		t.Errorf("kept the wrong rejected entries: %+v", out)
+	}
+}
+
 func TestScoreMagazine(t *testing.T) {
 	prefs := DefaultMagazinePreferences()
 	owned := map[string]bool{"2026-06-27": true}

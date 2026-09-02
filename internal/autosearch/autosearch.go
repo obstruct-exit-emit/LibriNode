@@ -324,6 +324,7 @@ func (s *Service) SearchSeriesPacks(ctx context.Context, seriesID int64) (*PackS
 	}
 	s.markBlocked(result.Candidates)
 	release.Rank(result.Candidates)
+	result.Candidates = release.CapRejected(result.Candidates, release.MaxBrowseRejected)
 	return result, nil
 }
 
