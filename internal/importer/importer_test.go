@@ -1311,6 +1311,52 @@ func TestPackRejectsSingleFileVolumeRangeBundle(t *testing.T) {
 	}
 }
 
+// TestImportDoesNotDuplicateOwnedComicVolume: a manga/comic volume's ownership
+// is HasFile, not HasEbookFile (a volume is never an ebook-library member).
+// Reading the wrong flag made an already-owned volume look unowned, so a
+// re-import added a second file beside the first (a .cbr landing next to an
+// owned .cbz) instead of running the upgrade/replace check. A worse-format
+// re-download must be skipped, leaving exactly one file.
+func TestImportDoesNotDuplicateOwnedComicVolume(t *testing.T) {
+	f := fixture(t)
+	v1, _, _ := f.mangaSeries(t)
+
+	// First import gives v1 a cbz (the winning format).
+	f.completedDownload(t, "nzo_first", "Death Note v01 (Digital) CBZ", "Death Note v01.cbz")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v1.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_first",
+		Title: "Death Note v01 (Digital) CBZ", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if files, _ := f.store.ListBookFiles(v1.ID); len(files) != 1 {
+		t.Fatalf("after first import: %d files, want 1", len(files))
+	}
+
+	// A worse-format cbr for the SAME owned volume must NOT be added beside the
+	// cbz — it isn't an upgrade.
+	f.completedDownload(t, "nzo_second", "Death Note v01 (Digital) CBR", "Death Note v01.cbr")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v1.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_second",
+		Title: "Death Note v01 (Digital) CBR", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := f.store.ListBookFiles(v1.ID)
+	if len(files) != 1 {
+		t.Fatalf("owned volume gained a duplicate file: %+v", files)
+	}
+	if files[0].Format != "cbz" {
+		t.Errorf("kept format = %q, want the better cbz", files[0].Format)
+	}
+}
+
 // TestPackEbookImportsMonitoredByTitle: an ebook bundle fills the author's
 // monitored books by title match; unmonitored books are left alone.
 func TestPackEbookImportsMonitoredByTitle(t *testing.T) {

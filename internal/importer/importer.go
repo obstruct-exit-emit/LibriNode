@@ -281,9 +281,20 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		result.Skipped++
 		return // not ours to import (yet); stays in the client
 	}
-	owned := book.HasEbookFile
-	if mediaType == "audiobook" {
+	var owned bool
+	switch mediaType {
+	case "audiobook":
 		owned = book.HasAudiobookFile
+	case "manga", "comic", "magazine":
+		// A volume/issue has exactly one media type of its own, so any file it
+		// owns is that type's. HasEbookFile is always false for these (they're
+		// never ebook-library members) — reading it here used to make an
+		// already-owned volume look unowned, so a re-import added a SECOND file
+		// beside the first (a .cbr landing next to an owned .cbz) instead of
+		// running the upgrade/replace check.
+		owned = book.HasFile
+	default: // ebook
+		owned = book.HasEbookFile
 	}
 	// Untracked downloads never replace existing files; tracked grabs for
 	// owned books may be upgrades — decided below once the format is known.
