@@ -264,6 +264,39 @@ func TestSearchAllMergesAndReportsFailures(t *testing.T) {
 	}
 }
 
+// TestSearchAllDedupesDuplicateReleases: the same file commonly comes back
+// from several indexers at once (a Prowlarr fan-out over sub-indexers that
+// share trackers). SearchAll collapses releases identical in title, size, and
+// protocol so a duplicate isn't offered — or grabbed — twice.
+func TestSearchAllDedupesDuplicateReleases(t *testing.T) {
+	// Two indexers serving the very same newznab results.
+	a := mockIndexer(t, newznabSearchXML, "")
+	defer a.Close()
+	b := mockIndexer(t, newznabSearchXML, "")
+	defer b.Close()
+
+	store := newTestStore(t)
+	svc := NewService(store)
+	for _, ind := range []*Indexer{
+		{Name: "usenet-a", Type: TypeNewznab, BaseURL: a.URL, Categories: "7000,7020", Enabled: true, Priority: 25},
+		{Name: "usenet-b", Type: TypeNewznab, BaseURL: b.URL, Categories: "7000,7020", Enabled: true, Priority: 25},
+	} {
+		if err := store.Add(ind); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	releases, _, err := svc.SearchAll(context.Background(), "mort", "", "ebook")
+	if err != nil {
+		t.Fatalf("SearchAll: %v", err)
+	}
+	// newznabSearchXML carries 2 distinct releases; served by both indexers
+	// that's 4 before dedup, 2 after.
+	if len(releases) != 2 {
+		t.Fatalf("got %d releases, want 2 (the second indexer's duplicates collapsed)", len(releases))
+	}
+}
+
 // TestSearchAllNeverLeaksAPIKey: an indexer's apikey rides in the request
 // URL's query string (Newznab/Torznab convention) — a connection failure to
 // it must not carry that key into the error string SearchAll returns, since

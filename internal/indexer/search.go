@@ -217,6 +217,33 @@ func (s *Service) SearchAll(ctx context.Context, query, nativeQuery, mediaType s
 		}
 		return releases[a].Size > releases[b].Size
 	})
+	// One release commonly surfaces from several indexers at once — most often a
+	// Prowlarr indexer fanning a query across sub-indexers that share trackers,
+	// so the same file comes back several times with different GUIDs and proxy
+	// download URLs. Collapse them by what actually identifies the file (title,
+	// byte size, protocol); the sort above already put the most-seeded copy
+	// first, so keeping the first occurrence keeps the best one to grab. Usenet
+	// and torrent editions of one title stay separate — they're genuinely
+	// different acquisition options.
+	releases = dedupeReleases(releases)
 	sort.Strings(errs)
 	return releases, errs, nil
+}
+
+// dedupeReleases keeps the first release for each (normalized title, size,
+// protocol) and drops the rest. Order is preserved, so a caller that relies on
+// SearchAll's seeder-first ordering keeps it.
+func dedupeReleases(in []Release) []Release {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]Release, 0, len(in))
+	for _, r := range in {
+		title := strings.Join(strings.Fields(strings.ToLower(r.Title)), " ")
+		key := fmt.Sprintf("%s\x00%d\x00%s", title, r.Size, r.Protocol)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, r)
+	}
+	return out
 }
