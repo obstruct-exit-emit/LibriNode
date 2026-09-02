@@ -281,11 +281,22 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		result.Skipped++
 		return // not ours to import (yet); stays in the client
 	}
+	// Which variant will this land in? Manga ships mono/color editions that
+	// coexist, so ownership and upgrades are per-variant; every other media
+	// type reports "" here and the checks collapse to a plain media-type test.
+	variant := s.organize.TargetVariant(mediaType)
 	var owned bool
 	switch mediaType {
 	case "audiobook":
 		owned = book.HasAudiobookFile
-	case "manga", "comic", "magazine":
+	case "manga":
+		// Per-variant: a mono import into a book that only holds the color scan
+		// must import as new, not read as already-owned (and vice versa).
+		owned = book.HasMonoFile
+		if variant == "color" {
+			owned = book.HasColorFile
+		}
+	case "comic", "magazine":
 		// A volume/issue has exactly one media type of its own, so any file it
 		// owns is that type's. HasEbookFile is always false for these (they're
 		// never ebook-library members) — reading it here used to make an
@@ -375,7 +386,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	var replacing []library.BookFile
 	skipPrimary := false
 	if owned {
-		old, better := s.upgradeCheck(book, mediaType, format)
+		old, better := s.upgradeCheck(book, mediaType, format, variant)
 		if !better {
 			s.resolve(grab, download.GrabStatusImported,
 				"book already has a "+mediaType+" file (not an upgrade)")
@@ -688,6 +699,7 @@ func removeExcept(dir string, keep []string) error {
 // genuine quality upgrade.
 func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *library.Book, mediaType string, result *Result) {
 	importAll := s.opts().PackImportAll
+	variant := s.organize.TargetVariant(mediaType) // "" except manga (mono/color)
 	done := map[int64]bool{grabbed.ID: true}
 	for _, f := range pack.files {
 		if f == primary {
@@ -703,8 +715,8 @@ func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *libr
 		}
 		format := fileFormat(f)
 		var replacing []library.BookFile
-		if len(s.ownedFiles(b.ID, mediaType)) > 0 {
-			old, better := s.upgradeCheck(b, mediaType, format)
+		if len(s.ownedFiles(b.ID, mediaType, variant)) > 0 {
+			old, better := s.upgradeCheck(b, mediaType, format, variant)
 			if !better {
 				continue
 			}
@@ -904,25 +916,27 @@ func monitoredFor(b *library.Book, mediaType string) bool {
 	}
 }
 
-// ownedFiles returns the book's files of one media type.
-func (s *Service) ownedFiles(bookID int64, mediaType string) []library.BookFile {
+// ownedFiles returns the book's files of one media type and variant (variant
+// "" for everything but manga, which keeps mono and color editions apart).
+func (s *Service) ownedFiles(bookID int64, mediaType, variant string) []library.BookFile {
 	files, err := s.store.ListBookFiles(bookID)
 	if err != nil {
 		return nil
 	}
 	owned := []library.BookFile{}
 	for _, f := range files {
-		if f.MediaType == mediaType {
+		if f.MediaType == mediaType && f.Variant == variant {
 			owned = append(owned, f)
 		}
 	}
 	return owned
 }
 
-// upgradeCheck decides whether newFormat genuinely upgrades the book's
-// owned files of this media type (per the type's quality profile), returning
-// the files to replace.
-func (s *Service) upgradeCheck(book *library.Book, mediaType, newFormat string) ([]library.BookFile, bool) {
+// upgradeCheck decides whether newFormat genuinely upgrades the book's owned
+// files of this media type and variant (per the type's quality profile),
+// returning the files to replace. Variant-scoped so a manga upgrade replaces
+// only its own edition — a mono upgrade never deletes the book's color file.
+func (s *Service) upgradeCheck(book *library.Book, mediaType, newFormat, variant string) ([]library.BookFile, bool) {
 	prefs := release.PreferencesFor(s.store, mediaType)
 	newScore, ok := prefs.FormatScores[newFormat]
 	if !ok {
@@ -935,7 +949,7 @@ func (s *Service) upgradeCheck(book *library.Book, mediaType, newFormat string) 
 	old := []library.BookFile{}
 	ownedBest := 0
 	for _, f := range files {
-		if f.MediaType != mediaType {
+		if f.MediaType != mediaType || f.Variant != variant {
 			continue
 		}
 		old = append(old, f)
@@ -1521,8 +1535,8 @@ func (s *Service) importAudioPackExtras(pack *audioPackPlan, grabbed *library.Bo
 		}
 		format := formatOfLargestAudio(g.files)
 		var replacing []library.BookFile
-		if len(s.ownedFiles(b.ID, "audiobook")) > 0 {
-			old, better := s.upgradeCheck(b, "audiobook", format)
+		if len(s.ownedFiles(b.ID, "audiobook", "")) > 0 {
+			old, better := s.upgradeCheck(b, "audiobook", format, "")
 			if !better {
 				continue
 			}

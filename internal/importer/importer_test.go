@@ -1357,6 +1357,87 @@ func TestImportDoesNotDuplicateOwnedComicVolume(t *testing.T) {
 	}
 }
 
+// TestUpgradeKeepsOtherMangaVariant: manga ships mono and color editions that
+// coexist, so an upgrade must replace only its own variant. A mono upgrade
+// used to delete every manga file of the book — the color edition included.
+func TestUpgradeKeepsOtherMangaVariant(t *testing.T) {
+	f := fixture(t)
+	v1, _, _ := f.mangaSeries(t) // creates a 'mono' manga root (lowest id, so the import lands there)
+
+	var monoRoot int64
+	var monoPath string
+	if err := f.db.QueryRow(`SELECT id, path FROM root_folders WHERE media_type='manga'`).Scan(&monoRoot, &monoPath); err != nil {
+		t.Fatal(err)
+	}
+	colorPath := t.TempDir()
+	res, err := f.db.Exec(`INSERT INTO root_folders (media_type, path, variant) VALUES ('manga', ?, 'color')`, colorPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	colorRoot, _ := res.LastInsertId()
+
+	// v1 owns a worse-format mono file and a color edition, both real on disk.
+	monoOld := filepath.Join(monoPath, "Death Note Vol. 1.cbr")
+	if err := os.WriteFile(monoOld, []byte("old-mono"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: monoRoot, BookID: v1.ID, MediaType: "manga", Variant: "mono", Path: monoOld, Format: "cbr",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	colorFile := filepath.Join(colorPath, "Death Note Vol. 1.cbz")
+	if err := os.WriteFile(colorFile, []byte("color-edition"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: colorRoot, BookID: v1.ID, MediaType: "manga", Variant: "color", Path: colorFile, Format: "cbz",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A better-format MONO import for v1 (lands in the mono root).
+	f.completedDownload(t, "nzo_up", "Death Note v01 (Digital) CBZ", "Death Note v01.cbz")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v1.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_up",
+		Title: "Death Note v01 (Digital) CBZ", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// The mono cbr was upgraded to cbz; the color edition is untouched.
+	var mono, color int
+	for _, ff := range mustFiles(t, f, v1.ID) {
+		switch ff.Variant {
+		case "mono":
+			mono++
+		case "color":
+			color++
+		}
+	}
+	if mono != 1 || color != 1 {
+		t.Fatalf("variants after upgrade: mono=%d color=%d, want 1 and 1", mono, color)
+	}
+	if _, err := os.Stat(colorFile); err != nil {
+		t.Errorf("color edition was deleted by a mono upgrade: %v", err)
+	}
+	if _, err := os.Stat(monoOld); err == nil {
+		t.Errorf("old mono cbr should have been replaced")
+	}
+}
+
+func mustFiles(t *testing.T, f *fx, bookID int64) []library.BookFile {
+	t.Helper()
+	files, err := f.store.ListBookFiles(bookID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
 // TestPackEbookImportsMonitoredByTitle: an ebook bundle fills the author's
 // monitored books by title match; unmonitored books are left alone.
 func TestPackEbookImportsMonitoredByTitle(t *testing.T) {

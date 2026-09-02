@@ -289,6 +289,23 @@ func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Plac
 	return nil, fmt.Errorf("no %s root folder configured", mediaType)
 }
 
+// TargetVariant returns the manga variant ('mono'/'color') an import of this
+// media type will land in — the first matching root folder's variant, exactly
+// how PlaceFile chooses its root. Empty for media types without variants
+// (comic, magazine, ebook, audiobook) and when no matching root exists.
+func (s *Service) TargetVariant(mediaType string) string {
+	roots, err := s.store.ListRootFolders()
+	if err != nil {
+		return ""
+	}
+	for _, root := range roots {
+		if root.MediaType == mediaType {
+			return root.Variant
+		}
+	}
+	return ""
+}
+
 // moveSidecars relocates OPF sidecars belonging to a moved file: the
 // base-named <file>.opf always follows; a metadata.opf follows only when
 // the old directory holds no other media afterwards (per-book folders —
