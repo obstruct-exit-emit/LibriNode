@@ -722,6 +722,7 @@ type packMatcher struct {
 	volumes   []library.Book    // manga/comic: the series' volumes…
 	positions map[int64]float64 // …and their volume numbers
 	books     []library.Book    // ebook: the author's books
+	authorKey string            // ebook: the author's normalized name (see newPackMatcher)
 }
 
 func (s *Service) newPackMatcher(grabbed *library.Book, mediaType string) *packMatcher {
@@ -738,6 +739,17 @@ func (s *Service) newPackMatcher(grabbed *library.Book, mediaType string) *packM
 		m.volumes, _ = s.store.ListVolumes(links[0].SeriesID)
 	default: // ebook
 		m.books, _ = s.store.ListBooks(grabbed.AuthorID)
+		// The author's own name is in essentially every release title
+		// ("Dune - Frank Herbert"). A book whose title reduces to just that
+		// name — "Frank Herbert: Unpublished Stories" strips to the key
+		// "frank herbert" — would otherwise match every one of this author's
+		// releases as a phantom second book, and its pack-counting (see
+		// expectedBookCount) would stall every single-book import waiting for
+		// a sibling folder that never comes. Keep the normalized name so
+		// bestBookMatches can discount keys that are just the author name.
+		if a, err := s.store.GetAuthor(grabbed.AuthorID); err == nil {
+			m.authorKey = scanner.Normalize(a.Name)
+		}
 	}
 	return m
 }
@@ -760,7 +772,7 @@ func (m *packMatcher) match(path string) *library.Book {
 		return nil
 	default: // ebook
 		norm := scanner.Normalize(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
-		matches := bestBookMatches(norm, m.books)
+		matches := bestBookMatches(norm, m.authorKey, m.books)
 		if len(matches) != 1 {
 			return nil // no match, or two distinct books genuinely tie
 		}
@@ -783,9 +795,14 @@ func (m *packMatcher) match(path string) *library.Book {
 //     tie with it on every one of its own releases and the file would
 //     never resolve to just the one real book.
 //
+// authorKey, when set, is the author's normalized name: a title key that is
+// just (part of) it — "Frank Herbert: Unpublished Stories" → "frank herbert" —
+// matches every release by this author (their name is always in the title)
+// and is never independent evidence of a book, so it's discarded as a key.
+//
 // What's left are the titles norm genuinely, distinctly names; two or more
 // remaining (rather than one merging into the other) is a real tie.
-func bestBookMatches(norm string, books []library.Book) []*library.Book {
+func bestBookMatches(norm, authorKey string, books []library.Book) []*library.Book {
 	type candidate struct {
 		book *library.Book
 		key  string // longest matching key for this book
@@ -803,6 +820,11 @@ func bestBookMatches(norm string, books []library.Book) []*library.Book {
 		best := -1
 		var bestKey string
 		for idx, key := range scanner.TitleKeys(b.Title) {
+			// A key that is just (part of) the author's name matches every
+			// release by this author — never independent evidence of a book.
+			if authorKey != "" && strings.Contains(authorKey, key) {
+				continue
+			}
 			if key != "" && strings.Contains(norm, key) && len(key) > len(bestKey) {
 				best, bestKey = idx, key
 			}
@@ -851,7 +873,7 @@ func (m *packMatcher) expectedBookCount(releaseTitle string) int {
 		return 1
 	}
 	relNorm := scanner.Normalize(releaseTitle)
-	count := len(bestBookMatches(relNorm, m.books))
+	count := len(bestBookMatches(relNorm, m.authorKey, m.books))
 	if count < 1 {
 		return 1
 	}

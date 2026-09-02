@@ -1633,6 +1633,48 @@ func TestPackEbookWaitsForTitlePromisedSiblingFile(t *testing.T) {
 	}
 }
 
+// TestPackEbookIgnoresAuthorNamedBookInPackCount: a prolific author's
+// bibliography can contain a book whose title reduces to just their own name
+// — "Terry Pratchett: Uncollected Stories" strips to the key "terry pratchett".
+// That name is in essentially every release title, so counting it as a second
+// named book would make expectedBookCount stall every single-book import,
+// waiting forever for a sibling folder that never exists. A single-book
+// release must import at once despite such a book being in the library.
+func TestPackEbookIgnoresAuthorNamedBookInPackCount(t *testing.T) {
+	f := fixture(t)
+
+	// A book whose subtitle-stripped title is exactly the author's name.
+	namesake := &library.Book{AuthorID: f.book.AuthorID, Source: "hardcover", ForeignID: "12",
+		Title: "Terry Pratchett: Uncollected Stories", InEbookLibrary: true, EbookMonitored: true}
+	if err := f.store.UpsertBook(namesake); err != nil {
+		t.Fatal(err)
+	}
+
+	// A genuine single-book release for Mort — its title carries the author
+	// name, exactly as real releases do.
+	f.completedDownload(t, "nzo_namesake", "Terry Pratchett - Mort Retail EPUB", "Mort.epub")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: f.book.ID, ClientConfigID: 1, ClientItemID: "nzo_namesake",
+		Title: "Terry Pratchett - Mort Retail EPUB", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("result = %+v, want Mort imported at once (the author-named book must not inflate the pack count)", result)
+	}
+	if files, _ := f.store.ListBookFiles(f.book.ID); len(files) != 1 {
+		t.Errorf("Mort files = %d, want 1 (imported immediately)", len(files))
+	}
+	if files, _ := f.store.ListBookFiles(namesake.ID); len(files) != 0 {
+		t.Errorf("namesake files = %d, want 0 (it was never part of this release)", len(files))
+	}
+}
+
 // TestPackEbookGivesUpAfterGraceAndImportsWhatSynced: same setup, but the
 // grab is old enough that waiting stops being reasonable — imports the one
 // book that did sync rather than holding a good release hostage forever
