@@ -19,6 +19,14 @@ import (
 // unrecorded.
 const downloadTimeout = 150 * time.Second
 
+// importTimeout bounds a manual "Import now" pass. It's far longer than
+// downloadTimeout because a pass does much more than a quick queue/grab call:
+// it queries every download client — a busy debrid bridge (e.g. TorBox) can
+// answer slowly while it caches a torrent — and then copies files, often over
+// a network share. The periodic background sweep runs with no per-pass timeout
+// at all; this just keeps the on-demand path from blocking forever.
+const importTimeout = 10 * time.Minute
+
 func writeDownloadError(w http.ResponseWriter, err error) {
 	if errors.Is(err, download.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "download client not found")
@@ -255,7 +263,12 @@ func (s *server) handleSearchWanted(w http.ResponseWriter, r *http.Request) {
 
 // handleImport runs one Completed Download Handling pass on demand.
 func (s *server) handleImport(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), downloadTimeout)
+	// Detached from the request context on purpose: an import already copying
+	// files must not be aborted because the browser navigated away, a proxy
+	// timed out the request, or (previously) the 150s cap fired mid-pass while
+	// a slow bridge was still answering. The pass is idempotent, so the worst a
+	// dropped connection costs is the response — never the import.
+	ctx, cancel := context.WithTimeout(context.Background(), importTimeout)
 	defer cancel()
 
 	result, err := s.importer.Run(ctx)
