@@ -891,6 +891,32 @@ func TestVolumeFromName(t *testing.T) {
 	}
 }
 
+func TestVolumeRangeFromName(t *testing.T) {
+	type span struct {
+		start, end float64
+		ok         bool
+	}
+	cases := map[string]span{
+		"Saga #1-17 (Digital) (Zone-Empire).cbr": {1, 17, true},
+		"Berserk v01-v12.cbz":                    {1, 12, true},
+		"Berserk Vol. 1-12.cbz":                  {1, 12, true},
+		"One Piece c001-c180.cbz":                {1, 180, true},
+		// No range: a single volume, a plain number, or a bare year span.
+		"Saga v01.cbz":                {0, 0, false},
+		"The Walking Dead #112.cbr":   {0, 0, false},
+		"Berserk Deluxe Edition.cbz":  {0, 0, false},
+		"Yearbook 2020-2021.cbz":      {0, 0, false},
+		"Berserk v05-v05.cbz":         {0, 0, false}, // end must exceed start
+	}
+	for in, want := range cases {
+		start, end, ok := VolumeRangeFromName(in)
+		if ok != want.ok || (ok && (start != want.start || end != want.end)) {
+			t.Errorf("VolumeRangeFromName(%q) = (%v, %v, %v), want (%v, %v, %v)",
+				in, start, end, ok, want.start, want.end, want.ok)
+		}
+	}
+}
+
 func TestScanSkipsMissingRoot(t *testing.T) {
 	f := fixture(t)
 

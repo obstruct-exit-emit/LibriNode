@@ -1272,6 +1272,45 @@ func TestPackImportsMonitoredVolumesOnly(t *testing.T) {
 	}
 }
 
+// TestPackRejectsSingleFileVolumeRangeBundle: a single archive whose own name
+// spans a volume range ("Death Note v01-v03.cbz") is an un-splittable bundle —
+// importing it would fill only the first volume's slot and silently drop the
+// rest. It's rejected (failed + blocklisted) so the search falls through to a
+// per-volume release or a per-file folder pack, rather than a one-file bundle
+// masquerading as a single volume. A real multi-file pack (separate v01/v02/v03
+// files) is unaffected — see TestPackImportsMonitoredVolumesOnly.
+func TestPackRejectsSingleFileVolumeRangeBundle(t *testing.T) {
+	f := fixture(t)
+	v1, v2, v3 := f.mangaSeries(t)
+
+	// ONE file whose own name spans v01-v03 — not a folder of per-volume files.
+	f.completedDownload(t, "nzo_bundle", "Death Note v01-v03 Complete Digital",
+		"Death Note v01-v03 Complete Digital.cbz")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v1.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_bundle",
+		Title: "Death Note v01-v03 Complete Digital", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 0 || result.Failed != 1 {
+		t.Fatalf("result = %+v, want the bundle rejected (0 imported, 1 failed)", result)
+	}
+	for _, b := range []*library.Book{v1, v2, v3} {
+		if files, _ := f.store.ListBookFiles(b.ID); len(files) != 0 {
+			t.Errorf("%s got a file from the single-file bundle: %+v", b.Title, files)
+		}
+	}
+	grabs, _ := f.grabs.ListGrabs("")
+	if grabs[0].Status != download.GrabStatusFailed {
+		t.Errorf("grab status = %s, want failed (rejected, not imported)", grabs[0].Status)
+	}
+}
+
 // TestPackEbookImportsMonitoredByTitle: an ebook bundle fills the author's
 // monitored books by title match; unmonitored books are left alone.
 func TestPackEbookImportsMonitoredByTitle(t *testing.T) {

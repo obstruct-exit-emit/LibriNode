@@ -176,6 +176,31 @@ func VolumeFromName(name string) float64 {
 	return 0
 }
 
+// volumeRangeMarker matches a volume/issue SPAN in a name ("v01-v12", "Vol.
+// 1-12", "#1-17", "c001-c180"). A v/vol/#/c prefix is required on at least the
+// first number so a bare year span ("2020-2021") never reads as a range.
+// Mirrors the release scorer's own range regex.
+var volumeRangeMarker = regexp.MustCompile(`(?i)(?:\b(?:vol(?:ume)?s?\.?\s*|[vc])|#)(\d{1,4}(?:\.\d+)?)\s*[-–~]\s*(?:[vc#]\s*)?(\d{1,4}(?:\.\d+)?)\b`)
+
+// VolumeRangeFromName reports whether a name spans a volume/issue range and
+// returns its bounds ("Berserk v01-v12" -> 1, 12, true). ok is false when the
+// name carries no range, or the end doesn't exceed the start. Lets the importer
+// spot an un-splittable single-file bundle whose one archive covers many
+// volumes ("Saga #1-17.cbr").
+func VolumeRangeFromName(name string) (start, end float64, ok bool) {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	m := volumeRangeMarker.FindStringSubmatch(base)
+	if m == nil {
+		return 0, 0, false
+	}
+	start, _ = strconv.ParseFloat(m[1], 64)
+	end, _ = strconv.ParseFloat(m[2], 64)
+	if end <= start {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
 // ParsedFile is the scanner's best guess at what a file is, derived purely
 // from its path. Zero fields mean "unknown". AltTitle holds the segment
 // after the last " - " when the primary title contains one — how

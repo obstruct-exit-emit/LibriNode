@@ -1025,6 +1025,22 @@ func (s *Service) pickPackAware(path string, accept func(string) bool, kind stri
 	}
 
 	if len(files) < 2 {
+		// A single archive that NAMES a volume/issue range ("Saga #1-17.cbr")
+		// is an un-splittable bundle: importing it fills only the first
+		// volume's slot and silently drops the rest. Reject it permanently so
+		// the caller blocklists and re-searches — a per-volume release or a
+		// multi-file folder pack (one file per volume) maps cleanly instead.
+		// The range must be in the FILE's own name, not just the release
+		// title: a real per-file pack names each volume individually ("v01"),
+		// so a still-syncing pack that currently shows one "v01" file is never
+		// mistaken for a bundle. Only image media has volumes.
+		if len(files) == 1 && (mediaType == "manga" || mediaType == "comic") {
+			if _, _, ok := scanner.VolumeRangeFromName(filepath.Base(files[0].path)); ok {
+				return "", nil, fmt.Errorf(
+					"single-file multi-volume bundle %q — needs a per-volume release or a per-file pack",
+					filepath.Base(files[0].path))
+			}
+		}
 		return largestFile(files), nil, nil
 	}
 	if match == "" {
