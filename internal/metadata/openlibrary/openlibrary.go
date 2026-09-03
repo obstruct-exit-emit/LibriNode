@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 const (
@@ -356,11 +357,25 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 			FirstPublishDate string `json:"first_publish_date"`
 		} `json:"entries"`
 	}
+	// Over-fetch: OpenLibrary lists the same book several times for one author
+	// (merged and unmerged work records, reissues), so the raw list repeats
+	// titles — pulling extra rows keeps the deduped result from falling short
+	// of the cap.
 	if err := c.getJSON(ctx, "/authors/"+url.PathEscape(foreignID)+"/works.json?limit="+
-		strconv.Itoa(bibliographyCap), &works); err == nil {
+		strconv.Itoa(bibliographyCap*2), &works); err == nil {
+		seenTitle := map[string]bool{}
 		for _, w := range works.Entries {
 			if w.Title == "" {
 				continue
+			}
+			// Dedup by normalized title so a work listed several times shows once,
+			// as Hardcover's bibliography does — otherwise an OpenLibrary author
+			// page repeats the same book. First-seen wins.
+			if tkey := scanner.Normalize(w.Title); tkey != "" {
+				if seenTitle[tkey] {
+					continue
+				}
+				seenTitle[tkey] = true
 			}
 			b := metadata.Book{
 				ForeignID:       olKey(w.Key),
@@ -375,6 +390,9 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 				b.CoverURL = coverURL(w.Covers[0])
 			}
 			author.Books = append(author.Books, b)
+			if len(author.Books) >= bibliographyCap {
+				break
+			}
 		}
 	}
 	author.BookCount = len(author.Books)

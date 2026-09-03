@@ -59,6 +59,32 @@ func TestSearchBooksStampsSourceAndKey(t *testing.T) {
 	}
 }
 
+func TestGetAuthorDedupsRepeatedTitles(t *testing.T) {
+	c := mockOL(t, map[string]string{
+		"/authors/OL1A/works.json": `{"entries":[
+			{"key":"/works/OL1W","title":"Dune"},
+			{"key":"/works/OL2W","title":"Dune"},
+			{"key":"/works/OL3W","title":"DUNE "},
+			{"key":"/works/OL4W","title":"Dune Messiah"},
+			{"key":"/works/OL5W","title":""}
+		]}`,
+		"/authors/OL1A.json": `{"key":"/authors/OL1A","name":"Frank Herbert"}`,
+	})
+	a, err := c.GetAuthor(context.Background(), "OL1A")
+	if err != nil {
+		t.Fatalf("GetAuthor: %v", err)
+	}
+	if len(a.Books) != 2 {
+		t.Fatalf("books = %d, want 2 (Dune once + Dune Messiah; repeats and the empty title dropped): %+v", len(a.Books), a.Books)
+	}
+	if a.Books[0].Title != "Dune" || a.Books[0].ForeignID != "OL1W" {
+		t.Errorf("first book = %+v, want Dune/OL1W (first-seen wins)", a.Books[0])
+	}
+	if a.Books[1].Title != "Dune Messiah" {
+		t.Errorf("second book = %+v, want Dune Messiah", a.Books[1])
+	}
+}
+
 func TestGetBookMergesWorkAuthorAndEditions(t *testing.T) {
 	c := mockOL(t, map[string]string{
 		"/works/OL45804W/editions.json": `{"entries":[
