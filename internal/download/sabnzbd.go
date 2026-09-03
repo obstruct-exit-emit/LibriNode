@@ -271,7 +271,7 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 			// client never show up as ours.
 			continue
 		}
-		item := Item{Client: s.cfg.Name, ConfigID: s.cfg.ID, ID: slot.NzoID, Title: slot.Filename}
+		item := Item{Client: s.cfg.Name, ConfigID: s.cfg.ID, ID: slot.NzoID, Title: slot.Filename, Path: slot.Storage}
 		if pct, err := strconv.ParseFloat(slot.Percentage, 64); err == nil {
 			item.Progress = pct / 100
 		}
@@ -280,6 +280,15 @@ func (s *sabnzbd) List(ctx context.Context) ([]Item, error) {
 			item.Status = "paused"
 		case "queued", "grabbing":
 			item.Status = "queued"
+		case "completed":
+			// Real SABnzbd moves a finished download to history; a usenet/debrid
+			// bridge emulating the API may instead leave it in the queue marked
+			// completed. Treat it as done so it still imports — mirroring the
+			// qBittorrent client, which imports a completed item straight from
+			// its list — using the storage path it reports (empty falls to the
+			// importer's own "no path yet" retry).
+			item.Status = "completed"
+			item.Progress = 1
 		default:
 			item.Status = "downloading"
 		}

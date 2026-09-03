@@ -217,7 +217,8 @@ func mockSab(t *testing.T) *httptest.Server {
 			// — some SABnzbd-compatible bridges don't honor that server-side.
 			w.Write([]byte(`{"queue": {"slots": [
 				{"nzo_id": "SABnzbd_nzo_q1", "filename": "Mort", "status": "Downloading", "percentage": "34", "cat": "librinode"},
-				{"nzo_id": "SABnzbd_nzo_q2", "filename": "SomeShow", "status": "Downloading", "percentage": "10", "cat": "radarr"}
+				{"nzo_id": "SABnzbd_nzo_q2", "filename": "SomeShow", "status": "Downloading", "percentage": "10", "cat": "radarr"},
+				{"nzo_id": "SABnzbd_nzo_q3", "filename": "Sourcery", "status": "Completed", "percentage": "100", "storage": "/complete/Sourcery", "cat": "librinode"}
 			]}}`))
 		case "history":
 			// A radarr-categorized slot is included even though the request
@@ -282,8 +283,8 @@ func TestSABnzbd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(items) != 3 {
-		t.Fatalf("items = %+v, want 3 (radarr-categorized slots excluded)", items)
+	if len(items) != 4 {
+		t.Fatalf("items = %+v, want 4 (radarr-categorized slots excluded)", items)
 	}
 	byID := map[string]Item{}
 	for _, it := range items {
@@ -305,6 +306,13 @@ func TestSABnzbd(t *testing.T) {
 	}
 	if byID["SABnzbd_nzo_h1"].Status != "completed" || byID["SABnzbd_nzo_h1"].Path != "/complete/Guards" {
 		t.Errorf("history item = %+v", byID["SABnzbd_nzo_h1"])
+	}
+	// A bridge that parks a finished download in the QUEUE (marked completed)
+	// rather than moving it to history must still import: mapped to completed
+	// with its storage path, mirroring the qBittorrent client.
+	if byID["SABnzbd_nzo_q3"].Status != "completed" || byID["SABnzbd_nzo_q3"].Progress != 1 ||
+		byID["SABnzbd_nzo_q3"].Path != "/complete/Sourcery" {
+		t.Errorf("completed-in-queue item = %+v", byID["SABnzbd_nzo_q3"])
 	}
 	if byID["SABnzbd_nzo_h2"].Status != "failed" {
 		t.Errorf("failed item = %+v", byID["SABnzbd_nzo_h2"])
@@ -458,8 +466,8 @@ func TestServiceGrabAndQueue(t *testing.T) {
 	if len(errs) != 0 {
 		t.Fatalf("queue errs = %v", errs)
 	}
-	if len(items) != 6 { // 3 qbit + 3 sab
-		t.Fatalf("%d items, want 6: %+v", len(items), items)
+	if len(items) != 7 { // 3 qbit + 4 sab (incl. a completed-in-queue slot)
+		t.Fatalf("%d items, want 7: %+v", len(items), items)
 	}
 
 	// No client for a protocol → ErrNoClient.
