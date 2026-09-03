@@ -181,3 +181,49 @@ func TestRefreshSeriesRetiresStaleEditions(t *testing.T) {
 		t.Fatalf("volume 2 was monitored — the monitoring must carry to the replacement")
 	}
 }
+
+// TestRefreshSeriesEmptyResponseKeepsVolumes: a provider that answers with a
+// series carrying no issues (a transient glitch, or an ongoing series it hasn't
+// counted yet) must NOT wipe the series' unowned, monitored, wanted volumes —
+// a later populated sync reconciles any real removal instead.
+func TestRefreshSeriesEmptyResponseKeepsVolumes(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	prov := &fakeSeriesProvider{
+		name: "anifake",
+		series: map[string]*metadata.SeriesResult{
+			"a1": {ForeignID: "a1", Title: "Death Note", AuthorName: "Ohba", IssueCount: 3,
+				Issues: []metadata.Issue{
+					{ForeignID: "a1-v1", Number: 1},
+					{ForeignID: "a1-v2", Number: 2},
+					{ForeignID: "a1-v3", Number: 3},
+				}},
+		},
+	}
+	mgr := metadata.NewManager()
+	mgr.SetSeries(prov)
+	svc := New(store, mgr)
+	ctx := context.Background()
+
+	added, err := svc.SyncSeries(ctx, "manga", "a1", true, true, true)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	if vols, _ := store.ListVolumes(added.ID); len(vols) != 3 {
+		t.Fatalf("after add: %d volumes, want 3", len(vols))
+	}
+
+	// The provider now glitches: it returns the series with no issues at all.
+	prov.series["a1"] = &metadata.SeriesResult{ForeignID: "a1", Title: "Death Note", AuthorName: "Ohba", IssueCount: 0}
+	if err := svc.RefreshSeries(ctx, added.ID); err != nil {
+		t.Fatalf("RefreshSeries: %v", err)
+	}
+	if vols, _ := store.ListVolumes(added.ID); len(vols) != 3 {
+		t.Fatalf("empty provider response wiped volumes: %d left, want 3", len(vols))
+	}
+}

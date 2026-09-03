@@ -132,6 +132,15 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 // replacement is kept so its files aren't lost. Prose books linked to the
 // series are left alone.
 func (s *Service) retireStaleVolumes(source string, remote *metadata.SeriesResult, oldVolumes []library.Book, oldPositions map[int64]float64) error {
+	// A provider that answers with a series carrying no issues at all is almost
+	// always a transient glitch — or an ongoing series it hasn't counted yet
+	// (AniList reports volumes 0 for these) — not a series that genuinely lost
+	// every volume. Never let that wipe the series' unowned, monitored, wanted
+	// volumes; this mirrors the author-bibliography reconcile's non-empty guard.
+	// A real removal still reconciles on the next populated sync.
+	if len(remote.Issues) == 0 {
+		return nil
+	}
 	keep := map[string]bool{}
 	newByNumber := map[float64]int64{}
 	for _, iss := range remote.Issues {
