@@ -221,6 +221,53 @@ func TestGetAuthorDeJunks(t *testing.T) {
 	}
 }
 
+// TestGetAuthorDedupsEditionsAndTranslations: a translation, a split edition,
+// and a format-variant of a book must collapse onto the one canonical work —
+// by shared (series, position) and by a split/subtitle-stripped title — while
+// a genuinely distinct subtitled book stays.
+func TestGetAuthorDedupsEditionsAndTranslations(t *testing.T) {
+	// Every book here has an English edition and one credited author, so only
+	// the NEW dedup (not the language/anthology filters) decides its fate.
+	book := func(id int, title string, users int, seriesID int, hasPos bool, position float64) string {
+		ser := ""
+		if seriesID > 0 {
+			pos := "null"
+			if hasPos {
+				pos = fmt.Sprintf("%v", position)
+			}
+			ser = fmt.Sprintf(`, "book_series": [{"position": %s, "series": {"id": %d, "name": "Dune", "description": ""}}]`, pos, seriesID)
+		}
+		return fmt.Sprintf(`{"book": {"id": %d, "title": %q, "users_count": %d, "compilation": false,
+			"contributions_aggregate": {"aggregate": {"count": 1}}, "lang_editions": [{"id": 1}], "foreign_editions": []%s}}`,
+			id, title, users, ser)
+	}
+	resp := map[string]string{
+		// Readership-first, as the live query returns them.
+		"Author": `{"data": {"authors": [{"id": 1, "name": "Frank Herbert", "bio": "", "cached_image": null, "contributions": [` +
+			book(1, "Dune", 15000, 1150, true, 1) + `,` + // kept
+			book(2, "God Emperor of Dune", 2400, 1150, true, 4) + `,` + // kept
+			book(3, "Dune Tanrı İmparatoru", 5, 1150, true, 4) + `,` + // dropped: same (series, position) as book 2
+			book(4, "Children of Dune", 3400, 1150, true, 3) + `,` + // kept
+			book(5, "Children of Dune (1 of 2)", 2, 1150, true, 3.1) + `,` + // dropped: split marker → title of book 4
+			book(6, "Dune: deluxe trade paperback", 5, 0, false, 0) + `,` + // dropped: format subtitle → title of book 1
+			book(7, "Chapterhouse: Dune", 1650, 1150, true, 6) + // kept: real subtitle, distinct slot
+			`]}]}}`,
+	}
+	c := mockAPI(t, resp, WithLanguage("english"))
+	a, err := c.GetAuthor(context.Background(), "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var titles []string
+	for _, b := range a.Books {
+		titles = append(titles, b.Title)
+	}
+	want := []string{"Dune", "God Emperor of Dune", "Children of Dune", "Chapterhouse: Dune"}
+	if fmt.Sprint(titles) != fmt.Sprint(want) {
+		t.Fatalf("bibliography = %v, want %v", titles, want)
+	}
+}
+
 func TestGetAuthor(t *testing.T) {
 	c := mockAPI(t, map[string]string{
 		"Author": `{"data": {"authors": [{

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -322,6 +323,57 @@ func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book
 	return books, nil
 }
 
+var (
+	// splitMarker matches a trailing split-edition suffix — "(1 of 2)", ", Part
+	// 1", " Part 2", "(N/M)", "Book 1 of 2" — so the parts of one work collapse
+	// onto the whole for dedup. Dedup only drops a part when the whole is also
+	// present, so stripping here can never hide a work that ships only in parts.
+	splitMarker = regexp.MustCompile(`(?i)[\s,\-–—]*[(\[]?\s*(?:\d+\s*(?:of|/)\s*\d+|part\s+\d+|book\s+\d+\s+of\s+\d+|vol(?:ume)?\s+\d+\s+of\s+\d+)\s*[)\]]?\s*$`)
+	// editionSubtitle marks a ": <descriptor>" subtitle as a format/collection
+	// variant of a work ("Dune: deluxe trade paperback", "…: The Gateway
+	// Collection") rather than a distinct work's own subtitle ("Chapterhouse:
+	// Dune", "…: Fear is the Mind Killer").
+	editionSubtitle = regexp.MustCompile(`(?i)\b(deluxe|trade paperback|mass market|hardcover|paperback|mmpb|boxed set|box set|collection|omnibus|anniversary edition|illustrated edition|special edition)\b`)
+)
+
+// dedupTitleKey normalizes a title for canonical-work dedup: it strips a
+// trailing split marker and an edition/format subtitle, then reduces to a
+// comparison key — so an alternate edition, a split, or a format variant maps
+// onto the one work it belongs to.
+func dedupTitleKey(title string) string {
+	t := splitMarker.ReplaceAllString(title, "")
+	if i := strings.Index(t, ":"); i >= 0 && editionSubtitle.MatchString(t[i+1:]) {
+		t = t[:i]
+	}
+	return normalizeKey(t)
+}
+
+// seriesPositionKey identifies one series slot; a translation or alternate
+// edition of a book sits at the exact same (series, position) as the canonical.
+func seriesPositionKey(seriesID string, position float64) string {
+	return seriesID + "\x00" + strconv.FormatFloat(position, 'f', -1, 64)
+}
+
+// seriesPositionSeen reports whether any of a book's series slots was already
+// claimed by a kept book; markSeriesPositions records them. Position 0 (no
+// place in the series — many compilations) never dedups.
+func seriesPositionSeen(series []gqlSeriesEntry, seen map[string]bool) bool {
+	for _, se := range series {
+		if sid := se.Series.ID.String(); sid != "" && se.Position != 0 && seen[seriesPositionKey(sid, se.Position)] {
+			return true
+		}
+	}
+	return false
+}
+
+func markSeriesPositions(series []gqlSeriesEntry, seen map[string]bool) {
+	for _, se := range series {
+		if sid := se.Series.ID.String(); sid != "" && se.Position != 0 {
+			seen[seriesPositionKey(sid, se.Position)] = true
+		}
+	}
+}
+
 // normalizeKey reduces a title or name to a comparison key: lower-cased, with
 // runs of non-alphanumerics collapsed to single spaces and trimmed. So "DUNE",
 // "Dune", and "Dune " map together while distinct works stay distinct.
@@ -477,6 +529,7 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 	// canonical, most-read one — keep it and drop the rest.
 	seenID := map[string]bool{}
 	seenTitle := map[string]bool{}
+	seenPos := map[string]bool{}
 	for _, con := range a.Contributions {
 		b := con.Book
 		if b == nil || seenID[b.ID.String()] {
@@ -509,12 +562,25 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 				continue
 			}
 		}
-		if tkey := normalizeKey(b.Title); tkey != "" {
-			if seenTitle[tkey] {
-				continue
-			}
+		// Dedup a translation, split, or alternate edition against the canonical,
+		// most-read record already kept. Two signals: the same (series, position)
+		// slot — a translation of "God Emperor of Dune" is still Dune book 4 —
+		// and a normalized title with split markers ("(1 of 2)", ", Part 1") and
+		// edition/format subtitles ("Dune: deluxe trade paperback") stripped.
+		// Contributions arrive readership-first, so the first record of a work is
+		// its canonical one; the rest are its editions.
+		if seriesPositionSeen(b.BookSeries, seenPos) {
+			continue
+		}
+		tkey := dedupTitleKey(b.Title)
+		if tkey != "" && seenTitle[tkey] {
+			continue
+		}
+		if tkey != "" {
 			seenTitle[tkey] = true
 		}
+		markSeriesPositions(b.BookSeries, seenPos)
+
 		book := b.toMetadata()
 		book.AuthorForeignID = author.ForeignID
 		book.AuthorName = author.Name
