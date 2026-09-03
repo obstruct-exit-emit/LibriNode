@@ -340,13 +340,16 @@ func dirHasNoMedia(dir string) bool {
 	return true
 }
 
-// sameFile compares paths the way the target filesystem does (Windows and
-// macOS are usually case-insensitive).
+// sameFile reports whether two paths name the same file, by literal comparison
+// after cleaning. On Linux — the deployment target — "Book.epub" and
+// "book.epub" are genuinely different files, so an Organize run that only
+// changes a name's casing is a real move, not a no-op to skip; a
+// case-insensitive comparison here would wrongly treat them as already in place
+// and never fix the casing. On a case-insensitive filesystem the redundant
+// rename that this now plans is caught by Apply's own target-exists guard
+// (os.Stat), so nothing is overwritten there either.
 func sameFile(a, b string) bool {
-	if a == b {
-		return true
-	}
-	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 // sweepEmptyDirs removes dir and its now-empty parents, stopping at (and

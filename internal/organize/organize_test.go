@@ -227,6 +227,20 @@ func TestPlanAndApply(t *testing.T) {
 	}
 }
 
+func TestSameFileIsCaseSensitive(t *testing.T) {
+	// On Linux a case-only difference is a genuinely different file, so an
+	// Organize run must plan the rename rather than skip it as already placed.
+	if sameFile(filepath.Join("lib", "Book.epub"), filepath.Join("lib", "book.epub")) {
+		t.Error("case-only difference must not be treated as the same file")
+	}
+	if !sameFile(filepath.Join("lib", "Book.epub"), filepath.Join("lib", "Book.epub")) {
+		t.Error("identical paths must be the same file")
+	}
+	if !sameFile(filepath.Join("lib", "x", "..", "Book.epub"), filepath.Join("lib", "Book.epub")) {
+		t.Error("paths that clean to the same must be the same file")
+	}
+}
+
 func TestApplyNeverOverwrites(t *testing.T) {
 	f := fixture(t)
 
