@@ -118,7 +118,9 @@ func TestSearchBooksDeJunks(t *testing.T) {
 		{"document": {"id": 4, "title": "DUNE", "author_names": ["Mahalia Galais"], "users_count": 0, "release_year": 2019}},
 		{"document": {"id": 5, "title": "Mistborn", "author_names": ["Brandon Sanderson"], "users_count": 9000}},
 		{"document": {"id": 6, "title": "Mistborn", "author_names": ["Brandon Sanderson"], "users_count": 200}},
-		{"document": {"id": 7, "title": "Dune Messiah", "author_names": ["Frank Herbert"], "users_count": 4501}}
+		{"document": {"id": 7, "title": "Dune Messiah", "author_names": ["Frank Herbert"], "users_count": 4501}},
+		{"document": {"id": 8, "title": "Dune: deluxe trade paperback", "author_names": ["Frank Herbert"], "users_count": 5000}},
+		{"document": {"id": 9, "title": "Dune (1 of 2)", "author_names": ["Frank Herbert"], "users_count": 6000}}
 	]}`
 	c := mockAPI(t, map[string]string{
 		"Search": `{"data": {"search": {"results": ` + inner + `}}}`,
@@ -132,7 +134,10 @@ func TestSearchBooksDeJunks(t *testing.T) {
 		got[i] = b.ForeignID
 	}
 	// Kept: canonical Dune (1), most-read Mistborn (5), Dune Messiah (7).
-	// Dropped: same-title stragglers/ghosts 2,3,4 and duplicate edition 6.
+	// Dropped: same-title stragglers/ghosts 2,3,4, duplicate edition 6, and —
+	// though well-read enough to clear the dominance filter — the edition/format
+	// variant (8, "…: deluxe trade paperback") and the split row (9, "…(1 of 2)"),
+	// which collapse onto the canonical Dune the same way the author page dedups.
 	want := []string{"1", "5", "7"}
 	if len(got) != len(want) {
 		t.Fatalf("got ids %v, want %v", got, want)

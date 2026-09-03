@@ -286,7 +286,11 @@ func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book
 			b.AuthorName = d.AuthorNames[0]
 			author = d.AuthorNames[0]
 		}
-		tk := normalizeKey(d.Title)
+		// Same canonical-work key the author bibliography uses, so a search's
+		// edition/format variants and split rows ("Dune: deluxe trade paperback",
+		// "Children of Dune (1 of 2)") collapse onto the one work rather than
+		// crowding the results with near-duplicates.
+		tk := dedupTitleKey(d.Title)
 		recs = append(recs, rec{
 			book: b, titleKey: tk, fullKey: tk + "\x00" + normalizeKey(author), users: d.UsersCount,
 		})
