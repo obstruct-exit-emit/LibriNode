@@ -66,6 +66,18 @@ func TestValidateUnreachable(t *testing.T) {
 		t.Errorf("503 response: err = %v, want ErrUnreachable", err)
 	}
 
+	// A 403 from a keyless API is a transient block (Cloudflare / rate limit),
+	// not a credential rejection — it must read as unreachable so a refresh
+	// sweep backs off instead of hammering it.
+	forbidden := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(forbidden.Close)
+	blocked := New(WithEndpoint(forbidden.URL))
+	if err := blocked.Validate(context.Background()); !errors.Is(err, metadata.ErrUnreachable) {
+		t.Errorf("403 response: err = %v, want ErrUnreachable", err)
+	}
+
 	okSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"data": {"__typename": "Query"}}`))

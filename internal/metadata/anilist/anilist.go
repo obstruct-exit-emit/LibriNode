@@ -92,7 +92,13 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 		return fmt.Errorf("anilist: reading response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
-		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		// AniList is keyless, so a failure is never a rejected credential. A
+		// 403/429 (or a 5xx) is a transient block — Cloudflare or its own rate
+		// limiter turning the shared/VPN IP away — so wrap it ErrUnreachable:
+		// the health banner reads "unreachable" rather than the misleading
+		// "rejected its token", and a refresh sweep backs off after a few in a
+		// row instead of hammering it with one per series.
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden {
 			return fmt.Errorf("anilist: %w: HTTP %d: %.150s", metadata.ErrUnreachable, resp.StatusCode, raw)
 		}
 		return fmt.Errorf("anilist: HTTP %d: %.150s", resp.StatusCode, raw)
