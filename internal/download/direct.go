@@ -315,6 +315,7 @@ func (d *direct) List(ctx context.Context) ([]Item, error) {
 			Status:   it.status,
 			Progress: it.progress,
 			Path:     it.path,
+			Error:    it.err,
 		})
 	}
 	return items, nil

@@ -72,6 +72,11 @@ type Item struct {
 	Status   string  `json:"status"`
 	Progress float64 `json:"progress"` // 0-1
 	Path     string  `json:"path,omitempty"`
+	// Error is a failed item's reason, when the client can report one. The
+	// built-in direct downloader fills it (why a mirror fetch failed —
+	// membership required, throttled, no link on the page); torrent/usenet
+	// clients surface their failures through the queue's client-error list.
+	Error string `json:"error,omitempty"`
 }
 
 // Client is the operations LibriNode needs from any download client.

@@ -163,11 +163,13 @@ func TestDirectJSONErrorAndSecretRedaction(t *testing.T) {
 	if it.Status != "failed" {
 		t.Fatalf("status = %q, want failed", it.Status)
 	}
-	d.mu.Lock()
-	msg := d.items[id].err
-	d.mu.Unlock()
-	if strings.Contains(msg, "super-secret-key") {
-		t.Errorf("failure message leaks the key: %q", msg)
+	// The failure reason is surfaced on the queue item (List), so the UI can
+	// show WHY a direct download failed instead of a bare "failed".
+	if !strings.Contains(it.Error, "Invalid secret key") {
+		t.Errorf("surfaced error = %q, want the API's reason", it.Error)
+	}
+	if strings.Contains(it.Error, "super-secret-key") {
+		t.Errorf("surfaced error leaks the key: %q", it.Error)
 	}
 }
 

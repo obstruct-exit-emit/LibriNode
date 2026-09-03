@@ -164,6 +164,8 @@ export interface QueueItem {
   status: string;
   progress: number;
   path?: string;
+  // A failed item's reason, when the client reports one (the direct downloader).
+  error?: string;
   // Set when the item belongs to a tracked grab — links it to its book.
   grabId?: number;
   bookId?: number;

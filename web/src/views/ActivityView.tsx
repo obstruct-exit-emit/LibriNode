@@ -203,6 +203,11 @@ export default function ActivityView({
                   </button>
                 </span>
               </div>
+              {it.status === "failed" && it.error && (
+                <p className="muted bad" title={it.error}>
+                  {it.error}
+                </p>
+              )}
               <div className="progress" title={`${(it.progress * 100).toFixed(0)}%`}>
                 <div
                   className={`progress-fill${it.status === "failed" ? " bad" : ""}${it.status === "completed" || it.status === "seeded" ? " done" : ""}`}
