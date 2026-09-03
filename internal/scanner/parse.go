@@ -67,13 +67,17 @@ func IsMagazinePath(name string) bool {
 
 // discFolder matches disc-style subdivisions of a multi-file audiobook folder
 // — the one kind of subfolder a book folder may contain (Audiobookshelf
-// convention). A prefixed form (CD1, Disc 02, Part 3, Pt 2, Vol. 1) may carry
-// trailing text: a disc title ("Disc 1 - Introduction") or an "of N" count
-// ("CD 1 of 12"), both common and both previously flattened, which scrambled
-// track order when a book's discs held identically-named files. A bare number
-// ("1", "02") also counts, but only when the whole name is digits, so a stray
-// "1 Hour Version" or a "2012" year folder is never mistaken for a disc.
-var discFolder = regexp.MustCompile(`(?i)^(?:(?:cd|disc|disk|part|pt|vol(?:ume)?)[ ._-]*\d{1,3}(?:[ ._-].*)?|\d{1,3})$`)
+// convention). A disc prefix (CD1, Disc 02, Disk 3, Part 3, Pt 2, Vol. 1) may
+// carry trailing text: a disc title ("Disc 1 - Introduction") or an "of N"
+// count ("CD 1 of 12"), both common and both previously flattened, which
+// scrambled track order when a book's discs held identically-named files.
+//
+// The prefix is deliberately required. A bare number ("1", "02") is too
+// ambiguous to treat as a disc here: this predicate is also how the scanner
+// decides a directory of subfolders is one multi-disc book rather than a level
+// of separate books, so accepting bare numbers would merge a genuine
+// "Author/Series/1", "Author/Series/2" numbered-book layout into a single book.
+var discFolder = regexp.MustCompile(`(?i)^(?:cd|disc|disk|part|pt|vol(?:ume)?)[ ._-]*\d{1,3}(?:[ ._-].*)?$`)
 
 // IsDiscFolder reports whether a directory name is a disc-style subdivision of
 // an audiobook folder.

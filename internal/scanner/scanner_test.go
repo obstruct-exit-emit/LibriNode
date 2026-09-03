@@ -897,12 +897,15 @@ func TestIsDiscFolder(t *testing.T) {
 		"Disc 02", "Disk 3", "Part 3", "Pt 2", "Vol 1", "Vol. 1", "Volume 1",
 		"CD 1 of 12", "Disc 01 of 10", // "of N" counts — previously flattened
 		"Disc 1 - Introduction", "CD2 - The Reckoning", // titled discs
-		"1", "02", "100", // bare disc numbers
 	}
 	notDisc := []string{
 		"", "Mort", "Bonus", "Extras", "Chapter One", "Disc One", // worded, no digits
-		"2012", "1999", // year folders (4 digits)
-		"1 Hour Version", "3 Discs", // bare number with trailing text is not a disc
+		"2012", "1999", // year folders
+		"1 Hour Version", "3 Discs", // trailing text without a disc prefix
+		// Bare numbers are NOT discs: a disc prefix is required, so an
+		// "Author/Series/1", "Author/Series/2" numbered-book layout isn't
+		// merged into one multi-disc book by the scanner.
+		"1", "02", "100",
 		"Terry Pratchett", "Soundtrack",
 	}
 	for _, n := range disc {
