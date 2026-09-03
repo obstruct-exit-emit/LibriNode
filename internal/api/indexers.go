@@ -13,6 +13,7 @@ import (
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/release"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 const indexerTestTimeout = 30 * time.Second
@@ -262,7 +263,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if term == "" {
-				term = author.Name + " " + book.Title
+				term = author.Name + " " + scanner.SearchTitle(book.Title)
 			}
 			if books, err := s.store.ListBooks(author.ID); err == nil {
 				for _, b := range books {
@@ -297,7 +298,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	if seriesTitle != "" {
 		nativeTerm = seriesTitle
 	} else if book != nil {
-		nativeTerm = book.Title
+		nativeTerm = scanner.SearchTitle(book.Title)
 	}
 	found, errs, err := s.indexers.SearchAll(ctx, term, nativeTerm, mediaType)
 	if err != nil {

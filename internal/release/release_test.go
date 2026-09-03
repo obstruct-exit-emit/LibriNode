@@ -190,6 +190,29 @@ func TestScoreAgainstBook(t *testing.T) {
 	}
 }
 
+// TestScoreApprovesMainTitleForSubtitledBook: a release named by a book's main
+// title alone must be approved for a book whose stored title carries a ", or"
+// alternate or ":" subtitle — releases almost never repeat the full mouthful.
+func TestScoreApprovesMainTitleForSubtitledBook(t *testing.T) {
+	prefs := DefaultEbookPreferences()
+	author := &library.Author{Name: "J.R.R. Tolkien"}
+
+	book := &library.Book{Title: "The Hobbit, or There and Back Again"}
+	main := Score(rel("J.R.R. Tolkien - The Hobbit (1937) EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
+	if !main.Approved {
+		t.Fatalf("main-title release rejected for a ', or' book: %v", main.Rejections)
+	}
+	// The trailing-stopword guard protects the other direction: a book titled
+	// just "The Hobbit" must NOT be satisfied by a release for the longer,
+	// different "The Hobbit: An Unexpected Journey" (its title continues past
+	// the wanted one with a non-stopword).
+	short := &library.Book{Title: "The Hobbit"}
+	longer := Score(rel("J.R.R. Tolkien - The Hobbit An Unexpected Journey EPUB", indexer.ProtocolUsenet, 1<<20, -1), prefs, short, author, nil)
+	if longer.Approved {
+		t.Error("'The Hobbit' must not be satisfied by a longer, different 'Unexpected Journey' release")
+	}
+}
+
 // TestScoreFlagsPackWhenReleaseNamesAnotherBook: a release bundling the
 // wanted book with another of the author's standalone titles ("Tau Zero &
 // The Boat of a Million Years") must be flagged as a pack even though it

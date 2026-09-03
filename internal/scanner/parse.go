@@ -304,6 +304,13 @@ func Normalize(s string) string {
 // "Title (retail) (epub)" — which name editions, not the title itself.
 var trailingParens = regexp.MustCompile(`(\s*\([^)]*\))+\s*$`)
 
+// altTitle matches the archaic ", or <alternate>" tail some classic titles
+// carry ("The Hobbit, or There and Back Again", "Frankenstein, or the Modern
+// Prometheus", "Twelfth Night, or What You Will") — an alternate name for the
+// SAME work that release names almost always drop. The main title before it is
+// treated the same way as the part before a ":" subtitle.
+var altTitle = regexp.MustCompile(`(?i),\s+or\s+`)
+
 // TitleKeys returns the normalized match keys for a title: the full title;
 // the main title alone when a subtitle is present ("Title: Subtitle"); and
 // the title without trailing parentheticals — our own naming templates emit
@@ -323,14 +330,48 @@ func TitleKeys(title string) []string {
 		}
 		keys = append(keys, k)
 	}
-	if main, _, ok := strings.Cut(title, ":"); ok {
-		add(main)
-	}
-	if stripped := trailingParens.ReplaceAllString(title, ""); stripped != title {
-		add(stripped)
-		if main, _, ok := strings.Cut(stripped, ":"); ok {
+	// mains adds a title's shorter canonical forms: the part before a ":"
+	// subtitle and the part before a ", or" alternate-title tail. Both name the
+	// same work as the full title, which release names routinely give in the
+	// short form — "The Hobbit" for "The Hobbit, or There and Back Again". The
+	// caller's trailing-stopword guard (titleMatches) keeps a short key from
+	// matching a genuinely longer, different title ("The Hobbit: An Unexpected
+	// Journey").
+	mains := func(t string) {
+		if main, _, ok := strings.Cut(t, ":"); ok {
 			add(main)
 		}
+		if loc := altTitle.FindStringIndex(t); loc != nil {
+			add(t[:loc[0]])
+		}
+	}
+	mains(title)
+	if stripped := trailingParens.ReplaceAllString(title, ""); stripped != title {
+		add(stripped)
+		mains(stripped)
 	}
 	return keys
+}
+
+// SearchTitle reduces a title to the terms worth sending to a keyword indexer,
+// dropping a ":" subtitle or ", or" alternate-title tail (and any trailing
+// parenthetical) that Newznab/Torznab would match as required tokens no release
+// repeats in full — "The Hobbit, or There and Back Again" searches nothing,
+// while "The Hobbit" finds the releases. Titles without a subtitle are returned
+// unchanged ("Dune Messiah" stays "Dune Messiah"), so the query only broadens
+// where a subtitle would otherwise block it; scoring still checks the full
+// title via TitleKeys, so the extra candidates are filtered, not trusted.
+// Returns the original (trimmed) when stripping would leave nothing usable.
+func SearchTitle(title string) string {
+	t := strings.TrimSpace(trailingParens.ReplaceAllString(title, ""))
+	if main, _, ok := strings.Cut(t, ":"); ok {
+		t = main
+	}
+	if loc := altTitle.FindStringIndex(t); loc != nil {
+		t = t[:loc[0]]
+	}
+	if t = strings.TrimSpace(t); len([]rune(t)) < 2 {
+		return strings.TrimSpace(title)
+	}
+	return t
 }

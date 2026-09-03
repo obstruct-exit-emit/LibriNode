@@ -61,6 +61,34 @@ func TestTitleKeys(t *testing.T) {
 	if len(keys) != 2 || keys[1] != "good omens" {
 		t.Errorf("TitleKeys = %v", keys)
 	}
+	// A ", or <alternate>" tail yields the main title too, so a release named
+	// plainly "The Hobbit" still matches the full-title book.
+	got := TitleKeys("The Hobbit, or There and Back Again")
+	hasHobbit := false
+	for _, k := range got {
+		if k == "hobbit" {
+			hasHobbit = true
+		}
+	}
+	if !hasHobbit {
+		t.Errorf(`TitleKeys(Hobbit) = %v, want it to include "hobbit"`, got)
+	}
+}
+
+func TestSearchTitle(t *testing.T) {
+	cases := map[string]string{
+		"The Hobbit, or There and Back Again":       "The Hobbit",
+		"Frankenstein, or the Modern Prometheus":    "Frankenstein",
+		"Sapiens: A Brief History of Humankind":     "Sapiens",
+		"Dune Messiah":                              "Dune Messiah", // no subtitle, unchanged
+		"The Hobbit (Illustrated Edition)":          "The Hobbit",
+		"Good Omens: The Nice and Accurate Prophecies": "Good Omens",
+	}
+	for in, want := range cases {
+		if got := SearchTitle(in); got != want {
+			t.Errorf("SearchTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 // fixture creates a store with one root folder, two authors, three books,

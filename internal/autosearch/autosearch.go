@@ -18,6 +18,7 @@ import (
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/release"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 // WantedSearchPacing is the gap left between consecutive book searches when
@@ -200,8 +201,13 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 		if err != nil {
 			return nil, err
 		}
-		query = author.Name + " " + book.Title
-		nativeQuery = book.Title // ABB/Libgen match the bare title, not "author title"
+		// Search the main title, dropping a ":" subtitle or ", or" alternate
+		// tail: keyword indexers match every query token, so the full mouthful
+		// ("The Hobbit, or There and Back Again") finds nothing while "The
+		// Hobbit" finds the releases. Scoring still checks the full title.
+		searchTitle := scanner.SearchTitle(book.Title)
+		query = author.Name + " " + searchTitle
+		nativeQuery = searchTitle // ABB/Libgen match the bare title, not "author title"
 		if mediaType == "audiobook" {
 			// Categories do most of the filtering; the keyword helps
 			// indexers with sloppy category mapping.
