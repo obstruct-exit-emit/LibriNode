@@ -301,7 +301,8 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 	seen := map[string]bool{}
 	for i := range items {
 		v := &items[i]
-		if v.VolumeInfo.Title == "" || !authorMatches(v.VolumeInfo.Authors, name) {
+		matched, ok := matchedAuthor(v.VolumeInfo.Authors, name)
+		if v.VolumeInfo.Title == "" || !ok {
 			continue
 		}
 		// Google Books returns every edition and printing of a work as its own
@@ -314,8 +315,10 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 			}
 			seen[key] = true
 		}
-		if displayName == name && len(v.VolumeInfo.Authors) > 0 {
-			displayName = v.VolumeInfo.Authors[0]
+		// The wanted author's own name in the provider's casing — never a
+		// co-author listed first on the volume.
+		if displayName == name {
+			displayName = matched
 		}
 		b := v.toBook()
 		b.AuthorForeignID = author.ForeignID
@@ -347,11 +350,16 @@ func titleKey(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
-func authorMatches(authors []string, name string) bool {
+// matchedAuthor returns the provider's own casing of whichever author in
+// authors equals name (case-insensitively), and whether one was found. Callers
+// use the returned name rather than authors[0]: a co-authored volume can list a
+// different author first, so authors[0] is not necessarily the wanted one.
+func matchedAuthor(authors []string, name string) (string, bool) {
+	want := strings.TrimSpace(name)
 	for _, a := range authors {
-		if strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(name)) {
-			return true
+		if strings.EqualFold(strings.TrimSpace(a), want) {
+			return strings.TrimSpace(a), true
 		}
 	}
-	return false
+	return "", false
 }

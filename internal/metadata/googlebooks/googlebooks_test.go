@@ -110,6 +110,25 @@ func TestGetAuthorFromInauthorSearch(t *testing.T) {
 	}
 }
 
+// TestGetAuthorUsesMatchedNotFirstListed: on a co-authored volume the wanted
+// author may not be credited first; the author record must take the wanted
+// author's name, not whichever co-author happens to lead the credits.
+func TestGetAuthorUsesMatchedNotFirstListed(t *testing.T) {
+	// The volume lists Mark Malseed FIRST, the wanted David A. Vise second.
+	item := `{"items":[{"id":"z","volumeInfo":{"title":"The Google Story","authors":["Mark Malseed","David A. Vise"],"language":"en"}}]}`
+	c := mockGB(t, item, "")
+	a, err := c.GetAuthor(context.Background(), "author:david a. vise")
+	if err != nil {
+		t.Fatalf("GetAuthor: %v", err)
+	}
+	if a.Name != "David A. Vise" {
+		t.Errorf("Name = %q, want David A. Vise (the searched author, not the first-listed co-author)", a.Name)
+	}
+	if a.ForeignID != "author:david a. vise" {
+		t.Errorf("ForeignID = %q", a.ForeignID)
+	}
+}
+
 // TestGetAuthorDedupsEditions: Google Books returns every edition of a work as
 // its own volume, so an author's bibliography must collapse the repeats by
 // title, keeping one entry per distinct work.
