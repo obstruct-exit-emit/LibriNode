@@ -3,6 +3,7 @@ package googlebooks
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -106,6 +107,31 @@ func TestGetAuthorFromInauthorSearch(t *testing.T) {
 	}
 	if a.Source != "googlebooks" {
 		t.Errorf("Source = %q", a.Source)
+	}
+}
+
+// TestGetAuthorDedupsEditions: Google Books returns every edition of a work as
+// its own volume, so an author's bibliography must collapse the repeats by
+// title, keeping one entry per distinct work.
+func TestGetAuthorDedupsEditions(t *testing.T) {
+	vol := func(id, title string) string {
+		return fmt.Sprintf(`{"id":%q,"volumeInfo":{"title":%q,"authors":["David A. Vise"],"language":"en"}}`, id, title)
+	}
+	items := `{"items":[` +
+		vol("a", "The Google Story") + `,` +
+		vol("b", "The Google Story") + `,` + // a second edition of the same work
+		vol("c", "A Different Book") + `]}`
+	c := mockGB(t, items, "")
+	a, err := c.GetAuthor(context.Background(), "author:david a. vise")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var titles []string
+	for _, b := range a.Books {
+		titles = append(titles, b.Title)
+	}
+	if len(a.Books) != 2 {
+		t.Fatalf("Books = %v, want 2 (the duplicate edition collapsed)", titles)
 	}
 }
 

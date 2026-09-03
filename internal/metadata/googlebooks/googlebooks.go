@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/librinode/librinode/internal/metadata"
 )
@@ -297,10 +298,21 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 		ForeignID: authorID(name),
 		Source:    providerName,
 	}
+	seen := map[string]bool{}
 	for i := range items {
 		v := &items[i]
 		if v.VolumeInfo.Title == "" || !authorMatches(v.VolumeInfo.Authors, name) {
 			continue
+		}
+		// Google Books returns every edition and printing of a work as its own
+		// volume, so an author's list is otherwise the same titles over and
+		// over. Collapse them by normalized title, keeping the first — Google's
+		// relevance order leads with the canonical edition.
+		if key := titleKey(v.VolumeInfo.Title); key != "" {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 		}
 		if displayName == name && len(v.VolumeInfo.Authors) > 0 {
 			displayName = v.VolumeInfo.Authors[0]
@@ -315,6 +327,24 @@ func (c *Client) GetAuthor(ctx context.Context, foreignID string) (*metadata.Aut
 	author.Name = displayName
 	author.BookCount = len(author.Books)
 	return author, nil
+}
+
+// titleKey normalizes a title for dedup: lower-cased, with runs of
+// non-alphanumerics collapsed to single spaces. Google Books lists many
+// editions of one work, all with the same title, so this folds them together.
+func titleKey(s string) string {
+	var b strings.Builder
+	space := false
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			space = false
+		} else if !space {
+			b.WriteByte(' ')
+			space = true
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func authorMatches(authors []string, name string) bool {
