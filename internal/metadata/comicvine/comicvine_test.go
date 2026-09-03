@@ -18,9 +18,10 @@ const volumeJSON = `{
 	"image": {"medium_url": "https://cv/twd.jpg"},
 	"person_credits": [{"name": "Robert Kirkman", "role": "writer"}],
 	"issues": [
-		{"id": 111, "issue_number": "1", "name": "Days Gone Bye"},
+		{"id": 113, "issue_number": "1.AU", "name": "Weird Special"},
+		{"id": 114, "issue_number": "3", "name": "Safety Behind Bars"},
 		{"id": 112, "issue_number": "2", "name": ""},
-		{"id": 113, "issue_number": "1.AU", "name": "Weird Special"}
+		{"id": 111, "issue_number": "1", "name": "Days Gone Bye"}
 	]
 }`
 
@@ -73,12 +74,16 @@ func TestGetSeries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSeries: %v", err)
 	}
-	// Oddly-numbered specials are skipped.
-	if len(s.Issues) != 2 {
+	// Oddly-numbered specials are skipped; the rest are sorted by number even
+	// though ComicVine returned them out of order (3, 2, 1).
+	if len(s.Issues) != 3 {
 		t.Fatalf("issues = %+v", s.Issues)
 	}
 	if s.Issues[0].Number != 1 || s.Issues[0].Title != "Days Gone Bye" {
 		t.Errorf("issue 1 = %+v", s.Issues[0])
+	}
+	if s.Issues[1].Number != 2 || s.Issues[2].Number != 3 {
+		t.Errorf("issues not sorted by number: %+v", s.Issues)
 	}
 
 	if _, err := c.GetSeries(context.Background(), "999"); !errors.Is(err, metadata.ErrNotFound) {

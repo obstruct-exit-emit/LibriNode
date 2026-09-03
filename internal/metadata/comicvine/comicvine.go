@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -200,5 +201,10 @@ func (c *Client) GetSeries(ctx context.Context, foreignID string) (*metadata.Ser
 			Title:     issue.Name,
 		})
 	}
+	// ComicVine returns a volume's issues in no guaranteed order; the library
+	// numbers volumes from this list, so sort it by issue number.
+	sort.SliceStable(result.Issues, func(i, j int) bool {
+		return result.Issues[i].Number < result.Issues[j].Number
+	})
 	return &result, nil
 }
