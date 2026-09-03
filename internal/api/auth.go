@@ -42,6 +42,16 @@ func hashPassword(password string) (string, error) {
 		pbkdf2Iterations, hex.EncodeToString(salt), hex.EncodeToString(key)), nil
 }
 
+// dummyPasswordHash is a fixed, valid PBKDF2 hash verified against when a login
+// names a user that doesn't exist, so the request still runs exactly one
+// (expensive) key derivation. Without it, verifyPassword runs only when the
+// username matches, and the response time reveals whether a username is valid —
+// user enumeration. Computed once, lazily (a real bcrypt-class derivation).
+var dummyPasswordHash = sync.OnceValue(func() string {
+	h, _ := hashPassword("librinode constant-time login guard")
+	return h
+})
+
 func verifyPassword(stored, password string) bool {
 	parts := strings.Split(stored, "$")
 	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {
@@ -236,16 +246,22 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "authentication is not enabled")
 		return
 	}
-	matched, matchedRole := "", ""
+	// Find the named account with a constant-time compare (don't break early),
+	// then ALWAYS run one password verification — against the matched account's
+	// hash, or a fixed dummy when no username matched — so a nonexistent
+	// username can't be told from a wrong password by response time.
+	matched, matchedRole, storedHash := "", "", ""
 	for i := range auth.Users {
 		u := &auth.Users[i]
-		if subtle.ConstantTimeCompare([]byte(req.Username), []byte(u.Username)) == 1 &&
-			verifyPassword(u.PasswordHash, req.Password) {
-			matched, matchedRole = u.Username, u.EffectiveRole()
-			break
+		if subtle.ConstantTimeCompare([]byte(req.Username), []byte(u.Username)) == 1 {
+			matched, matchedRole, storedHash = u.Username, u.EffectiveRole(), u.PasswordHash
 		}
 	}
-	if matched == "" {
+	if storedHash == "" {
+		storedHash = dummyPasswordHash()
+	}
+	passwordOK := verifyPassword(storedHash, req.Password)
+	if matched == "" || !passwordOK {
 		slog.Warn("failed login attempt", "username", req.Username, "remote", r.RemoteAddr)
 		time.Sleep(500 * time.Millisecond)
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
