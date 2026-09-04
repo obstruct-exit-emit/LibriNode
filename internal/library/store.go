@@ -86,13 +86,13 @@ func (s *Store) UpsertAuthor(a *Author) error {
 	).Scan(&a.ID)
 }
 
-const authorCols = `id, metadata_source, foreign_id, name, sort_name, description, image_url, monitored,
+const authorCols = `id, metadata_source, foreign_id, name, sort_name, description, image_url, monitored, mirror,
 	in_ebook_library, in_audiobook_library, provider_override, added_at, updated_at`
 
 func scanAuthor(row interface{ Scan(...any) error }) (*Author, error) {
 	var a Author
 	err := row.Scan(&a.ID, &a.Source, &a.ForeignID, &a.Name, &a.SortName,
-		&a.Description, &a.ImageURL, &a.Monitored,
+		&a.Description, &a.ImageURL, &a.Monitored, &a.Mirror,
 		&a.InEbookLibrary, &a.InAudiobookLibrary, &a.ProviderOverride, &a.AddedAt, &a.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -231,6 +231,64 @@ func (s *Store) SetAuthorMonitored(id int64, monitored bool) error {
 	return nil
 }
 
+// SetAuthorMirror turns an author's ebook↔audiobook mirroring on or off.
+// Turning it ON unifies existing prose books in one pass: any book that is in
+// (or monitored in) either format is brought into both, so the two libraries
+// start in lockstep — from then on the per-format library/monitor writes and
+// imports keep them there. Turning it OFF just clears the flag; books keep
+// whatever state they had and the two formats stop tracking each other.
+func (s *Store) SetAuthorMirror(id int64, on bool) error {
+	res, err := s.db.Exec(
+		`UPDATE authors SET mirror = ?, updated_at = datetime('now') WHERE id = ?`, on, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	if !on {
+		return nil
+	}
+	// Union each format pair. OR is monotonic, so both columns landing on the
+	// same (a | b) is correct regardless of SQLite's assignment order.
+	if _, err := s.db.Exec(`
+		UPDATE books SET
+			in_ebook_library     = (in_ebook_library | in_audiobook_library),
+			in_audiobook_library = (in_ebook_library | in_audiobook_library),
+			ebook_monitored      = (ebook_monitored | audiobook_monitored),
+			audiobook_monitored  = (ebook_monitored | audiobook_monitored),
+			updated_at = datetime('now')
+		WHERE author_id = ? AND media_type = 'book'`, id); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`
+		UPDATE authors SET
+			in_ebook_library     = (in_ebook_library | in_audiobook_library),
+			in_audiobook_library = (in_ebook_library | in_audiobook_library)
+		WHERE id = ?`, id)
+	return err
+}
+
+// authorMirrorsBook reports whether the book's author has mirroring on. A
+// missing book (or author) reads as false, not an error.
+func authorMirrorsBook(db execer, bookID int64) (bool, error) {
+	var on bool
+	err := db.QueryRow(
+		`SELECT mirror FROM authors WHERE id = (SELECT author_id FROM books WHERE id = ?)`, bookID).Scan(&on)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return on, err
+}
+
+// ensureAuthorBothLibraries marks a book's author as a member of both format
+// libraries at once (the mirrored counterpart of ensureAuthorLibrary).
+func ensureAuthorBothLibraries(db execer, bookID int64) error {
+	_, err := db.Exec(`UPDATE authors SET in_ebook_library = 1, in_audiobook_library = 1
+		WHERE id = (SELECT author_id FROM books WHERE id = ?)`, bookID)
+	return err
+}
+
 // --- Books ---
 
 // UpsertBook inserts or refreshes a book by (source, foreign_id), preserving
@@ -281,28 +339,45 @@ func (s *Store) UpsertBook(b *Book) error {
 // SetBookLibrary adds or removes a prose book from a format library
 // (ebook/audiobook) and sets that membership's monitored flag.
 func (s *Store) SetBookLibrary(id int64, mediaType string, member, monitored bool) error {
-	var query string
-	switch mediaType {
-	case "ebook":
-		query = `UPDATE books SET in_ebook_library = ?, ebook_monitored = ?, updated_at = datetime('now')
-			WHERE id = ? AND media_type = 'book'`
-	case "audiobook":
-		query = `UPDATE books SET in_audiobook_library = ?, audiobook_monitored = ?, updated_at = datetime('now')
-			WHERE id = ? AND media_type = 'book'`
-	default:
+	if mediaType != "ebook" && mediaType != "audiobook" {
 		return errors.New("library must be ebook or audiobook")
 	}
-	res, err := s.db.Exec(query, member, member && monitored, id)
+	mirror, err := authorMirrorsBook(s.db, id)
+	if err != nil {
+		return err
+	}
+	mon := member && monitored
+	var res sql.Result
+	switch {
+	case mirror:
+		// A mirrored author's book moves in lockstep: the same membership and
+		// monitored intent is written to both format pairs at once, whichever
+		// format the caller named.
+		res, err = s.db.Exec(`UPDATE books SET
+			in_ebook_library = ?, ebook_monitored = ?,
+			in_audiobook_library = ?, audiobook_monitored = ?,
+			updated_at = datetime('now')
+			WHERE id = ? AND media_type = 'book'`, member, mon, member, mon, id)
+	case mediaType == "ebook":
+		res, err = s.db.Exec(`UPDATE books SET in_ebook_library = ?, ebook_monitored = ?, updated_at = datetime('now')
+			WHERE id = ? AND media_type = 'book'`, member, mon, id)
+	default:
+		res, err = s.db.Exec(`UPDATE books SET in_audiobook_library = ?, audiobook_monitored = ?, updated_at = datetime('now')
+			WHERE id = ? AND media_type = 'book'`, member, mon, id)
+	}
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	if member {
-		return s.ensureAuthorLibrary(id, mediaType)
+	if !member {
+		return nil
 	}
-	return nil
+	if mirror {
+		return ensureAuthorBothLibraries(s.db, id)
+	}
+	return s.ensureAuthorLibrary(id, mediaType)
 }
 
 // EnsureBookLibrary makes an owned book (and its author) a member of the
@@ -313,16 +388,49 @@ func (s *Store) EnsureBookLibrary(id int64, mediaType string) error {
 }
 
 func ensureBookLibrary(db execer, id int64, mediaType string) error {
-	var query string
+	var col string
 	switch mediaType {
 	case "ebook":
-		query = `UPDATE books SET in_ebook_library = 1 WHERE id = ? AND media_type = 'book'`
+		col = "in_ebook_library"
 	case "audiobook":
-		query = `UPDATE books SET in_audiobook_library = 1 WHERE id = ? AND media_type = 'book'`
+		col = "in_audiobook_library"
 	default:
 		return nil
 	}
-	if _, err := db.Exec(query, id); err != nil {
+	mirror, err := authorMirrorsBook(db, id)
+	if err != nil {
+		return err
+	}
+	if mirror {
+		// Owning a format for a mirrored author activates BOTH: in both
+		// libraries and monitored in both, so the not-yet-owned format becomes a
+		// wanted item the searcher grabs. Only a book not already in both
+		// libraries is touched — a re-scan of an already-active book leaves the
+		// monitored flags alone, so a manual un-monitor afterwards sticks.
+		var inE, inA bool
+		err := db.QueryRow(
+			`SELECT in_ebook_library, in_audiobook_library FROM books WHERE id = ? AND media_type = 'book'`, id,
+		).Scan(&inE, &inA)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil // not a prose book
+		}
+		if err != nil {
+			return err
+		}
+		if inE && inA {
+			return nil
+		}
+		if _, err := db.Exec(`UPDATE books SET
+			in_ebook_library = 1, in_audiobook_library = 1,
+			ebook_monitored = 1, audiobook_monitored = 1,
+			updated_at = datetime('now')
+			WHERE id = ? AND media_type = 'book'`, id); err != nil {
+			return err
+		}
+		return ensureAuthorBothLibraries(db, id)
+	}
+	if _, err := db.Exec(
+		`UPDATE books SET `+col+` = 1 WHERE id = ? AND media_type = 'book'`, id); err != nil {
 		return err
 	}
 	return ensureAuthorLibrary(db, id, mediaType)

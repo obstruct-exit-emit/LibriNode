@@ -148,6 +148,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("POST /api/v1/author", s.auth(s.handleAddAuthor))
 	mux.HandleFunc("GET /api/v1/author/{id}", s.auth(s.handleGetAuthor))
 	mux.HandleFunc("PUT /api/v1/author/{id}/monitor", s.auth(s.handleMonitorAuthor))
+	mux.HandleFunc("PUT /api/v1/author/{id}/mirror", s.auth(s.handleMirrorAuthor))
 	mux.HandleFunc("PUT /api/v1/author/{id}/provider", s.auth(s.handleAuthorProvider))
 	mux.HandleFunc("POST /api/v1/author/{id}/refresh", s.auth(s.handleRefreshAuthor))
 	mux.HandleFunc("GET /api/v1/author/{id}/missing", s.auth(s.handleAuthorMissing))

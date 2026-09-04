@@ -329,7 +329,7 @@ func (s *Store) ListAuthorsInLibrary(mediaType string) ([]Author, error) {
 	for rows.Next() {
 		var a Author
 		if err := rows.Scan(&a.ID, &a.Source, &a.ForeignID, &a.Name, &a.SortName,
-			&a.Description, &a.ImageURL, &a.Monitored,
+			&a.Description, &a.ImageURL, &a.Monitored, &a.Mirror,
 			&a.InEbookLibrary, &a.InAudiobookLibrary, &a.ProviderOverride, &a.AddedAt, &a.UpdatedAt,
 			&a.BookCount, &a.OwnedCount); err != nil {
 			return nil, err

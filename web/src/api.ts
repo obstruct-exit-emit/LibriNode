@@ -23,6 +23,7 @@ export interface Author {
   description: string;
   imageUrl: string;
   monitored: boolean;
+  mirror: boolean;
   inEbookLibrary: boolean;
   inAudiobookLibrary: boolean;
   providerOverride: string;
@@ -656,6 +657,11 @@ export const api = {
   removeAuthorFromLibrary: (id: number, library: string, deleteFiles: boolean) =>
     request<unknown>(`/api/v1/author/${id}/library`, {
       ...json({ library, member: false, deleteFiles }),
+      method: "PUT",
+    }),
+  mirrorAuthor: (id: number, mirror: boolean) =>
+    request<Author>(`/api/v1/author/${id}/mirror`, {
+      ...json({ mirror }),
       method: "PUT",
     }),
   // Scope with authorId (one author's books) or library (a format library's

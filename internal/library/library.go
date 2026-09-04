@@ -21,6 +21,9 @@ type Author struct {
 	Description string `json:"description"`
 	ImageURL    string `json:"imageUrl"`
 	Monitored   bool   `json:"monitored"`
+	// Mirror keeps this author's prose books in lockstep across the ebook and
+	// audiobook libraries — owning or wanting one format pulls in the other.
+	Mirror bool `json:"mirror"`
 	// Per-format library membership: the author was added to (or owns files
 	// in) that library — independent of how many books are visible there.
 	InEbookLibrary     bool `json:"inEbookLibrary"`
