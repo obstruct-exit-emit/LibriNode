@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/indexer"
@@ -44,6 +45,7 @@ func TestCheckFindsIssues(t *testing.T) {
 		indexer.NewService(indexer.NewStore(db)),
 		download.NewService(download.NewStore(db)),
 		metadata.NewManager(),
+		nil,
 	)
 
 	if !svc.Last().CheckedAt.IsZero() {
@@ -130,7 +132,7 @@ func TestCheckIndexerRestingSkipsProbe(t *testing.T) {
 
 	svc := New(
 		library.NewStore(db), idxSvc,
-		download.NewService(download.NewStore(db)), metadata.NewManager(),
+		download.NewService(download.NewStore(db)), metadata.NewManager(), nil,
 	)
 	res := svc.Check(ctx)
 
@@ -205,6 +207,7 @@ func TestCheckSeriesMetadataScopedToActiveLibraries(t *testing.T) {
 		indexer.NewService(indexer.NewStore(db)),
 		download.NewService(download.NewStore(db)),
 		mgr,
+		nil,
 	)
 
 	hasSeriesIssue := func(res Result) bool {
@@ -253,6 +256,7 @@ func TestCheckMetadataUnreachableIsWarningNotError(t *testing.T) {
 		indexer.NewService(indexer.NewStore(db)),
 		download.NewService(download.NewStore(db)),
 		mgr,
+		nil,
 	)
 	res := svc.Check(context.Background())
 
@@ -270,5 +274,57 @@ func TestCheckMetadataUnreachableIsWarningNotError(t *testing.T) {
 	}
 	if !strings.Contains(found.Message, "unreachable") {
 		t.Errorf("message = %q, want it to say unreachable", found.Message)
+	}
+}
+
+// TestCheckUnusedProviderKey: a provider whose key is entered but that is
+// picked nowhere — not the book, manga, or comic provider — draws a warning,
+// the exact trap of saving a ComicVine key while leaving the comic provider on
+// its default. The provider that IS selected, and a keyless one, stay silent.
+func TestCheckUnusedProviderKey(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("opening database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	if err := cfg.SetMetadata(config.MetadataSettings{
+		Active:        "hardcover", // book provider — used
+		ComicProvider: "hardcover", // comic stays on hardcover, NOT comicvine
+		Providers: map[string]metadata.Settings{
+			"hardcover": {Token: "hc-key"}, // selected as book + comic → used
+			"comicvine": {Token: "cv-key"}, // key saved, selected nowhere → wasted
+			"anilist":   {},                // keyless (manga default) → nothing to waste
+		},
+	}); err != nil {
+		t.Fatalf("SetMetadata: %v", err)
+	}
+
+	svc := New(
+		library.NewStore(db),
+		indexer.NewService(indexer.NewStore(db)),
+		download.NewService(download.NewStore(db)),
+		metadata.NewManager(),
+		cfg,
+	)
+
+	var wasted []string
+	for _, is := range svc.Check(context.Background()).Issues {
+		if is.Source == "metadata" && strings.Contains(is.Message, "isn't selected") {
+			if is.Level != LevelWarning {
+				t.Errorf("wasted-key issue level = %s, want warning", is.Level)
+			}
+			wasted = append(wasted, is.Message)
+		}
+	}
+	if len(wasted) != 1 {
+		t.Fatalf("want exactly one wasted-key warning, got %+v", wasted)
+	}
+	if !strings.Contains(wasted[0], "comicvine") || strings.Contains(wasted[0], "hardcover") {
+		t.Errorf("warning should name only the unused provider (comicvine): %q", wasted[0])
 	}
 }

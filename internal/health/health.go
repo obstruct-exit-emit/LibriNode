@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/download"
 	"github.com/librinode/librinode/internal/indexer"
 	"github.com/librinode/librinode/internal/library"
@@ -48,13 +49,14 @@ type Service struct {
 	indexers  *indexer.Service
 	downloads *download.Service
 	metadata  *metadata.Manager
+	cfg       *config.Config
 
 	mu   sync.RWMutex
 	last Result
 }
 
-func New(store *library.Store, indexers *indexer.Service, downloads *download.Service, providers *metadata.Manager) *Service {
-	return &Service{store: store, indexers: indexers, downloads: downloads, metadata: providers}
+func New(store *library.Store, indexers *indexer.Service, downloads *download.Service, providers *metadata.Manager, cfg *config.Config) *Service {
+	return &Service{store: store, indexers: indexers, downloads: downloads, metadata: providers, cfg: cfg}
 }
 
 // Last returns the most recent result; CheckedAt is zero when no check has
@@ -168,6 +170,49 @@ func (s *Service) checkMetadata(ctx context.Context) []Issue {
 			continue
 		}
 		issues = append(issues, s.validateProvider(ctx, "metadata-"+st.MediaType, sp.Name(), sp)...)
+	}
+
+	issues = append(issues, s.checkUnusedProviders()...)
+	return issues
+}
+
+// checkUnusedProviders flags a provider whose key is configured but that is
+// selected nowhere — the book provider, a fallback, or the manga/comic series
+// provider. A key like ComicVine's is saved under Settings → Metadata but only
+// takes effect once picked as the comic provider; without this, a key entered
+// and never selected sits silently idle. Only providers holding an actual token
+// qualify (a keyless one like AniList can't be a "wasted key"), so this stays
+// quiet unless a real credential is going to waste.
+func (s *Service) checkUnusedProviders() []Issue {
+	if s.cfg == nil {
+		return nil
+	}
+	ms := s.cfg.MetadataSettings()
+	used := map[string]bool{
+		ms.Active:                   true,
+		s.cfg.MangaSeriesProvider(): true,
+		s.cfg.ComicSeriesProvider(): true,
+	}
+	for _, fb := range ms.Fallbacks {
+		used[fb] = true
+	}
+
+	names := make([]string, 0, len(ms.Providers))
+	for name := range ms.Providers {
+		names = append(names, name)
+	}
+	sort.Strings(names) // stable banner order
+
+	var issues []Issue
+	for _, name := range names {
+		if ms.Providers[name].Token == "" || used[name] {
+			continue
+		}
+		issues = append(issues, Issue{
+			Source:  "metadata",
+			Level:   LevelWarning,
+			Message: fmt.Sprintf("%s has a key configured but isn't selected as your book, manga, or comic provider — pick it under Settings → Metadata, or clear the key.", name),
+		})
 	}
 	return issues
 }

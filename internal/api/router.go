@@ -86,7 +86,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		downloads: downloads,
 		importer:  importer.New(store, downloads, org, cfg.ImportSettings),
 		search:    autosearch.New(store, indexers, downloads, cfg.ImportSettings),
-		health:    health.New(store, indexers, downloads, providers),
+		health:    health.New(store, indexers, downloads, providers, cfg),
 		images:    imagecache.New(filepath.Join(cfg.DataDir(), "covers", "remote")),
 		sessions:  newSessionStore(),
 		version:   version,
