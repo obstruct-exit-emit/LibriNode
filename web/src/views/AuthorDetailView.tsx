@@ -334,8 +334,16 @@ export default function AuthorDetailView({
           )}
           {confirmRemove && (
             <RemovePanel
-              message={`Remove ${author.name} from ${label}? The other library is untouched; if this was their last library, the author is deleted entirely.`}
-              checkboxLabel={`Also delete their ${library} files from disk`}
+              message={
+                author.mirror
+                  ? `Remove ${author.name}? Mirror is on, so this removes them from BOTH the Ebooks and Audiobooks libraries and deletes the author entirely.`
+                  : `Remove ${author.name} from ${label}? The other library is untouched; if this was their last library, the author is deleted entirely.`
+              }
+              checkboxLabel={
+                author.mirror
+                  ? `Also delete their ebook and audiobook files from disk`
+                  : `Also delete their ${library} files from disk`
+              }
               busy={busy}
               onConfirm={remove}
               onCancel={() => setConfirmRemove(false)}

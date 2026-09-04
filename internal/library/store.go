@@ -166,8 +166,20 @@ func (s *Store) SetAuthorLibrary(id int64, mediaType string, member bool) error 
 	if err != nil {
 		return err
 	}
-	res, err := s.db.Exec(
-		`UPDATE authors SET `+col+` = ?, updated_at = datetime('now') WHERE id = ?`, member, id)
+	mirror, err := authorMirrors(s.db, id)
+	if err != nil {
+		return err
+	}
+	var res sql.Result
+	if mirror {
+		// A mirrored author belongs to both libraries or neither.
+		res, err = s.db.Exec(
+			`UPDATE authors SET in_ebook_library = ?, in_audiobook_library = ?, updated_at = datetime('now')
+				WHERE id = ?`, member, member, id)
+	} else {
+		res, err = s.db.Exec(
+			`UPDATE authors SET `+col+` = ?, updated_at = datetime('now') WHERE id = ?`, member, id)
+	}
 	if err != nil {
 		return err
 	}
@@ -175,6 +187,17 @@ func (s *Store) SetAuthorLibrary(id int64, mediaType string, member bool) error 
 		return ErrNotFound
 	}
 	return nil
+}
+
+// authorMirrors reports whether the author has mirroring on. A missing author
+// reads as false, not an error.
+func authorMirrors(db execer, authorID int64) (bool, error) {
+	var on bool
+	err := db.QueryRow(`SELECT mirror FROM authors WHERE id = ?`, authorID).Scan(&on)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return on, err
 }
 
 // ensureAuthorLibrary marks a book's author as a member of the format
@@ -439,16 +462,26 @@ func ensureBookLibrary(db execer, id int64, mediaType string) error {
 // RemoveAuthorBooksLibrary takes all of an author's prose books out of a
 // format library (membership and monitoring; the other format is untouched).
 func (s *Store) RemoveAuthorBooksLibrary(authorID int64, mediaType string) error {
-	var query string
-	switch mediaType {
-	case "ebook":
-		query = `UPDATE books SET in_ebook_library = 0, ebook_monitored = 0 WHERE author_id = ? AND media_type = 'book'`
-	case "audiobook":
-		query = `UPDATE books SET in_audiobook_library = 0, audiobook_monitored = 0 WHERE author_id = ? AND media_type = 'book'`
-	default:
+	if mediaType != "ebook" && mediaType != "audiobook" {
 		return errors.New("library must be ebook or audiobook")
 	}
-	_, err := s.db.Exec(query, authorID)
+	mirror, err := authorMirrors(s.db, authorID)
+	if err != nil {
+		return err
+	}
+	if mirror {
+		// Mirrored: the books leave both libraries together.
+		_, err := s.db.Exec(`UPDATE books SET
+			in_ebook_library = 0, ebook_monitored = 0,
+			in_audiobook_library = 0, audiobook_monitored = 0
+			WHERE author_id = ? AND media_type = 'book'`, authorID)
+		return err
+	}
+	query := `UPDATE books SET in_ebook_library = 0, ebook_monitored = 0 WHERE author_id = ? AND media_type = 'book'`
+	if mediaType == "audiobook" {
+		query = `UPDATE books SET in_audiobook_library = 0, audiobook_monitored = 0 WHERE author_id = ? AND media_type = 'book'`
+	}
+	_, err = s.db.Exec(query, authorID)
 	return err
 }
 

@@ -151,3 +151,44 @@ func TestMirrorOffKeepsFormatsIndependent(t *testing.T) {
 		t.Fatalf("mirror off: owning ebook pulled in audiobook: %+v", got)
 	}
 }
+
+// TestMirrorAuthorRemovalClearsBothFormats: for a mirrored author, an
+// author-level library removal takes the author and their books out of BOTH
+// formats at once (leaving the author in neither, so the caller deletes it).
+func TestMirrorAuthorRemovalClearsBothFormats(t *testing.T) {
+	s := newTestStore(t)
+	a := &Author{Source: "t", ForeignID: "a1", Name: "Terry"}
+	if err := s.UpsertAuthor(a); err != nil {
+		t.Fatal(err)
+	}
+	b := &Book{AuthorID: a.ID, Source: "t", ForeignID: "b1", Title: "Mort"}
+	if err := s.UpsertBook(b); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetBookLibrary(b.ID, "ebook", true, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAuthorMirror(a.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove via the audiobook side; mirror clears the ebook side too.
+	if err := s.SetAuthorLibrary(a.ID, "audiobook", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveAuthorBooksLibrary(a.ID, "audiobook"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetAuthor(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.InEbookLibrary || got.InAudiobookLibrary {
+		t.Fatalf("author still in a library after mirrored removal: %+v", got)
+	}
+	gb, _ := s.GetBook(b.ID)
+	if gb.InEbookLibrary || gb.InAudiobookLibrary || gb.EbookMonitored || gb.AudiobookMonitored {
+		t.Fatalf("book not fully cleared after mirrored removal: %+v", gb)
+	}
+}

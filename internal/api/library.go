@@ -208,10 +208,30 @@ func (s *server) handleAuthorLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Mirror makes this a both-libraries action: the author leaves ebooks and
+	// audiobooks together (and is deleted, having no remaining library), so file
+	// deletion covers both formats too.
+	mirrored := false
+	if a, err := s.store.GetAuthor(id); err != nil {
+		writeStoreError(w, err)
+		return
+	} else {
+		mirrored = a.Mirror
+	}
+	formats := []string{lib}
+	if mirrored {
+		formats = []string{"ebook", "audiobook"}
+	}
+
 	var paths []string
 	if req.DeleteFiles {
 		var err error
-		if paths, err = s.store.FilePathsForAuthorFormat(id, lib); err != nil {
+		if mirrored {
+			paths, err = s.store.FilePathsForAuthor(id)
+		} else {
+			paths, err = s.store.FilePathsForAuthorFormat(id, lib)
+		}
+		if err != nil {
 			writeStoreError(w, err)
 			return
 		}
@@ -228,9 +248,11 @@ func (s *server) handleAuthorLibrary(w http.ResponseWriter, r *http.Request) {
 		if _, errs := s.removeFilesFromDisk(paths); len(errs) > 0 {
 			slog.Warn("deleting files on author library removal", "authorId", id, "errors", strings.Join(errs, "; "))
 		}
-		if err := s.store.DeleteAuthorBookFilesForFormat(id, lib); err != nil {
-			writeStoreError(w, err)
-			return
+		for _, f := range formats {
+			if err := s.store.DeleteAuthorBookFilesForFormat(id, f); err != nil {
+				writeStoreError(w, err)
+				return
+			}
 		}
 	}
 	// Gone from both libraries → nothing left to show anywhere; delete the
