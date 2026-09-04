@@ -47,13 +47,15 @@ func authorMatches(relNorm, authorNorm string) bool {
 	return matched > 0
 }
 
-// titleMatches reports whether any normalized title key appears in the
+// matchedKeyIndex returns the index of the first title key that appears in the
 // normalized release title as a whole-word run not immediately continued by a
-// stopword. Matching whole words (not substrings) avoids "Saga" hitting "Saga
-// of the Swamp Thing", while still allowing a leading group/scanlator tag.
-func titleMatches(relNorm string, keys []string) bool {
+// stopword, or -1 when none does. Keys are TitleKeys order — index 0 is the
+// book's own primary title, higher indexes are subtitle-stripped fallbacks — so
+// the caller can tell a strong primary-title match from a weaker one that only
+// hit the main title before a ":" subtitle or ", or" alternate.
+func matchedKeyIndex(relNorm string, keys []string) int {
 	relWords := strings.Fields(relNorm)
-	for _, key := range keys {
+	for ki, key := range keys {
 		kw := strings.Fields(key)
 		if len(kw) == 0 {
 			continue
@@ -62,12 +64,20 @@ func titleMatches(relNorm string, keys []string) bool {
 			if slices.Equal(relWords[i:i+len(kw)], kw) {
 				next := i + len(kw)
 				if next >= len(relWords) || !titleStopwords[relWords[next]] {
-					return true
+					return ki
 				}
 			}
 		}
 	}
-	return false
+	return -1
+}
+
+// titleMatches reports whether any normalized title key appears in the
+// normalized release title as a whole-word run not immediately continued by a
+// stopword. Matching whole words (not substrings) avoids "Saga" hitting "Saga
+// of the Swamp Thing", while still allowing a leading group/scanlator tag.
+func titleMatches(relNorm string, keys []string) bool {
+	return matchedKeyIndex(relNorm, keys) >= 0
 }
 
 // leadingTags matches one or more bracketed/parenthesized groups at the very
@@ -513,8 +523,25 @@ func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned m
 func (c *Candidate) matchBook(book *library.Book, author *library.Author, otherTitles []string) {
 	relNorm := scanner.Normalize(c.Release.Title)
 
-	if !titleMatches(relNorm, scanner.TitleKeys(book.Title)) {
+	bookKeys := scanner.TitleKeys(book.Title)
+	switch idx := matchedKeyIndex(relNorm, bookKeys); {
+	case idx < 0:
 		c.reject("does not contain the book title")
+	case idx > 0:
+		// The release matched only through a subtitle-stripped key ("hobbit"
+		// for "The Hobbit: An Unexpected Journey"), not the book's own primary
+		// title. If another of the author's books IS exactly that bare title,
+		// the release names that book — a plain "The Hobbit" release is the
+		// novel, not the companion — so don't approve it for this one. (A book
+		// whose ONLY Hobbit is "The Hobbit, or There and Back Again" has no such
+		// sibling, so its plain-title releases still approve.)
+		stripped := bookKeys[idx]
+		for _, t := range otherTitles {
+			if t != "" && scanner.Normalize(t) == stripped {
+				c.reject("names " + t + ", not " + book.Title)
+				break
+			}
+		}
 	}
 
 	// Pack detection beyond the "Complete"/"Collection"/volume-span title
@@ -523,7 +550,6 @@ func (c *Candidate) matchBook(book *library.Book, author *library.Author, otherT
 	// Boat of a Million Years") bundles two books without using any of those
 	// words at all.
 	if !c.Parsed.Pack {
-		bookKeys := scanner.TitleKeys(book.Title)
 		var authorNorm string
 		if author != nil {
 			authorNorm = scanner.Normalize(author.Name)

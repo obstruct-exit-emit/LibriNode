@@ -211,6 +211,24 @@ func TestScoreApprovesMainTitleForSubtitledBook(t *testing.T) {
 	if longer.Approved {
 		t.Error("'The Hobbit' must not be satisfied by a longer, different 'Unexpected Journey' release")
 	}
+
+	// Mis-attribution guard: when the wanted book matches only through its
+	// subtitle-stripped key ("hobbit" for "The Hobbit: An Unexpected Journey")
+	// AND the author also has a book that IS that bare title, a plain "The
+	// Hobbit" release belongs to the bare book, not the subtitled one.
+	companion := &library.Book{Title: "The Hobbit: An Unexpected Journey"}
+	misattr := Score(rel("J.R.R. Tolkien - The Hobbit (1937) EPUB", indexer.ProtocolUsenet, 1<<20, -1),
+		prefs, companion, author, []string{"The Hobbit"})
+	if misattr.Approved {
+		t.Errorf("a plain 'The Hobbit' release must not be approved for 'The Hobbit: An Unexpected Journey' when the author also has 'The Hobbit': %v", misattr.Rejections)
+	}
+	// But with no such sibling, the subtitled book still takes its own main-title
+	// releases (nothing else owns the bare title).
+	soloCompanion := Score(rel("J.R.R. Tolkien - The Hobbit (1937) EPUB", indexer.ProtocolUsenet, 1<<20, -1),
+		prefs, companion, author, []string{"The Silmarillion"})
+	if !soloCompanion.Approved {
+		t.Errorf("subtitled book rejected its own main-title release with no bare-title sibling: %v", soloCompanion.Rejections)
+	}
 }
 
 // TestScoreFlagsPackWhenReleaseNamesAnotherBook: a release bundling the
