@@ -120,7 +120,7 @@ func (s *Service) syncAuthorWith(ctx context.Context, p metadata.Provider, forei
 			remote.Books[i].Source = source
 		}
 		knownBookID := byTitle[strings.ToLower(strings.TrimSpace(remote.Books[i].Title))]
-		if err := s.persistBook(p, &remote.Books[i], author.ID, monitored, knownBookID); err != nil {
+		if err := s.persistBook(ctx, p, &remote.Books[i], author.ID, monitored, knownBookID); err != nil {
 			return nil, err
 		}
 	}
@@ -207,7 +207,7 @@ func (s *Service) syncBookWith(ctx context.Context, p metadata.Provider, foreign
 		authorID = author.ID
 	}
 
-	if err := s.persistBook(p, remote, authorID, monitored, existingID); err != nil {
+	if err := s.persistBook(ctx, p, remote, authorID, monitored, existingID); err != nil {
 		return nil, err
 	}
 	if existingID != 0 {
@@ -343,7 +343,7 @@ func (s *Service) RefreshBook(ctx context.Context, id int64) error {
 // monitored flag into the legacy editions.monitored column.) existingID pins
 // the book to an already-known row (a refresh); 0 lets UpsertBook
 // create-or-update by natural key, as a fresh add does.
-func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, authorID int64, monitored bool, existingID int64) error {
+func (s *Service) persistBook(ctx context.Context, p metadata.Provider, remote *metadata.Book, authorID int64, monitored bool, existingID int64) error {
 	// A fallback-sourced record stamps its true origin; otherwise the provider
 	// that returned it is the source. See metadata.FallbackProvider.
 	source := remote.Source
@@ -406,7 +406,51 @@ func (s *Service) persistBook(p metadata.Provider, remote *metadata.Book, author
 			return err
 		}
 	}
+	s.enrichAudiobook(ctx, book, authorID)
 	return nil
+}
+
+// enrichAudiobook adds narrator/runtime/abridged audiobook editions from the
+// selected audiobook provider (Audible), for a prose book whose author is
+// followed for audiobooks. Best-effort: no provider, no audiobook interest, or
+// a provider miss/outage is silently skipped or logged — it must never fail the
+// book's refresh. Audible editions are stored under their own source, so they
+// sit alongside (never overwrite) the book provider's ebook/print editions.
+func (s *Service) enrichAudiobook(ctx context.Context, book *library.Book, authorID int64) {
+	ap := s.providers.Audiobook()
+	if ap == nil || book.ID == 0 {
+		return
+	}
+	author, err := s.store.GetAuthor(authorID)
+	if err != nil || !author.InAudiobookLibrary {
+		return // only spend an Audible call on authors followed for audiobooks
+	}
+	eds, err := ap.FindEditions(ctx, book.Title, author.Name)
+	if err != nil {
+		slog.Warn("audiobook enrichment failed", "book", book.Title, "provider", ap.Name(), "err", err)
+		return
+	}
+	for _, ed := range eds {
+		edition := &library.Edition{
+			BookID:         book.ID,
+			Source:         ap.Name(),
+			ForeignID:      ed.ForeignID,
+			Title:          ed.Title,
+			ASIN:           ed.ASIN,
+			Format:         ed.Format,
+			Publisher:      ed.Publisher,
+			Language:       ed.Language,
+			ReleaseDate:    ed.ReleaseDate,
+			CoverURL:       ed.CoverURL,
+			Narrator:       ed.Narrator,
+			RuntimeMinutes: ed.RuntimeMinutes,
+			Abridged:       ed.Abridged,
+		}
+		if err := s.store.UpsertEdition(edition); err != nil {
+			slog.Warn("storing audiobook edition", "book", book.Title, "asin", ed.ASIN, "err", err)
+			return
+		}
+	}
 }
 
 // RefreshAll re-syncs every author and manga/comic series in the library.

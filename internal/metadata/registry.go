@@ -134,6 +134,42 @@ func BuildSeries(name string, s Settings) (SeriesProvider, error) {
 	return f(s)
 }
 
+// AudiobookFactory builds an audiobook-enrichment provider from its settings.
+// ErrNotConfigured means "valid but disabled" (e.g. no API key yet).
+type AudiobookFactory func(Settings) (AudiobookProvider, error)
+
+var audiobookFactories = map[string]AudiobookFactory{}
+
+// RegisterAudiobook makes an audiobook provider available under name.
+func RegisterAudiobook(name string, f AudiobookFactory) {
+	regMu.Lock()
+	defer regMu.Unlock()
+	audiobookFactories[name] = f
+}
+
+// AudiobookAvailable lists registered audiobook-provider names, sorted.
+func AudiobookAvailable() []string {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	names := make([]string, 0, len(audiobookFactories))
+	for name := range audiobookFactories {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// BuildAudiobook constructs a registered audiobook provider from settings.
+func BuildAudiobook(name string, s Settings) (AudiobookProvider, error) {
+	regMu.RLock()
+	f, ok := audiobookFactories[name]
+	regMu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("unknown audiobook provider %q", name)
+	}
+	return f(s)
+}
+
 // Manager holds the active provider and allows swapping it at runtime, so
 // saving a token in the settings UI takes effect without a restart. The
 // zero-ish state (no provider) makes metadata operations return
@@ -143,6 +179,7 @@ type Manager struct {
 	active       Provider
 	series       map[string]SeriesProvider // selected provider per media type
 	seriesByName map[string]SeriesProvider // every configured provider, by name
+	audiobook    AudiobookProvider         // selected audiobook-enrichment provider, or nil
 	// settings as last passed to Configure, so per-record provider overrides
 	// can build a non-active book provider by name.
 	bookSettings map[string]Settings
@@ -330,5 +367,35 @@ func (m *Manager) SetSeries(p SeriesProvider) {
 	}
 	m.series[p.MediaType()] = p
 	m.seriesByName[p.Name()] = p
+	m.mu.Unlock()
+}
+
+// ConfigureAudiobook (re)builds and selects the audiobook-enrichment provider.
+// An empty name or "none" disables enrichment; a factory reporting
+// ErrNotConfigured (or an unknown name) also leaves it disabled rather than
+// failing — a missing audiobook source must never take metadata down.
+func (m *Manager) ConfigureAudiobook(name string, settings map[string]Settings) {
+	var p AudiobookProvider
+	if name != "" && name != "none" {
+		if built, err := BuildAudiobook(name, settings[name]); err == nil {
+			p = built
+		}
+	}
+	m.mu.Lock()
+	m.audiobook = p
+	m.mu.Unlock()
+}
+
+// Audiobook returns the active audiobook-enrichment provider, or nil.
+func (m *Manager) Audiobook() AudiobookProvider {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.audiobook
+}
+
+// SetAudiobook injects an audiobook provider directly (tests).
+func (m *Manager) SetAudiobook(p AudiobookProvider) {
+	m.mu.Lock()
+	m.audiobook = p
 	m.mu.Unlock()
 }

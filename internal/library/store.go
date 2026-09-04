@@ -615,8 +615,8 @@ func (s *Store) UpsertEdition(e *Edition) error {
 		e.Format = FormatUnknown
 	}
 	return s.db.QueryRow(`
-		INSERT INTO editions (book_id, metadata_source, foreign_id, title, isbn13, asin, format, publisher, language, release_date, cover_url, monitored)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO editions (book_id, metadata_source, foreign_id, title, isbn13, asin, format, publisher, language, release_date, cover_url, monitored, narrator, runtime_minutes, abridged)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (metadata_source, foreign_id) DO UPDATE SET
 			book_id = excluded.book_id,
 			title = excluded.title,
@@ -626,19 +626,24 @@ func (s *Store) UpsertEdition(e *Edition) error {
 			publisher = excluded.publisher,
 			language = excluded.language,
 			release_date = excluded.release_date,
-			cover_url = excluded.cover_url
+			cover_url = excluded.cover_url,
+			narrator = excluded.narrator,
+			runtime_minutes = excluded.runtime_minutes,
+			abridged = excluded.abridged
 		RETURNING id`,
 		e.BookID, e.Source, e.ForeignID, e.Title, e.ISBN13, e.ASIN, e.Format,
 		e.Publisher, e.Language, e.ReleaseDate, e.CoverURL, e.Monitored,
+		e.Narrator, e.RuntimeMinutes, e.Abridged,
 	).Scan(&e.ID)
 }
 
-const editionCols = `id, book_id, metadata_source, foreign_id, title, isbn13, asin, format, publisher, language, release_date, cover_url, monitored`
+const editionCols = `id, book_id, metadata_source, foreign_id, title, isbn13, asin, format, publisher, language, release_date, cover_url, monitored, narrator, runtime_minutes, abridged`
 
 func scanEdition(row interface{ Scan(...any) error }) (*Edition, error) {
 	var e Edition
 	err := row.Scan(&e.ID, &e.BookID, &e.Source, &e.ForeignID, &e.Title, &e.ISBN13, &e.ASIN,
-		&e.Format, &e.Publisher, &e.Language, &e.ReleaseDate, &e.CoverURL, &e.Monitored)
+		&e.Format, &e.Publisher, &e.Language, &e.ReleaseDate, &e.CoverURL, &e.Monitored,
+		&e.Narrator, &e.RuntimeMinutes, &e.Abridged)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

@@ -91,6 +91,10 @@ type Edition struct {
 	ReleaseDate string `json:"releaseDate"`
 	CoverURL    string `json:"coverUrl"`
 	Monitored   bool   `json:"monitored"`
+	// Audiobook-specific (empty/zero for print and ebook editions).
+	Narrator       string `json:"narrator"`
+	RuntimeMinutes int    `json:"runtimeMinutes"`
+	Abridged       bool   `json:"abridged"`
 }
 
 type Series struct {

@@ -176,6 +176,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.metadata.ConfigureSeries(s.cfg.ProviderSettings(), s.cfg.SeriesSelection())
+	s.metadata.ConfigureAudiobook(s.cfg.AudiobookMetadataProvider(), s.cfg.ProviderSettings())
 	s.refreshHealth()
 	writeJSON(w, http.StatusOK, s.metadataSettingsResponse())
 }

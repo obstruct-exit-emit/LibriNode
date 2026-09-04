@@ -45,6 +45,11 @@ type MetadataSettings struct {
 	// their own source.
 	MangaProvider string `yaml:"manga_provider,omitempty"`
 	ComicProvider string `yaml:"comic_provider,omitempty"`
+	// AudiobookProvider chooses the audiobook-enrichment provider ("audible" or
+	// "none" to skip); empty defaults to audible. It enriches the audiobook
+	// edition of prose books (narrator, runtime, abridged) — it does not replace
+	// the book provider that supplies the work and its ebook editions.
+	AudiobookProvider string `yaml:"audiobook_provider,omitempty"`
 	// MangaCoverSource / ComicCoverSource pick volume/issue cover art per
 	// library: "file" (extract the first page of the owned archive) or
 	// "provider" (the metadata provider's art). Both default to provider art.
@@ -84,6 +89,17 @@ func (c *Config) ComicSeriesProvider() string {
 		return "hardcover"
 	}
 	return c.Metadata.ComicProvider
+}
+
+// AudiobookMetadataProvider returns the configured audiobook-enrichment
+// provider name, defaulting to audible ("none" disables enrichment).
+func (c *Config) AudiobookMetadataProvider() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Metadata.AudiobookProvider == "" {
+		return "audible"
+	}
+	return c.Metadata.AudiobookProvider
 }
 
 // MetadataLanguage returns the global metadata language preference,
@@ -700,6 +716,7 @@ func (c *Config) MetadataSettings() MetadataSettings {
 		Active:              c.Metadata.Active,
 		MangaProvider:       c.Metadata.MangaProvider,
 		ComicProvider:       c.Metadata.ComicProvider,
+		AudiobookProvider:   c.Metadata.AudiobookProvider,
 		MangaCoverSource:    c.Metadata.MangaCoverSource,
 		ComicCoverSource:    c.Metadata.ComicCoverSource,
 		Language:            c.Metadata.Language,

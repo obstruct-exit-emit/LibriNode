@@ -125,4 +125,22 @@ type Edition struct {
 	Language    string `json:"language"`
 	ReleaseDate string `json:"releaseDate"`
 	CoverURL    string `json:"coverUrl"`
+	// Audiobook-specific (empty/zero for print and ebook editions).
+	Narrator       string `json:"narrator,omitempty"`
+	RuntimeMinutes int    `json:"runtimeMinutes,omitempty"`
+	Abridged       bool   `json:"abridged,omitempty"`
+}
+
+// AudiobookProvider enriches a prose book with audiobook-edition metadata that
+// the book and ebook providers don't carry — narrator, runtime, abridged. It's
+// a third provider kind alongside Provider (prose books) and SeriesProvider
+// (manga/comic), chosen per install as the audiobook provider.
+type AudiobookProvider interface {
+	// Name is stored in metadata_source columns of the editions it produces.
+	Name() string
+	// FindEditions returns the audiobook editions of a work matching the given
+	// title and author, best match first. Each edition carries Format
+	// "audiobook" plus Narrator/RuntimeMinutes/Abridged. A work with no
+	// audiobook returns an empty slice, not an error.
+	FindEditions(ctx context.Context, title, author string) ([]Edition, error)
 }

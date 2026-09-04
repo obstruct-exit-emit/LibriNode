@@ -26,6 +26,7 @@ import (
 	"github.com/librinode/librinode/internal/logging"
 	"github.com/librinode/librinode/internal/metadata"
 	"github.com/librinode/librinode/internal/metadata/anilist"
+	"github.com/librinode/librinode/internal/metadata/audible"
 	"github.com/librinode/librinode/internal/metadata/comicvine"
 	"github.com/librinode/librinode/internal/metadata/googlebooks"
 	"github.com/librinode/librinode/internal/metadata/hardcover"
@@ -158,6 +159,9 @@ func run(dataDir string) error {
 	// reports itself as "hardcover" (what series.Source records).
 	metadata.RegisterSeries("hardcover-comics", hardcover.ComicSeriesFactory)
 	metadata.RegisterSeries("comicvine", comicvine.Factory)
+	// Audiobook-enrichment provider: adds narrator/runtime/abridged to the
+	// audiobook edition of prose books. Keyless (Audible catalog API).
+	metadata.RegisterAudiobook("audible", audible.Factory)
 
 	// Native indexers: built-in sources for sites with no Newznab/Torznab API.
 	// Nothing is bundled or enabled by default — registering only makes the
@@ -173,6 +177,7 @@ func run(dataDir string) error {
 		logger.Warn("activating metadata provider failed", "provider", cfg.Metadata.Active, "error", err)
 	}
 	providers.ConfigureSeries(cfg.ProviderSettings(), cfg.SeriesSelection())
+	providers.ConfigureAudiobook(cfg.AudiobookMetadataProvider(), cfg.ProviderSettings())
 	if p := providers.Current(); p != nil {
 		logger.Info("metadata provider active", "provider", p.Name())
 	} else {
