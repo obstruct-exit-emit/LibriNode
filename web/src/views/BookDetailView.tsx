@@ -17,6 +17,16 @@ function formatRuntime(min: number): string {
 const editionIcon = (format: string) =>
   format === "audiobook" ? "🎧" : format === "ebook" ? "📖" : "📚";
 
+// A full-cast narration can list a dozen names; keep the inline label short.
+function narratorSummary(narrator: string): string {
+  const names = narrator
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean);
+  if (names.length <= 2) return narrator;
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+}
+
 // Full-page book detail, mirroring the author page: header with cover art,
 // about text, and per-format status/actions, then releases, files, and
 // edition info as their own cards. The back button returns to the author.
@@ -270,7 +280,7 @@ export default function BookDetailView({
                     <strong>
                       {e.format.charAt(0).toUpperCase() + e.format.slice(1)}
                     </strong>
-                    {e.narrator && <> · narrated by {e.narrator}</>}
+                    {e.narrator && <> · narrated by {narratorSummary(e.narrator)}</>}
                     {e.abridged && <span className="muted"> · abridged</span>}
                   </span>
                   <span className="muted">
@@ -305,7 +315,7 @@ export default function BookDetailView({
                     <span className="muted">
                       {f.format} · {formatBytes(f.size)}
                       {f.runtimeMinutes ? ` · ${formatRuntime(f.runtimeMinutes)}` : ""}
-                      {f.narrator ? ` · 🎧 ${f.narrator}` : ""}
+                      {f.narrator ? ` · 🎧 ${narratorSummary(f.narrator)}` : ""}
                     </span>
                     <button
                       className="toggle"

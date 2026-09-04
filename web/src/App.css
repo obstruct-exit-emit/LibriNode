@@ -838,6 +838,12 @@ button.owned-link:hover {
 .file-path {
   font-size: 0.85rem;
   overflow-wrap: anywhere;
+  /* Claim the row's free space and allow shrinking below content width
+     (flex items default to min-width:auto), so a long path wraps normally
+     instead of collapsing to a one-character-per-line vertical strip when the
+     row's actions are wide. */
+  flex: 1;
+  min-width: 0;
 }
 
 /* Unmatched-file rows carry both a long file path and wide actions (Add /
