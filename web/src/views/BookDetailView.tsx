@@ -86,6 +86,16 @@ export default function BookDetailView({
   const ownedOther = library === "ebook" ? book.hasAudiobookFile : book.hasEbookFile;
   const files = (book.files ?? []).filter((f) => f.mediaType === library);
 
+  // Header facts, drawn from the owned file(s) of this format.
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  const formatList = [...new Set(files.map((f) => f.format).filter(Boolean))]
+    .map((s) => s.toUpperCase())
+    .join(", ");
+  const narrator = files.find((f) => f.narrator)?.narrator ?? "";
+  const runtimeMinutes = files.find((f) => f.runtimeMinutes)?.runtimeMinutes ?? 0;
+  const trackCount = files.find((f) => f.tracks?.length)?.tracks?.length ?? 0;
+  const basePath = files[0]?.path ?? "";
+
   const setMembership = (lib: string, member: boolean, mon: boolean, deleteFiles = false) => {
     api
       .setBookLibrary(book.id, lib, member, mon, deleteFiles)
@@ -160,6 +170,52 @@ export default function BookDetailView({
               </span>
             )}
           </p>
+          {files.length > 0 && (
+            <>
+              <div className="detail-stats">
+                {narrator && (
+                  <div className="detail-stat">
+                    <span className="detail-stat-label">Narrator</span>
+                    <span className="detail-stat-value" title={narrator}>
+                      🎧 {narratorSummary(narrator)}
+                    </span>
+                  </div>
+                )}
+                {runtimeMinutes > 0 && (
+                  <div className="detail-stat">
+                    <span className="detail-stat-label">Runtime</span>
+                    <span className="detail-stat-value">{formatRuntime(runtimeMinutes)}</span>
+                  </div>
+                )}
+                {formatList && (
+                  <div className="detail-stat">
+                    <span className="detail-stat-label">Format</span>
+                    <span className="detail-stat-value">{formatList}</span>
+                  </div>
+                )}
+                {trackCount > 1 && (
+                  <div className="detail-stat">
+                    <span className="detail-stat-label">Tracks</span>
+                    <span className="detail-stat-value">{trackCount}</span>
+                  </div>
+                )}
+                {totalSize > 0 && (
+                  <div className="detail-stat">
+                    <span className="detail-stat-label">Size</span>
+                    <span className="detail-stat-value">{formatBytes(totalSize)}</span>
+                  </div>
+                )}
+              </div>
+              {basePath && (
+                <div className="detail-stats">
+                  <div className="detail-stat wide">
+                    <span className="detail-stat-label">Path</span>
+                    <span className="detail-stat-value" title={basePath}>{basePath}</span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
           {book.description && <p className="detail-desc">{book.description}</p>}
           <div className="settings-actions">
             <button
@@ -280,8 +336,6 @@ export default function BookDetailView({
                   <span className="row-actions">
                     <span className="muted">
                       {f.format} · {formatBytes(f.size)}
-                      {f.runtimeMinutes ? ` · ${formatRuntime(f.runtimeMinutes)}` : ""}
-                      {f.narrator ? ` · 🎧 ${narratorSummary(f.narrator)}` : ""}
                     </span>
                     <button
                       className="toggle"

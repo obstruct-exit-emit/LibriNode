@@ -1377,6 +1377,37 @@ button.link.back:hover {
   overflow: hidden;
 }
 
+/* Labeled fact grid in a detail header (narrator, runtime, format, size, path). */
+.detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  margin: 0.65rem 0;
+}
+.detail-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  max-width: 34rem;
+}
+.detail-stat-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.detail-stat-value {
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-stat.wide {
+  flex-basis: 100%;
+  max-width: none;
+}
+
 @media (max-width: 600px) {
   .detail-head {
     flex-direction: column;
