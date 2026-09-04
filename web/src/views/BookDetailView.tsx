@@ -14,9 +14,6 @@ function formatRuntime(min: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-const editionIcon = (format: string) =>
-  format === "audiobook" ? "🎧" : format === "ebook" ? "📖" : "📚";
-
 // A full-cast narration can list a dozen names; keep the inline label short.
 function narratorSummary(narrator: string): string {
   const names = narrator
@@ -28,8 +25,9 @@ function narratorSummary(narrator: string): string {
 }
 
 // Full-page book detail, mirroring the author page: header with cover art,
-// about text, and per-format status/actions, then releases, files, and
-// edition info as their own cards. The back button returns to the author.
+// about text, and per-format status/actions, then releases and files as their
+// own cards. The back button returns to the author. (A file row shows the
+// matched narrator/runtime for an owned audiobook.)
 export default function BookDetailView({
   id,
   library,
@@ -265,38 +263,6 @@ export default function BookDetailView({
             onGrabbed={refresh}
             onClose={() => setShowReleases(false)}
           />
-        </section>
-      )}
-
-      {book.editions && book.editions.length > 0 && (
-        <section className="card">
-          <h2>Editions ({book.editions.length})</h2>
-          <ul className="rows">
-            {book.editions.map((e) => (
-              <li key={e.id}>
-                <div className="row">
-                  <span>
-                    {editionIcon(e.format)}{" "}
-                    <strong>
-                      {e.format.charAt(0).toUpperCase() + e.format.slice(1)}
-                    </strong>
-                    {e.narrator && <> · narrated by {narratorSummary(e.narrator)}</>}
-                    {e.abridged && <span className="muted"> · abridged</span>}
-                  </span>
-                  <span className="muted">
-                    {[
-                      e.runtimeMinutes > 0 ? formatRuntime(e.runtimeMinutes) : "",
-                      e.publisher,
-                      e.language,
-                      e.releaseDate,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
         </section>
       )}
 
