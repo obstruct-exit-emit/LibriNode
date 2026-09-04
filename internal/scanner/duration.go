@@ -210,7 +210,11 @@ func mp3Duration(rs io.ReadSeeker, size int64) (float64, error) {
 			flags := binary.BigEndian.Uint32(buf[xingOff+4 : xingOff+8])
 			if flags&0x1 != 0 && xingOff+12 <= len(buf) { // frames field present
 				frames := binary.BigEndian.Uint32(buf[xingOff+8 : xingOff+12])
-				return float64(frames) * float64(h.samplesPerFrame) / float64(h.sampleRate), nil
+				// Some encoders write a Xing tag with a zero frame count; fall
+				// through to the CBR estimate rather than reporting 0 seconds.
+				if frames > 0 {
+					return float64(frames) * float64(h.samplesPerFrame) / float64(h.sampleRate), nil
+				}
 			}
 		}
 	}
@@ -238,6 +242,9 @@ func parseMP3Header(b []byte) (mp3Header, bool) {
 		return mp3Header{}, false
 	}
 	bitrateIdx := int(b[2] >> 4 & 0xF)
+	if bitrateIdx == 15 {
+		return mp3Header{}, false // "bad" bitrate value — never a real frame
+	}
 	srIdx := int(b[2] >> 2 & 0x3)
 	sr := mp3SampleRate[version][srIdx]
 	if sr == 0 {

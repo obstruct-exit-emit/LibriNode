@@ -218,18 +218,27 @@ func toEdition(p product) metadata.Edition {
 }
 
 // titleScore rates how well a product's title matches the wanted work: 2 for an
-// exact normalized match, 1 when the product title starts with the wanted title
-// (a subtitle or edition tail), 0 for no match.
+// exact normalized match, 1 when the product's MAIN title (its subtitle/edition
+// tail removed) matches, 0 otherwise. Matching the main title — not a plain
+// prefix — is what keeps a search for "Dune" from swallowing "Dune Messiah"
+// while still accepting "Project Hail Mary: A Novel".
 func titleScore(wantTitle string, p product) int {
-	pt := normalize(p.Title)
-	switch {
-	case pt == wantTitle:
+	if normalize(p.Title) == wantTitle {
 		return 2
-	case strings.HasPrefix(pt, wantTitle+" "):
-		return 1
-	default:
-		return 0
 	}
+	if normalize(mainTitle(p.Title)) == wantTitle {
+		return 1
+	}
+	return 0
+}
+
+// mainTitle drops a subtitle or parenthetical tail ("Title: A Novel",
+// "Title (Unabridged)") at the first ":" or "(".
+func mainTitle(title string) string {
+	if i := strings.IndexAny(title, ":("); i > 0 {
+		return strings.TrimSpace(title[:i])
+	}
+	return title
 }
 
 func authorMatches(authors []named, wantAuthor string) bool {

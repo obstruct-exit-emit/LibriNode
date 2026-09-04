@@ -55,3 +55,49 @@ func TestMatchAudiobookNarrators(t *testing.T) {
 		t.Fatalf("off-match = %dm / %q, want 600 / \"\" (neither edition within tolerance)", got.RuntimeMinutes, got.Narrator)
 	}
 }
+
+// TestRetireSourceEditions: re-enrichment prunes a source's editions no longer
+// returned (an earlier over-broad match), leaving other sources untouched.
+func TestRetireSourceEditions(t *testing.T) {
+	s := newTestStore(t)
+	a := &Author{Source: "t", ForeignID: "a1", Name: "Frank Herbert"}
+	if err := s.UpsertAuthor(a); err != nil {
+		t.Fatal(err)
+	}
+	b := &Book{AuthorID: a.ID, Source: "t", ForeignID: "b1", Title: "Dune"}
+	if err := s.UpsertBook(b); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []*Edition{
+		{BookID: b.ID, Source: "audible", ForeignID: "D1", Format: "audiobook", Narrator: "Scott Brick"},
+		{BookID: b.ID, Source: "audible", ForeignID: "DM", Format: "audiobook", Narrator: "Wrong Book"}, // stale/wrong
+		{BookID: b.ID, Source: "hardcover", ForeignID: "hc1", Format: "ebook"},
+	} {
+		if err := s.UpsertEdition(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Re-enrichment keeps only D1 from audible.
+	if err := s.RetireSourceEditions(b.ID, "audible", []string{"D1"}); err != nil {
+		t.Fatal(err)
+	}
+	eds, err := s.ListEditions(b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var audible, hardcover []string
+	for _, e := range eds {
+		if e.Source == "audible" {
+			audible = append(audible, e.ForeignID)
+		} else {
+			hardcover = append(hardcover, e.ForeignID)
+		}
+	}
+	if len(audible) != 1 || audible[0] != "D1" {
+		t.Errorf("audible editions = %v, want [D1] (DM retired)", audible)
+	}
+	if len(hardcover) != 1 {
+		t.Errorf("hardcover editions = %v, want the ebook untouched", hardcover)
+	}
+}

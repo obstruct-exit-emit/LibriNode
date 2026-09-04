@@ -89,6 +89,31 @@ func TestFindEditionsJoinsNarrators(t *testing.T) {
 	}
 }
 
+// TestFindEditionsRejectsLongerTitles: a search for "Dune" must not attribute
+// "Dune Messiah" (a different book) as an edition of it, while still accepting a
+// subtitle/edition tail like "Dune (Unabridged)".
+func TestFindEditionsRejectsLongerTitles(t *testing.T) {
+	srv := serve(t, `{"products":[
+	  {"asin":"D1","title":"Dune","authors":[{"name":"Frank Herbert"}],"narrators":[{"name":"Scott Brick"}],"runtime_length_min":1262,"format_type":"unabridged","language":"english"},
+	  {"asin":"DM","title":"Dune Messiah","authors":[{"name":"Frank Herbert"}],"narrators":[{"name":"Scott Brick"}],"runtime_length_min":536,"format_type":"unabridged","language":"english"},
+	  {"asin":"DU","title":"Dune (Unabridged)","authors":[{"name":"Frank Herbert"}],"narrators":[{"name":"Simon Vance"}],"runtime_length_min":1265,"format_type":"unabridged","language":"english"}
+	]}`)
+	c := New(WithEndpoint(srv.URL), WithLanguage("english"))
+
+	eds, err := c.FindEditions(context.Background(), "Dune", "Frank Herbert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range eds {
+		if e.ASIN == "DM" {
+			t.Errorf("'Dune Messiah' wrongly matched as an edition of 'Dune'")
+		}
+	}
+	if len(eds) != 2 {
+		t.Fatalf("editions = %d, want 2 (Dune + Dune Unabridged, not Dune Messiah): %+v", len(eds), eds)
+	}
+}
+
 func TestFindEditionsNoAuthorStillMatchesOnTitle(t *testing.T) {
 	srv := serve(t, sampleResponse)
 	c := New(WithEndpoint(srv.URL))

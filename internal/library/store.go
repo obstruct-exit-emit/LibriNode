@@ -637,6 +637,26 @@ func (s *Store) UpsertEdition(e *Edition) error {
 	).Scan(&e.ID)
 }
 
+// RetireSourceEditions deletes a book's editions from one source whose
+// foreign_id is not in keep — so a re-enrichment drops editions the provider no
+// longer returns (or that an earlier over-broad match wrongly attached),
+// leaving the book with exactly the current set. An empty keep removes them all.
+func (s *Store) RetireSourceEditions(bookID int64, source string, keep []string) error {
+	if len(keep) == 0 {
+		_, err := s.db.Exec(
+			`DELETE FROM editions WHERE book_id = ? AND metadata_source = ?`, bookID, source)
+		return err
+	}
+	args := []any{bookID, source}
+	for _, k := range keep {
+		args = append(args, k)
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",")
+	_, err := s.db.Exec(
+		`DELETE FROM editions WHERE book_id = ? AND metadata_source = ? AND foreign_id NOT IN (`+placeholders+`)`, args...)
+	return err
+}
+
 const editionCols = `id, book_id, metadata_source, foreign_id, title, isbn13, asin, format, publisher, language, release_date, cover_url, monitored, narrator, runtime_minutes, abridged`
 
 func scanEdition(row interface{ Scan(...any) error }) (*Edition, error) {

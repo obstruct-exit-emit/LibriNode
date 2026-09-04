@@ -51,6 +51,39 @@ func TestMP3DurationCBREstimate(t *testing.T) {
 	}
 }
 
+func TestMP3XingZeroFramesFallsBackToCBR(t *testing.T) {
+	// MPEG1 Layer3 128kbps stereo frame, then a Xing tag (offset 32) whose
+	// frame-count field is 0 — must not report 0s, but fall back to the CBR
+	// estimate (8s for a 128000-byte file at 128kbps).
+	buf := []byte{0xFF, 0xFB, 0x90, 0x00}
+	buf = append(buf, make([]byte, 32)...)
+	buf = append(buf, []byte("Xing")...)
+	buf = append(buf, 0, 0, 0, 0x01) // flags: frames field present
+	buf = append(buf, 0, 0, 0, 0x00) // frames = 0
+	secs, err := mp3Duration(bytes.NewReader(buf), 128000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secs < 7.9 || secs > 8.1 {
+		t.Errorf("zero-frame Xing duration = %v, want CBR fallback ~8s", secs)
+	}
+}
+
+func TestMP3SkipsBadBitrateSync(t *testing.T) {
+	// A false sync (0xFF 0xFB with the "bad" bitrate index 0xF) precedes the
+	// real frame; the parser must skip it and estimate from the real one.
+	buf := []byte{0xFF, 0xFB, 0xF0, 0x00} // bitrate index 15 = bad
+	buf = append(buf, 0xFF, 0xFB, 0x90, 0x00)
+	buf = append(buf, make([]byte, 64)...)
+	secs, err := mp3Duration(bytes.NewReader(buf), 128000)
+	if err != nil {
+		t.Fatalf("bad-bitrate sync not skipped: %v", err)
+	}
+	if secs < 7.9 || secs > 8.1 {
+		t.Errorf("duration = %v, want ~8s from the real frame", secs)
+	}
+}
+
 func TestAudioDurationSumsFolder(t *testing.T) {
 	dir := t.TempDir()
 	data := mp4Fixture(1000, 600000) // 10 minutes each

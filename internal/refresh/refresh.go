@@ -431,6 +431,7 @@ func (s *Service) enrichAudiobook(ctx context.Context, book *library.Book, autho
 		slog.Warn("audiobook enrichment failed", "book", book.Title, "provider", ap.Name(), "err", err)
 		return
 	}
+	keep := make([]string, 0, len(eds))
 	for _, ed := range eds {
 		edition := &library.Edition{
 			BookID:         book.ID,
@@ -451,6 +452,12 @@ func (s *Service) enrichAudiobook(ctx context.Context, book *library.Book, autho
 			slog.Warn("storing audiobook edition", "book", book.Title, "asin", ed.ASIN, "err", err)
 			return
 		}
+		keep = append(keep, ed.ForeignID)
+	}
+	// Drop this provider's editions the search no longer returns, so a stale or
+	// earlier over-broad match heals itself instead of lingering.
+	if err := s.store.RetireSourceEditions(book.ID, ap.Name(), keep); err != nil {
+		slog.Warn("retiring stale audiobook editions", "book", book.Title, "err", err)
 	}
 	// With the editions and their runtimes now stored, match any owned audiobook
 	// file against them to name its narrator.
