@@ -96,6 +96,22 @@ func DiscNumber(name string) int {
 	return n
 }
 
+// FlattenAudioPath folds a track's book-folder-relative path into a single
+// filename so a multi-disc audiobook lives as a flat, correctly-ordered folder.
+// A disc/part subfolder becomes a zero-padded "CD NN - " prefix ("CD1/01 -
+// Intro.mp3" → "CD 01 - 01 - Intro.mp3"), so a plain directory listing plays in
+// disc-then-track order even past nine discs; any other layout keeps the track's
+// own base name (a wrapper folder like "mp3s" adds nothing). Shared by the
+// importer (new imports) and organize (re-flattening existing folders).
+func FlattenAudioPath(rel string) string {
+	if dir := filepath.Dir(rel); dir != "." {
+		if n := DiscNumber(filepath.Base(dir)); n > 0 {
+			return fmt.Sprintf("CD %02d - %s", n, filepath.Base(rel))
+		}
+	}
+	return filepath.Base(rel)
+}
+
 // unwantedExtensions are file types a book/media download must never contain:
 // executables and installers mark a release as spam or malware masquerading as
 // the book it claims to be (usenet magazine feeds are rife with these).

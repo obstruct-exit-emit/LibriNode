@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/librinode/librinode/internal/config"
@@ -171,6 +172,78 @@ func TestPlanNonEbookTypes(t *testing.T) {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("after apply, missing %s", p)
 		}
+	}
+}
+
+// TestReflattenMultiDiscAudiobook: Organize re-flattens a multi-file audiobook
+// imported before flattening — its CD1/CD2 tracks fold into the book folder
+// with "CD NN -" prefixes, the emptied disc folders are swept, the sidecar and
+// the file record (still the folder) are untouched.
+func TestReflattenMultiDiscAudiobook(t *testing.T) {
+	f := fixture(t)
+	abRoot := t.TempDir()
+	res, err := f.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, abRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	abRootID, _ := res.LastInsertId()
+
+	// The book folder is already at its template path (dateless "Mort"), so the
+	// folder itself needs no move — only the disc subfolders get flattened.
+	abDir := filepath.Join(abRoot, "Terry Pratchett", "Mort")
+	writeFile(t, filepath.Join(abDir, "CD1", "01 - Intro.mp3"))
+	writeFile(t, filepath.Join(abDir, "CD1", "02 - More.mp3"))
+	writeFile(t, filepath.Join(abDir, "CD2", "01 - Intro.mp3")) // same name, other disc
+	writeFile(t, filepath.Join(abDir, "metadata.opf"))
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: abRootID, BookID: f.mort.ID, MediaType: "audiobook", Path: abDir, Format: "mp3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	moves, skips, err := f.svc.Plan(0)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(skips) != 0 {
+		t.Fatalf("skips = %v", skips)
+	}
+	targets := map[string]string{}
+	for _, m := range moves {
+		if strings.HasPrefix(m.From, abDir) {
+			if m.FileID != 0 {
+				t.Errorf("re-flatten track move must carry no FileID: %+v", m)
+			}
+			targets[m.From] = m.To
+		}
+	}
+	want := map[string]string{
+		filepath.Join(abDir, "CD1", "01 - Intro.mp3"): filepath.Join(abDir, "CD 01 - 01 - Intro.mp3"),
+		filepath.Join(abDir, "CD1", "02 - More.mp3"):  filepath.Join(abDir, "CD 01 - 02 - More.mp3"),
+		filepath.Join(abDir, "CD2", "01 - Intro.mp3"): filepath.Join(abDir, "CD 02 - 01 - Intro.mp3"),
+	}
+	for from, to := range want {
+		if targets[from] != to {
+			t.Errorf("track %q → %q, want %q", from, targets[from], to)
+		}
+	}
+
+	if _, _, err := f.svc.Apply(moves); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	for _, name := range []string{"CD 01 - 01 - Intro.mp3", "CD 01 - 02 - More.mp3", "CD 02 - 01 - Intro.mp3", "metadata.opf"} {
+		if _, err := os.Stat(filepath.Join(abDir, name)); err != nil {
+			t.Errorf("after apply, missing %s: %v", name, err)
+		}
+	}
+	for _, disc := range []string{"CD1", "CD2"} {
+		if _, err := os.Stat(filepath.Join(abDir, disc)); !os.IsNotExist(err) {
+			t.Errorf("emptied disc folder %s not swept", disc)
+		}
+	}
+	// The file record still points at the folder, unchanged.
+	if files, _ := f.store.ListBookFiles(f.mort.ID); len(files) != 2 {
+		t.Fatalf("mort files = %+v (want its ebook + audiobook records)", files)
 	}
 }
 

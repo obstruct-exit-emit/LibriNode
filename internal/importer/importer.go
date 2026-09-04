@@ -551,7 +551,7 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 				if err != nil || strings.HasPrefix(rel, "..") {
 					rel = filepath.Base(src)
 				}
-				name := flattenAudioTrack(rel)
+				name := scanner.FlattenAudioPath(rel)
 				// If two tracks still flatten to the same name (rare), keep the
 				// later one distinct by folding its full relative path in.
 				if used[name] {
@@ -1264,22 +1264,6 @@ func dirAudioSize(dir string) int64 {
 		return nil
 	})
 	return total
-}
-
-// flattenAudioTrack folds a track's download-relative path into a single
-// filename so a multi-disc audiobook imports as a flat, correctly-ordered book
-// folder. A disc/part subfolder becomes a zero-padded "CD NN - " prefix ("CD1/
-// 01 - Intro.mp3" → "CD 01 - 01 - Intro.mp3"), so a plain directory listing
-// plays in disc-then-track order even past nine discs. Any other layout keeps
-// the track's own base name (a non-disc wrapper folder like "mp3s" adds
-// nothing); the caller qualifies the rare leftover collision with the full path.
-func flattenAudioTrack(rel string) string {
-	if dir := filepath.Dir(rel); dir != "." {
-		if n := scanner.DiscNumber(filepath.Base(dir)); n > 0 {
-			return fmt.Sprintf("CD %02d - %s", n, filepath.Base(rel))
-		}
-	}
-	return filepath.Base(rel)
 }
 
 // largestFile picks the biggest candidate (callers guarantee at least one).

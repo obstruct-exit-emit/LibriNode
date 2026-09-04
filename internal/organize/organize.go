@@ -14,6 +14,7 @@ import (
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/naming"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 type Service struct {
@@ -106,6 +107,13 @@ func (s *Service) planFiles(files []library.BookFile) ([]Move, []string, error) 
 			skips = append(skips, fmt.Sprintf("%s: %v", f.Path, err))
 			continue
 		}
+		// A multi-file audiobook imported before flattening still keeps its
+		// tracks in CD1/CD2 subfolders. Re-flatten them into the book folder;
+		// these track moves are queued BEFORE any folder rename below, so the
+		// already-flattened folder is what gets relocated.
+		if f.MediaType == "audiobook" {
+			moves = append(moves, s.planAudiobookFlatten(&f, title)...)
+		}
 		if sameFile(f.Path, target) {
 			continue
 		}
@@ -118,6 +126,40 @@ func (s *Service) planFiles(files []library.BookFile) ([]Move, []string, error) 
 		})
 	}
 	return moves, skips, nil
+}
+
+// planAudiobookFlatten plans the moves that re-flatten a multi-file audiobook's
+// disc subfolders into its book folder ("CD1/01 - Intro.mp3" → "CD 01 - 01 -
+// Intro.mp3"), for folders imported before flattening existed. Only disc/part
+// subfolders are touched — the zero-padded "CD NN" prefix keeps them ordered
+// and collision-free — so a flat folder (or any other layout) yields nothing.
+// The moves carry no FileID: the audiobook's single file record still points at
+// the folder, so its recorded path must not change.
+func (s *Service) planAudiobookFlatten(f *library.BookFile, title string) []Move {
+	info, err := os.Stat(f.Path)
+	if err != nil || !info.IsDir() {
+		return nil // single-file audiobook, or a folder that's since vanished
+	}
+	var moves []Move
+	_ = filepath.WalkDir(f.Path, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !scanner.IsAudioPath(p) {
+			return nil
+		}
+		rel, relErr := filepath.Rel(f.Path, p)
+		if relErr != nil {
+			return nil
+		}
+		dir := filepath.Dir(rel)
+		if dir == "." || scanner.DiscNumber(filepath.Base(dir)) == 0 {
+			return nil // already at the folder root, or not a disc subfolder
+		}
+		to := filepath.Join(f.Path, scanner.FlattenAudioPath(rel))
+		if !sameFile(p, to) {
+			moves = append(moves, Move{BookID: f.BookID, BookTitle: title, From: p, To: to})
+		}
+		return nil
+	})
+	return moves
 }
 
 // Apply executes planned moves: create the target directory, rename the
@@ -148,8 +190,12 @@ func (s *Service) Apply(moves []Move) (applied []Move, skips []string, err error
 		if info, err := os.Stat(m.To); err == nil && !info.IsDir() {
 			moveSidecars(m.From, m.To)
 		}
-		if err := s.store.SetBookFilePath(m.FileID, m.To); err != nil {
-			return applied, skips, fmt.Errorf("recording move of %s: %w", m.From, err)
+		// Re-flatten track moves carry no FileID — the audiobook's single file
+		// record still points at the folder — so only a real record updates.
+		if m.FileID != 0 {
+			if err := s.store.SetBookFilePath(m.FileID, m.To); err != nil {
+				return applied, skips, fmt.Errorf("recording move of %s: %w", m.From, err)
+			}
 		}
 		for _, r := range roots {
 			if strings.HasPrefix(m.From, r.Path+string(filepath.Separator)) {
