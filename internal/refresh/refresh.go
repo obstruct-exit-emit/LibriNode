@@ -14,6 +14,7 @@ import (
 
 	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 type Service struct {
@@ -450,6 +451,11 @@ func (s *Service) enrichAudiobook(ctx context.Context, book *library.Book, autho
 			slog.Warn("storing audiobook edition", "book", book.Title, "asin", ed.ASIN, "err", err)
 			return
 		}
+	}
+	// With the editions and their runtimes now stored, match any owned audiobook
+	// file against them to name its narrator.
+	if err := s.store.MatchAudiobookNarrators(book.ID, scanner.AudioDuration); err != nil {
+		slog.Warn("matching audiobook narrator", "book", book.Title, "err", err)
 	}
 }
 

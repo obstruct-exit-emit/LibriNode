@@ -304,6 +304,8 @@ export default function BookDetailView({
                   <span className="row-actions">
                     <span className="muted">
                       {f.format} · {formatBytes(f.size)}
+                      {f.runtimeMinutes ? ` · ${formatRuntime(f.runtimeMinutes)}` : ""}
+                      {f.narrator ? ` · 🎧 ${f.narrator}` : ""}
                     </span>
                     <button
                       className="toggle"

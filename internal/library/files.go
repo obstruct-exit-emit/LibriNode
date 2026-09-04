@@ -32,6 +32,11 @@ type BookFile struct {
 	Format       string `json:"format"`
 	ModifiedAt   string `json:"modifiedAt"`
 	AddedAt      string `json:"addedAt"`
+	// RuntimeMinutes and Narrator are filled by the audiobook duration-match
+	// (0/empty for other formats, and for audiobooks not yet matched): the
+	// probed total runtime, and the narrator of the edition it matches.
+	RuntimeMinutes int    `json:"runtimeMinutes,omitempty"`
+	Narrator       string `json:"narrator,omitempty"`
 	// Tracks lists the audio files inside a multi-file audiobook unit (whose
 	// Path is the book folder). Not persisted — the API fills it on demand.
 	Tracks []Track `json:"tracks,omitempty"`
@@ -128,11 +133,11 @@ func (b *BookFileBatch) Commit() error                    { return b.tx.Commit()
 // Rollback aborts the batch. Harmless to call after a successful Commit.
 func (b *BookFileBatch) Rollback() { _ = b.tx.Rollback() }
 
-const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), media_type, variant, path, size, format, modified_at, added_at`
+const bookFileCols = `id, root_folder_id, COALESCE(book_id, 0), media_type, variant, path, size, format, modified_at, added_at, runtime_minutes, narrator`
 
 func scanBookFile(row interface{ Scan(...any) error }) (*BookFile, error) {
 	var f BookFile
-	err := row.Scan(&f.ID, &f.RootFolderID, &f.BookID, &f.MediaType, &f.Variant, &f.Path, &f.Size, &f.Format, &f.ModifiedAt, &f.AddedAt)
+	err := row.Scan(&f.ID, &f.RootFolderID, &f.BookID, &f.MediaType, &f.Variant, &f.Path, &f.Size, &f.Format, &f.ModifiedAt, &f.AddedAt, &f.RuntimeMinutes, &f.Narrator)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -140,6 +145,65 @@ func scanBookFile(row interface{ Scan(...any) error }) (*BookFile, error) {
 		return nil, err
 	}
 	return &f, nil
+}
+
+// MatchAudiobookNarrators probes each of a book's audiobook files, records its
+// total runtime, and — when the book has audiobook editions with runtimes —
+// attaches the narrator of the closest-matching edition. This is how a file's
+// narrator gets named when it appears nowhere in the filename or tags: a
+// 970-minute file matches the 970-minute (Ray Porter) edition, not the
+// 300-minute abridged one. A file with no edition within tolerance keeps its
+// runtime but no narrator, for a person to resolve. durationOf is injected
+// (scanner.AudioDuration) so the library layer carries no audio-parsing code.
+func (s *Store) MatchAudiobookNarrators(bookID int64, durationOf func(string) (int, error)) error {
+	files, err := s.listBookFiles(`WHERE book_id = ? AND media_type = 'audiobook'`, bookID)
+	if err != nil || len(files) == 0 {
+		return err
+	}
+	editions, err := s.ListEditions(bookID)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		mins, derr := durationOf(f.Path)
+		if derr != nil || mins <= 0 {
+			continue // unreadable or empty — leave whatever it had
+		}
+		if _, err := s.db.Exec(
+			`UPDATE book_files SET runtime_minutes = ?, narrator = ? WHERE id = ?`,
+			mins, bestNarrator(mins, editions), f.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bestNarrator returns the narrator of the audiobook edition whose runtime is
+// closest to mins, but only when the match is close — within 5 minutes or 3%
+// of the runtime, enough to absorb intro/outro and chapter gaps yet tight
+// enough that two distinct narrations don't collide. No close edition → "".
+func bestNarrator(mins int, editions []Edition) string {
+	best, bestDelta := "", 1<<30
+	for _, e := range editions {
+		if e.Format != "audiobook" || e.RuntimeMinutes <= 0 || e.Narrator == "" {
+			continue
+		}
+		d := mins - e.RuntimeMinutes
+		if d < 0 {
+			d = -d
+		}
+		if d < bestDelta {
+			best, bestDelta = e.Narrator, d
+		}
+	}
+	tol := mins * 3 / 100
+	if tol < 5 {
+		tol = 5
+	}
+	if bestDelta > tol {
+		return ""
+	}
+	return best
 }
 
 func (s *Store) listBookFiles(where string, args ...any) ([]BookFile, error) {

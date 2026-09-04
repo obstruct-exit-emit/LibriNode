@@ -95,6 +95,10 @@ export interface BookFile {
   format: string;
   modifiedAt: string;
   addedAt: string;
+  // Filled by the audiobook duration-match (0/empty otherwise): probed runtime
+  // and the narrator of the edition it matches.
+  runtimeMinutes?: number;
+  narrator?: string;
   // Multi-file audiobook units list their audio files (relative to the folder).
   tracks?: { name: string; size: number }[];
 }
