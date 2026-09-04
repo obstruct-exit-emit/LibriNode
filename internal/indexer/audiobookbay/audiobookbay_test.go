@@ -384,6 +384,33 @@ func TestSearchDetectsHomepageFeedSoftBlock(t *testing.T) {
 	}
 }
 
+// TestSearchReturnsBundleWhenTitleDiffers: ABB has the book only inside a
+// differently-titled bundle post (a series pack) — its title names the series
+// and the query appears only in the body. That's a real response, not a
+// throttle: the search must return the post (for scoring to judge), not
+// misreport an IP block the way it does for a genuine homepage feed.
+func TestSearchReturnsBundleWhenTitleDiffers(t *testing.T) {
+	bundle := `<div class="postTitle"><a href="/audio-books/uplift-series-david-brin/">Uplift series - David Brin</a></div>` +
+		`<div class="postContent">Includes Startide Rising, The Uplift War, Brightness Reef, Infinity's Shore.</div>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("s") == "" {
+			_, _ = w.Write([]byte("<html>abb home</html>"))
+			return
+		}
+		_, _ = w.Write([]byte(bundle))
+	}))
+	defer srv.Close()
+
+	s := Def().New(&indexer.Indexer{Name: "ABB", BaseURL: srv.URL}, srv.Client())
+	releases, err := s.Search(context.Background(), "brightness reef", "audiobook")
+	if err != nil {
+		t.Fatalf("bundle result wrongly treated as a block: %v", err)
+	}
+	if len(releases) != 1 {
+		t.Fatalf("releases = %+v, want 1 (the bundle post, left for scoring)", releases)
+	}
+}
+
 // TestSearchRecoversFromHomepageFeed: the unrelated feed on the first attempt,
 // real results on the retry — the fresh-session retry must recover it, exactly
 // like the empty-page and redirect cases.

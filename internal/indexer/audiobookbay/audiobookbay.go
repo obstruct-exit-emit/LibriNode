@@ -270,6 +270,20 @@ func (s *searcher) searchBase(ctx context.Context, base, query string) ([]post, 
 		// treat it as a throttle and retry on a fresh session, same as an empty
 		// page or a redirect.
 		if len(posts) > 0 && !anyRelevant(posts, query) {
+			// No post TITLE echoes the query. That's ABB's throttle signature (its
+			// "Latest" homepage feed served at the search URL) ONLY when the query
+			// is absent from the page entirely. When the query words DO appear on
+			// the page, the book exists inside a differently-titled post — a series
+			// bundle names the series in its title and lists the individual titles
+			// in its body — so it's a real response with no standalone match, not a
+			// block. Return those posts and let release scoring judge them, rather
+			// than retrying and misreporting a rate limit (which sends the user
+			// chasing an IP problem that isn't there).
+			if pageMentionsQuery(listing, query) {
+				slog.Info("abb search: query on the page but not in any post title (likely a bundle) — returning posts for scoring",
+					"base", base, "attempt", attempt+1, "posts", len(posts))
+				return posts, nil
+			}
 			slog.Info("abb search only unrelated results (likely homepage feed on a throttled IP)",
 				"base", base, "attempt", attempt+1, "posts", len(posts))
 			lastErr = fmt.Errorf("AudioBook Bay returned only results unrelated to the query — it is likely rate-limiting or temporarily blocking this IP; try again later")
@@ -402,6 +416,25 @@ func anyRelevant(posts []post, query string) bool {
 		}
 	}
 	return false
+}
+
+// pageMentionsQuery reports whether every meaningful query word appears somewhere
+// in the raw listing — a post's title, tag list, or body. It tells a real search
+// that matched inside a differently-titled post (a series bundle lists the
+// individual titles in its body) from ABB's homepage "Latest" feed, which is
+// served when throttling and mentions none of the query.
+func pageMentionsQuery(listing, query string) bool {
+	words := queryWords(query)
+	if len(words) == 0 {
+		return false
+	}
+	lower := strings.ToLower(listing)
+	for _, w := range words {
+		if !strings.Contains(lower, w) {
+			return false
+		}
+	}
+	return true
 }
 
 // isHomepageRedirect reports whether a search landed back on the site's
