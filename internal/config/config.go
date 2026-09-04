@@ -159,6 +159,19 @@ func (c *Config) ProviderSettings() map[string]metadata.Settings {
 		s.IncludeCompilations = comps
 		ms.Providers[name] = s
 	}
+	// Keyless audiobook providers (Audible) have no token, so no config entry —
+	// but they still need the global language/adult prefs for ranking and
+	// filtering. Seed an entry carrying just the globals for any that's missing.
+	for _, name := range metadata.AudiobookAvailable() {
+		if _, ok := ms.Providers[name]; !ok {
+			ms.Providers[name] = metadata.Settings{
+				Language:            lang,
+				Country:             country,
+				IncludeAdult:        adult,
+				IncludeCompilations: comps,
+			}
+		}
+	}
 	return ms.Providers
 }
 

@@ -35,9 +35,10 @@ func TestFindEditionsParsesFiltersOrders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The wrong-author decoy is filtered; three Andy Weir editions remain.
-	if len(eds) != 3 {
-		t.Fatalf("editions = %d, want 3 (wrong author filtered): %+v", len(eds), eds)
+	// Wrong author dropped, and the Italian edition dropped by the English
+	// language preference — the two English Andy Weir editions remain.
+	if len(eds) != 2 {
+		t.Fatalf("editions = %d, want 2 (wrong author + non-English filtered): %+v", len(eds), eds)
 	}
 
 	// English unabridged sorts first, fully mapped.
@@ -64,12 +65,38 @@ func TestFindEditionsParsesFiltersOrders(t *testing.T) {
 		t.Errorf("metadata mismatch: %+v", e)
 	}
 
-	// The abridged English edition is second and flagged; the Italian is last.
+	// The abridged English edition is second and flagged.
 	if eds[1].ASIN != "ABR" || !eds[1].Abridged {
 		t.Errorf("second = %+v, want ABR abridged", eds[1])
 	}
-	if eds[2].ASIN != "IT1" {
-		t.Errorf("third = %q, want IT1 (other language ranks last)", eds[2].ASIN)
+}
+
+// TestFindEditionsLanguagePreference: a configured language keeps that language
+// (and unknown-language editions) and drops the others — but falls back to
+// everything when the work has no edition in the preferred language.
+func TestFindEditionsLanguagePreference(t *testing.T) {
+	body := `{"products":[
+	  {"asin":"EN","title":"Dune","authors":[{"name":"Frank Herbert"}],"narrators":[{"name":"Scott Brick"}],"runtime_length_min":1262,"format_type":"unabridged","language":"english"},
+	  {"asin":"DE","title":"Dune","authors":[{"name":"Frank Herbert"}],"narrators":[{"name":"Mark Bremer"}],"runtime_length_min":1484,"format_type":"unabridged","language":"german"},
+	  {"asin":"ES","title":"Dune","authors":[{"name":"Frank Herbert"}],"narrators":[{"name":"Daniel Garcia"}],"runtime_length_min":1540,"format_type":"unabridged","language":"spanish"}
+	]}`
+	eds, err := New(WithEndpoint(serve(t, body).URL), WithLanguage("english")).
+		FindEditions(context.Background(), "Dune", "Frank Herbert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eds) != 1 || eds[0].ASIN != "EN" {
+		t.Fatalf("editions = %+v, want only the English one", eds)
+	}
+
+	// A language with no match at all falls back to every edition, not none.
+	eds, err = New(WithEndpoint(serve(t, body).URL), WithLanguage("japanese")).
+		FindEditions(context.Background(), "Dune", "Frank Herbert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eds) != 3 {
+		t.Fatalf("editions = %d, want 3 (fallback when no preferred-language match)", len(eds))
 	}
 }
 

@@ -143,6 +143,22 @@ func (c *Client) FindEditions(ctx context.Context, title, author string) ([]meta
 		})
 	}
 
+	// Prefer the configured language: drop editions in a different explicit
+	// language when at least one preferred (or unknown) one exists, so an English
+	// library isn't cluttered with German/Spanish narrations. Fall back to
+	// everything when nothing matches (a work only sold in other languages).
+	if c.language != "" {
+		var pref []scored
+		for _, m := range matches {
+			if m.ed.Language == "" || m.ed.Language == c.language {
+				pref = append(pref, m)
+			}
+		}
+		if len(pref) > 0 {
+			matches = pref
+		}
+	}
+
 	sort.SliceStable(matches, func(i, j int) bool {
 		a, b := matches[i], matches[j]
 		if a.score != b.score {
