@@ -60,6 +60,8 @@ func fileDuration(path string) (float64, error) {
 		return mp3Duration(f, info.Size())
 	case ".flac":
 		return flacDuration(f)
+	case ".opus":
+		return opusDuration(f, info.Size())
 	default:
 		return 0, errUnsupportedAudio
 	}
@@ -70,6 +72,7 @@ var (
 	errNoMVHD           = errors.New("scanner: mp4 has no mvhd")
 	errNoMP3Frame       = errors.New("scanner: no mp3 frame found")
 	errNoStreamInfo     = errors.New("scanner: flac has no STREAMINFO")
+	errNoOggPage        = errors.New("scanner: no ogg page with a granule")
 )
 
 // --- MP4 / M4B (moov → mvhd is the exact duration) ---
@@ -197,6 +200,42 @@ func flacDuration(rs io.ReadSeeker) (float64, error) {
 		return 0, errNoStreamInfo
 	}
 	return float64(totalSamples) / float64(sampleRate), nil
+}
+
+// --- Opus in Ogg (granule position of the last page, at the 48kHz clock) ---
+
+// opusDuration returns the playtime of an Ogg-Opus file: the largest granule
+// position across the Ogg pages near the end of the file, divided by 48000
+// (Opus always counts granules at 48kHz regardless of input rate). The tiny
+// pre-skip (sub-second) is ignored — negligible at minute resolution.
+func opusDuration(rs io.ReadSeeker, size int64) (float64, error) {
+	const window = 131072 // enough to hold the final page even at max page size
+	start := size - window
+	if start < 0 {
+		start = 0
+	}
+	if _, err := rs.Seek(start, io.SeekStart); err != nil {
+		return 0, err
+	}
+	buf := make([]byte, size-start)
+	if _, err := io.ReadFull(rs, buf); err != nil {
+		return 0, err
+	}
+	var maxGranule uint64
+	found := false
+	for i := 0; i+14 <= len(buf); i++ {
+		if buf[i] == 'O' && buf[i+1] == 'g' && buf[i+2] == 'g' && buf[i+3] == 'S' {
+			g := binary.LittleEndian.Uint64(buf[i+6 : i+14])
+			// 0xFFFF… means "no packet completes on this page" — not a total.
+			if g != ^uint64(0) && (!found || g > maxGranule) {
+				maxGranule, found = g, true
+			}
+		}
+	}
+	if !found {
+		return 0, errNoOggPage
+	}
+	return float64(maxGranule) / 48000.0, nil
 }
 
 // --- MP3 (Xing/Info frame count when present, else a CBR estimate) ---

@@ -128,11 +128,44 @@ func TestAudioDurationMixedFormats(t *testing.T) {
 	}
 }
 
-func TestAudioDurationUnsupportedContributesZero(t *testing.T) {
+// oggPage builds a single Ogg page header carrying the given granule position.
+func oggPage(granule uint64) []byte {
+	p := make([]byte, 27)
+	copy(p[0:4], "OggS")
+	binary.LittleEndian.PutUint64(p[6:14], granule) // version/type/serial left 0
+	return p                                        // 0 segments
+}
+
+func TestOpusDurationReadsLastGranule(t *testing.T) {
+	// Two pages: an early one and the final one whose granule is the total.
+	data := append(oggPage(48000*120), oggPage(48000*600)...) // 10 min total
+	secs, err := opusDuration(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secs != 600 {
+		t.Errorf("opus duration = %v, want 600s", secs)
+	}
+}
+
+func TestOpusIgnoresNoPacketGranule(t *testing.T) {
+	// A trailing page with the 0xFFFF… "no packet completes" sentinel must not
+	// be taken as the total; the real final granule wins.
+	data := append(oggPage(48000*600), oggPage(^uint64(0))...)
+	secs, err := opusDuration(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secs != 600 {
+		t.Errorf("opus duration = %v, want 600s (sentinel granule ignored)", secs)
+	}
+}
+
+func TestAudioDurationCorruptContributesZero(t *testing.T) {
 	dir := t.TempDir()
-	// .opus is recognized as audio but the probe can't measure it — it must
-	// contribute 0 without failing the whole book.
-	if err := os.WriteFile(filepath.Join(dir, "a.opus"), []byte("OggS not really opus"), 0o644); err != nil {
+	// A supported extension with unparseable content must contribute 0, not
+	// fail the whole book.
+	if err := os.WriteFile(filepath.Join(dir, "broken.flac"), []byte("not flac at all"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	mins, err := AudioDuration(dir)
@@ -140,7 +173,7 @@ func TestAudioDurationUnsupportedContributesZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	if mins != 0 {
-		t.Errorf("unsupported-only folder = %d min, want 0", mins)
+		t.Errorf("corrupt-only folder = %d min, want 0", mins)
 	}
 }
 
