@@ -77,12 +77,23 @@ func IsMagazinePath(name string) bool {
 // decides a directory of subfolders is one multi-disc book rather than a level
 // of separate books, so accepting bare numbers would merge a genuine
 // "Author/Series/1", "Author/Series/2" numbered-book layout into a single book.
-var discFolder = regexp.MustCompile(`(?i)^(?:cd|disc|disk|part|pt|vol(?:ume)?)[ ._-]*\d{1,3}(?:[ ._-].*)?$`)
+var discFolder = regexp.MustCompile(`(?i)^(?:cd|disc|disk|part|pt|vol(?:ume)?)[ ._-]*(\d{1,3})(?:[ ._-].*)?$`)
 
 // IsDiscFolder reports whether a directory name is a disc-style subdivision of
 // an audiobook folder.
 func IsDiscFolder(name string) bool {
 	return discFolder.MatchString(name)
+}
+
+// DiscNumber returns the disc/part number in a disc-style folder name ("CD1" →
+// 1, "Disc 02" → 2, "CD 3 - The Reckoning" → 3), or 0 when name isn't one.
+func DiscNumber(name string) int {
+	m := discFolder.FindStringSubmatch(name)
+	if m == nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
 }
 
 // unwantedExtensions are file types a book/media download must never contain:

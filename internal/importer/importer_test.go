@@ -283,13 +283,15 @@ func TestImportAudiobookDiscSubfolders(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 
+	// Disc folders flatten into the one book folder with a zero-padded "CD NN -"
+	// prefix, so a plain listing still plays in disc-then-track order.
 	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
-	for _, rel := range []string{
-		filepath.Join("CD1", "01 - Opening.mp3"),
-		filepath.Join("CD1", "02 - Death.mp3"),
-		filepath.Join("CD2", "01 - Opening.mp3"),
+	for _, name := range []string{
+		"CD 01 - 01 - Opening.mp3",
+		"CD 01 - 02 - Death.mp3",
+		"CD 02 - 01 - Opening.mp3",
 	} {
-		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
 			t.Errorf("track missing after import: %v", err)
 		}
 	}
@@ -299,13 +301,12 @@ func TestImportAudiobookDiscSubfolders(t *testing.T) {
 	}
 }
 
-// TestImportAudiobookTitledDiscFoldersKeepOrder: disc folders carrying an "of
-// N" count ("Disc 1 of 3") — a very common real-world layout — are kept as
-// subfolders like CD1/CD2, not flattened. The three discs hold an
-// identically-named track, so flattening would both collide them and scramble
-// play order (disc 2/3's tracks, qualified with their folder name, would sort
-// around disc 1's unqualified track). Keeping the folders preserves order.
-func TestImportAudiobookTitledDiscFoldersKeepOrder(t *testing.T) {
+// TestImportAudiobookTitledDiscFoldersFlatten: disc folders carrying an "of N"
+// count ("Disc 1 of 3") — a very common real-world layout — flatten into the
+// one book folder with a zero-padded "CD NN -" prefix. The three discs hold an
+// identically-named track; the disc prefix keeps them distinct AND in play
+// order (a bare basename flatten would collide and scramble them).
+func TestImportAudiobookTitledDiscFoldersFlatten(t *testing.T) {
 	f := fixture(t)
 	ctx := context.Background()
 
@@ -334,13 +335,13 @@ func TestImportAudiobookTitledDiscFoldersKeepOrder(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
-	for _, rel := range []string{
-		filepath.Join("Disc 1 of 3", "01 - Track.mp3"),
-		filepath.Join("Disc 2 of 3", "01 - Track.mp3"),
-		filepath.Join("Disc 3 of 3", "01 - Track.mp3"),
+	for _, name := range []string{
+		"CD 01 - 01 - Track.mp3",
+		"CD 02 - 01 - Track.mp3",
+		"CD 03 - 01 - Track.mp3",
 	} {
-		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
-			t.Errorf("disc track not kept at its folder (order scrambles if flattened): %v", err)
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
+			t.Errorf("disc track not flattened with its disc prefix: %v", err)
 		}
 	}
 	if files, _ := f.store.ListBookFiles(f.book.ID); len(files) != 1 || files[0].Path != bookDir {
@@ -422,13 +423,13 @@ func TestImportAudiobookFromZipArchive(t *testing.T) {
 		t.Fatalf("result = %+v, want the zipped audiobook extracted and imported", result)
 	}
 	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
-	for _, rel := range []string{
-		filepath.Join("CD1", "01 - Opening.mp3"),
-		filepath.Join("CD1", "02 - Death.mp3"),
-		filepath.Join("CD2", "01 - Opening.mp3"),
+	for _, name := range []string{
+		"CD 01 - 01 - Opening.mp3",
+		"CD 01 - 02 - Death.mp3",
+		"CD 02 - 01 - Opening.mp3",
 	} {
-		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
-			t.Errorf("extracted track missing (disc structure should survive): %v", err)
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
+			t.Errorf("extracted track missing (disc order should survive the flatten): %v", err)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(bookDir, "cover.jpg")); err == nil {
@@ -437,8 +438,9 @@ func TestImportAudiobookFromZipArchive(t *testing.T) {
 }
 
 // TestImportAudiobookFromMultipleDiscArchives: a release split into one archive
-// per disc (CD1.zip, CD2.zip) extracts into a disc folder named for each
-// archive, so identically-named tracks don't collide and stay in disc order.
+// per disc (CD1.zip, CD2.zip) extracts and flattens into the book folder with a
+// "CD NN -" prefix per disc, so identically-named tracks don't collide and stay
+// in disc order.
 func TestImportAudiobookFromMultipleDiscArchives(t *testing.T) {
 	f := fixture(t)
 	ctx := context.Background()
@@ -466,12 +468,12 @@ func TestImportAudiobookFromMultipleDiscArchives(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 	bookDir := filepath.Join(abRoot, "Terry Pratchett", "Mort (1987)")
-	for _, rel := range []string{
-		filepath.Join("CD1", "01 - Track.mp3"),
-		filepath.Join("CD2", "01 - Track.mp3"),
+	for _, name := range []string{
+		"CD 01 - 01 - Track.mp3",
+		"CD 02 - 01 - Track.mp3",
 	} {
-		if _, err := os.Stat(filepath.Join(bookDir, rel)); err != nil {
-			t.Errorf("per-disc archive not extracted to its disc folder: %v", err)
+		if _, err := os.Stat(filepath.Join(bookDir, name)); err != nil {
+			t.Errorf("per-disc archive track not flattened with its disc prefix: %v", err)
 		}
 	}
 }

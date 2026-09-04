@@ -522,10 +522,12 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 	var size int64
 	adopted := false // target already on disk but unrecorded — record, don't copy
 	if mediaType == "audiobook" && len(sources) > 1 {
-		// Multi-file audiobook: the per-book folder is the unit. Tracks keep
-		// their names AND their layout relative to the download (disc
-		// subfolders like CD1/CD2 survive — Audiobookshelf supports them, and
-		// flattening would collide same-named tracks and break disc order).
+		// Multi-file audiobook: the per-book folder is the unit, and it holds a
+		// FLAT set of tracks. A track's layout in the download is folded into
+		// its filename instead of kept as subfolders — a disc/part folder
+		// becomes a zero-padded "CD NN - " prefix so a plain directory listing
+		// still plays in disc-then-track order (past 9 discs too), and any other
+		// nesting joins its path with " - ". See flattenAudioTrack.
 		target = place.Dir
 		freshDir := true
 		if _, err := os.Stat(target); err == nil {
@@ -549,19 +551,14 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 				if err != nil || strings.HasPrefix(rel, "..") {
 					rel = filepath.Base(src)
 				}
-				// Disc-style subfolders (CD1/CD2 …) are kept — the scanner and
-				// Audiobookshelf understand them. Any other nesting is flattened
-				// (a book folder must otherwise hold only files), qualifying the
-				// name with its folder when flattening would collide.
-				if dir := filepath.Dir(rel); dir != "." && !discPath(dir) {
-					name := filepath.Base(rel)
-					if used[name] {
-						name = strings.ReplaceAll(filepath.ToSlash(rel), "/", " - ")
-					}
-					rel = name
+				name := flattenAudioTrack(rel)
+				// If two tracks still flatten to the same name (rare), keep the
+				// later one distinct by folding its full relative path in.
+				if used[name] {
+					name = strings.ReplaceAll(filepath.ToSlash(rel), "/", " - ")
 				}
-				used[rel] = true
-				dest := filepath.Join(target, rel)
+				used[name] = true
+				dest := filepath.Join(target, name)
 				n, err := copyFile(src, dest)
 				if err != nil {
 					// Remove what landed so the retry isn't blocked by a
@@ -1269,16 +1266,20 @@ func dirAudioSize(dir string) int64 {
 	return total
 }
 
-// discPath reports whether every segment of a relative directory path is a
-// disc-style folder name (CD1, Disc 02 …) — the only nesting a book folder
-// keeps on import.
-func discPath(dir string) bool {
-	for _, seg := range strings.Split(filepath.ToSlash(dir), "/") {
-		if !scanner.IsDiscFolder(seg) {
-			return false
+// flattenAudioTrack folds a track's download-relative path into a single
+// filename so a multi-disc audiobook imports as a flat, correctly-ordered book
+// folder. A disc/part subfolder becomes a zero-padded "CD NN - " prefix ("CD1/
+// 01 - Intro.mp3" → "CD 01 - 01 - Intro.mp3"), so a plain directory listing
+// plays in disc-then-track order even past nine discs. Any other layout keeps
+// the track's own base name (a non-disc wrapper folder like "mp3s" adds
+// nothing); the caller qualifies the rare leftover collision with the full path.
+func flattenAudioTrack(rel string) string {
+	if dir := filepath.Dir(rel); dir != "." {
+		if n := scanner.DiscNumber(filepath.Base(dir)); n > 0 {
+			return fmt.Sprintf("CD %02d - %s", n, filepath.Base(rel))
 		}
 	}
-	return true
+	return filepath.Base(rel)
 }
 
 // largestFile picks the biggest candidate (callers guarantee at least one).

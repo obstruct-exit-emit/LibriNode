@@ -948,6 +948,21 @@ func TestIsDiscFolder(t *testing.T) {
 	}
 }
 
+func TestDiscNumber(t *testing.T) {
+	cases := map[string]int{
+		"CD1": 1, "CD 1": 1, "CD_2": 2, "Disc 02": 2, "Disk 3": 3,
+		"CD 1 of 12": 1, "Disc 01 of 10": 1, "CD2 - The Reckoning": 2,
+		"Part 3": 3, "Vol. 5": 5, "CD10": 10, "Disc 100": 100,
+		// Not a disc folder → 0.
+		"Mort": 0, "Disc One": 0, "2012": 0, "1": 0,
+	}
+	for name, want := range cases {
+		if got := DiscNumber(name); got != want {
+			t.Errorf("DiscNumber(%q) = %d, want %d", name, got, want)
+		}
+	}
+}
+
 func TestVolumeRangeFromName(t *testing.T) {
 	type span struct {
 		start, end float64
