@@ -73,6 +73,9 @@ export interface Edition {
   releaseDate: string;
   coverUrl: string;
   monitored: boolean;
+  narrator: string;
+  runtimeMinutes: number;
+  abridged: boolean;
 }
 
 export interface SeriesLink {

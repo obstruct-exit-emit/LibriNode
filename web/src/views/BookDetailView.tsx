@@ -7,6 +7,16 @@ import { downloadPct, useQueue } from "../useQueue";
 import { formatBytes } from "../format";
 import { useUi } from "../ui";
 
+// "970" -> "16h 10m"
+function formatRuntime(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+const editionIcon = (format: string) =>
+  format === "audiobook" ? "🎧" : format === "ebook" ? "📖" : "📚";
+
 // Full-page book detail, mirroring the author page: header with cover art,
 // about text, and per-format status/actions, then releases, files, and
 // edition info as their own cards. The back button returns to the author.
@@ -245,6 +255,38 @@ export default function BookDetailView({
             onGrabbed={refresh}
             onClose={() => setShowReleases(false)}
           />
+        </section>
+      )}
+
+      {book.editions && book.editions.length > 0 && (
+        <section className="card">
+          <h2>Editions ({book.editions.length})</h2>
+          <ul className="rows">
+            {book.editions.map((e) => (
+              <li key={e.id}>
+                <div className="row">
+                  <span>
+                    {editionIcon(e.format)}{" "}
+                    <strong>
+                      {e.format.charAt(0).toUpperCase() + e.format.slice(1)}
+                    </strong>
+                    {e.narrator && <> · narrated by {e.narrator}</>}
+                    {e.abridged && <span className="muted"> · abridged</span>}
+                  </span>
+                  <span className="muted">
+                    {[
+                      e.runtimeMinutes > 0 ? formatRuntime(e.runtimeMinutes) : "",
+                      e.publisher,
+                      e.language,
+                      e.releaseDate,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
