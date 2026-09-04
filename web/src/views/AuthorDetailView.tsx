@@ -264,6 +264,21 @@ export default function AuthorDetailView({
             >
               Refresh metadata
             </button>
+            <button
+              className={author.mirror ? "toggle on" : "toggle"}
+              disabled={busy}
+              title="Mirror this author across the Ebooks and Audiobooks libraries — owning or wanting a book in one format automatically wants it in the other"
+              onClick={() =>
+                headerAction(async () => {
+                  const updated = await api.mirrorAuthor(author.id, !author.mirror);
+                  return updated.mirror
+                    ? "✓ Mirroring ebook ↔ audiobook — the two libraries now track each other"
+                    : "✓ Mirroring off — the two libraries are independent again";
+                })
+              }
+            >
+              Mirror ebook ↔ audiobook: {author.mirror ? "on" : "off"}
+            </button>
           </div>
           <details className="disclosure">
             <summary>Advanced</summary>
@@ -291,21 +306,6 @@ export default function AuthorDetailView({
                     ))}
                   </select>
                 )}
-                <button
-                  className={author.mirror ? "toggle on" : "toggle"}
-                  disabled={busy}
-                  title="Mirror this author across the Ebooks and Audiobooks libraries — owning or wanting a book in one format automatically wants it in the other"
-                  onClick={() =>
-                    headerAction(async () => {
-                      const updated = await api.mirrorAuthor(author.id, !author.mirror);
-                      return updated.mirror
-                        ? "✓ Mirroring ebook ↔ audiobook — the two libraries now track each other"
-                        : "✓ Mirroring off — the two libraries are independent again";
-                    })
-                  }
-                >
-                  Mirror ebook ↔ audiobook: {author.mirror ? "on" : "off"}
-                </button>
                 <button className="danger" disabled={busy} onClick={() => setConfirmRemove(!confirmRemove)}>
                   Remove from {label}
                 </button>
