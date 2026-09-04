@@ -2060,6 +2060,7 @@ function MetadataCard({
   const [showToken, setShowToken] = useState(false);
   const [mangaProvider, setMangaProvider] = useState("");
   const [comicProvider, setComicProvider] = useState("");
+  const [audiobookProvider, setAudiobookProvider] = useState("");
   const [mangaCoverSource, setMangaCoverSource] = useState("provider");
   const [comicCoverSource, setComicCoverSource] = useState("provider");
   const [language, setLanguage] = useState("english");
@@ -2099,6 +2100,7 @@ function MetadataCard({
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
         setComicProvider(s.comicProvider);
+        setAudiobookProvider(s.audiobookProvider);
         setMangaCoverSource(s.mangaCoverSource);
         setComicCoverSource(s.comicCoverSource);
         setLanguage(s.language);
@@ -2138,6 +2140,7 @@ function MetadataCard({
         fallbacks: fallbacks.filter((f) => f !== active),
         mangaProvider,
         comicProvider,
+        audiobookProvider,
         mangaCoverSource,
         comicCoverSource,
         language,
@@ -2152,6 +2155,7 @@ function MetadataCard({
         setProviders(s.providers);
         setMangaProvider(s.mangaProvider);
         setComicProvider(s.comicProvider);
+        setAudiobookProvider(s.audiobookProvider);
         setMangaCoverSource(s.mangaCoverSource);
         setComicCoverSource(s.comicCoverSource);
         setLanguage(s.language);
@@ -2439,6 +2443,32 @@ function MetadataCard({
               <option value="file">Extract from the owned file (first page)</option>
             </select>
           </label>
+        </div>
+
+        <div className="settings-section">
+          <h3>Audiobooks</h3>
+          <label>
+            Audiobook metadata
+            <select
+              value={audiobookProvider || settings.audiobookProviders[0] || "audible"}
+              onChange={(e) => {
+                setAudiobookProvider(e.target.value);
+                setNotice("");
+              }}
+            >
+              {settings.audiobookProviders.map((name) => (
+                <option key={name} value={name}>
+                  {name[0].toUpperCase() + name.slice(1)}
+                  {name === "audible" ? " (no key)" : ""}
+                </option>
+              ))}
+              <option value="none">None (disabled)</option>
+            </select>
+          </label>
+          <p className="muted">
+            Fills in narrator, runtime, and abridged for your audiobooks by
+            matching them to Audible on refresh. None turns the lookups off.
+          </p>
         </div>
 
         <div className="settings-actions">

@@ -424,6 +424,8 @@ export interface MetadataSettings {
   mangaProvider: string;
   comicProviders: string[];
   comicProvider: string;
+  audiobookProviders: string[];
+  audiobookProvider: string;
   mangaCoverSource: string;
   comicCoverSource: string;
   language: string;
@@ -946,6 +948,7 @@ export const api = {
       fallbacks?: string[];
       mangaProvider?: string;
       comicProvider?: string;
+      audiobookProvider?: string;
       mangaCoverSource?: string;
       comicCoverSource?: string;
       language?: string;

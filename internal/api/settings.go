@@ -32,6 +32,10 @@ type metadataSettingsResponse struct {
 	MangaProvider  string   `json:"mangaProvider"`
 	ComicProviders []string `json:"comicProviders"`
 	ComicProvider  string   `json:"comicProvider"`
+	// AudiobookProviders / AudiobookProvider: the audiobook-enrichment source
+	// (narrator, runtime); the singular is the chosen one, "none" disables it.
+	AudiobookProviders []string `json:"audiobookProviders"`
+	AudiobookProvider  string   `json:"audiobookProvider"`
 	// Per-library volume-cover source, "file" or "provider" (effective
 	// values — defaults applied).
 	MangaCoverSource string `json:"mangaCoverSource"`
@@ -55,6 +59,8 @@ func (s *server) metadataSettingsResponse() metadataSettingsResponse {
 		MangaProvider:       s.cfg.MangaSeriesProvider(),
 		ComicProviders:      metadata.AvailableSeriesProviders("comic"),
 		ComicProvider:       s.cfg.ComicSeriesProvider(),
+		AudiobookProviders:  metadata.AudiobookAvailable(),
+		AudiobookProvider:   s.cfg.AudiobookMetadataProvider(),
 		MangaCoverSource:    s.cfg.CoverSourceFor("manga"),
 		ComicCoverSource:    s.cfg.CoverSourceFor("comic"),
 		Language:            s.cfg.MetadataLanguage(),
@@ -91,6 +97,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		Providers           map[string]metadata.Settings `json:"providers"`
 		MangaProvider       string                       `json:"mangaProvider"`
 		ComicProvider       string                       `json:"comicProvider"`
+		AudiobookProvider   string                       `json:"audiobookProvider"`
 		MangaCoverSource    string                       `json:"mangaCoverSource"`
 		ComicCoverSource    string                       `json:"comicCoverSource"`
 		Language            string                       `json:"language"`
@@ -131,6 +138,11 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "unknown comic provider: "+req.ComicProvider)
 		return
 	}
+	if req.AudiobookProvider != "" && req.AudiobookProvider != "none" &&
+		!slices.Contains(metadata.AudiobookAvailable(), req.AudiobookProvider) {
+		writeError(w, http.StatusBadRequest, "unknown audiobook provider: "+req.AudiobookProvider)
+		return
+	}
 	if !validCoverSource(req.MangaCoverSource) || !validCoverSource(req.ComicCoverSource) {
 		writeError(w, http.StatusBadRequest, "cover source must be file or provider")
 		return
@@ -145,6 +157,7 @@ func (s *server) handlePutMetadataSettings(w http.ResponseWriter, r *http.Reques
 		Providers:           req.Providers,
 		MangaProvider:       req.MangaProvider,
 		ComicProvider:       req.ComicProvider,
+		AudiobookProvider:   req.AudiobookProvider,
 		MangaCoverSource:    req.MangaCoverSource,
 		ComicCoverSource:    req.ComicCoverSource,
 		Language:            strings.ToLower(strings.TrimSpace(req.Language)),
