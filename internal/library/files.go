@@ -183,6 +183,11 @@ func (s *Store) MatchAudiobookNarrators(bookID int64, durationOf func(string) (i
 // of the runtime, enough to absorb intro/outro and chapter gaps yet tight
 // enough that two distinct narrations don't collide. No close edition → "".
 func bestNarrator(mins int, editions []Edition) string {
+	tol := mins * 3 / 100
+	if tol < 5 {
+		tol = 5
+	}
+	// The closest in-tolerance edition.
 	best, bestDelta := "", 1<<30
 	for _, e := range editions {
 		if e.Format != "audiobook" || e.RuntimeMinutes <= 0 || e.Narrator == "" {
@@ -192,16 +197,27 @@ func bestNarrator(mins int, editions []Edition) string {
 		if d < 0 {
 			d = -d
 		}
-		if d < bestDelta {
+		if d <= tol && d < bestDelta {
 			best, bestDelta = e.Narrator, d
 		}
 	}
-	tol := mins * 3 / 100
-	if tol < 5 {
-		tol = 5
+	if best == "" {
+		return "" // nothing close enough
 	}
-	if bestDelta > tol {
-		return ""
+	// Ambiguous when a DIFFERENT narrator's edition is nearly as close: two
+	// narrations of near-equal length (two 734-minute readings) can't be told
+	// apart by duration, so name no one rather than guess wrong.
+	for _, e := range editions {
+		if e.Format != "audiobook" || e.RuntimeMinutes <= 0 || e.Narrator == "" || e.Narrator == best {
+			continue
+		}
+		d := mins - e.RuntimeMinutes
+		if d < 0 {
+			d = -d
+		}
+		if d <= tol && d-bestDelta <= tol/2 {
+			return ""
+		}
 	}
 	return best
 }

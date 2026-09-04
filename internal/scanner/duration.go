@@ -58,6 +58,8 @@ func fileDuration(path string) (float64, error) {
 		return mp4Duration(f, info.Size())
 	case ".mp3":
 		return mp3Duration(f, info.Size())
+	case ".flac":
+		return flacDuration(f)
 	default:
 		return 0, errUnsupportedAudio
 	}
@@ -67,6 +69,7 @@ var (
 	errUnsupportedAudio = errors.New("scanner: unsupported audio format")
 	errNoMVHD           = errors.New("scanner: mp4 has no mvhd")
 	errNoMP3Frame       = errors.New("scanner: no mp3 frame found")
+	errNoStreamInfo     = errors.New("scanner: flac has no STREAMINFO")
 )
 
 // --- MP4 / M4B (moov → mvhd is the exact duration) ---
@@ -157,6 +160,43 @@ func findAtom(rs io.ReadSeeker, start, end int64, want string) (int64, int64, er
 		pos += size
 	}
 	return 0, 0, errNoMVHD
+}
+
+// --- FLAC (STREAMINFO gives exact total samples / sample rate) ---
+
+// flacDuration reads the mandatory first metadata block (STREAMINFO) and
+// returns total_samples / sample_rate.
+func flacDuration(rs io.ReadSeeker) (float64, error) {
+	var magic [4]byte
+	if _, err := io.ReadFull(rs, magic[:]); err != nil {
+		return 0, err
+	}
+	if string(magic[:]) != "fLaC" {
+		return 0, errUnsupportedAudio
+	}
+	// Metadata block header: 1 byte (last-flag<<7 | type), 3-byte length. The
+	// first block is always STREAMINFO (type 0).
+	var hdr [4]byte
+	if _, err := io.ReadFull(rs, hdr[:]); err != nil {
+		return 0, err
+	}
+	if hdr[0]&0x7f != 0 {
+		return 0, errNoStreamInfo
+	}
+	// STREAMINFO: min/max block (4) + min/max frame (6) = 10 bytes, then a
+	// 64-bit pack of sample_rate(20) | channels(3) | bits_per_sample(5) |
+	// total_samples(36). Only the pack is needed.
+	var info [18]byte
+	if _, err := io.ReadFull(rs, info[:]); err != nil {
+		return 0, err
+	}
+	packed := binary.BigEndian.Uint64(info[10:18])
+	sampleRate := packed >> 44
+	totalSamples := packed & ((1 << 36) - 1)
+	if sampleRate == 0 {
+		return 0, errNoStreamInfo
+	}
+	return float64(totalSamples) / float64(sampleRate), nil
 }
 
 // --- MP3 (Xing/Info frame count when present, else a CBR estimate) ---

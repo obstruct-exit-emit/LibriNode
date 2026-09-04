@@ -56,6 +56,39 @@ func TestMatchAudiobookNarrators(t *testing.T) {
 	}
 }
 
+// TestBestNarratorAmbiguity: two distinct narrators of near-equal length can't
+// be told apart by duration, so no one is named — but a clear winner, a
+// single in-tolerance narrator, or the same narrator twice all resolve.
+func TestBestNarratorAmbiguity(t *testing.T) {
+	pp := []Edition{
+		{Format: "audiobook", RuntimeMinutes: 734, Narrator: "Stevie Zimmerman"},
+		{Format: "audiobook", RuntimeMinutes: 734, Narrator: "Elizabeth Grace"},
+		{Format: "audiobook", RuntimeMinutes: 695, Narrator: "Rosamund Pike"},
+	}
+	if got := bestNarrator(734, pp); got != "" {
+		t.Errorf("bestNarrator(734) = %q, want \"\" (two 734-min narrators tie)", got)
+	}
+	if got := bestNarrator(695, pp); got != "Rosamund Pike" {
+		t.Errorf("bestNarrator(695) = %q, want Rosamund Pike (only one in tolerance)", got)
+	}
+
+	clear := []Edition{
+		{Format: "audiobook", RuntimeMinutes: 970, Narrator: "Ray Porter"},
+		{Format: "audiobook", RuntimeMinutes: 900, Narrator: "Someone Else"},
+	}
+	if got := bestNarrator(968, clear); got != "Ray Porter" {
+		t.Errorf("bestNarrator(968) = %q, want Ray Porter (clear winner)", got)
+	}
+
+	same := []Edition{
+		{Format: "audiobook", RuntimeMinutes: 734, Narrator: "Scott Brick"},
+		{Format: "audiobook", RuntimeMinutes: 736, Narrator: "Scott Brick"},
+	}
+	if got := bestNarrator(735, same); got != "Scott Brick" {
+		t.Errorf("bestNarrator(735) = %q, want Scott Brick (same narrator is not ambiguous)", got)
+	}
+}
+
 // TestRetireSourceEditions: re-enrichment prunes a source's editions no longer
 // returned (an earlier over-broad match), leaving other sources untouched.
 func TestRetireSourceEditions(t *testing.T) {

@@ -84,6 +84,66 @@ func TestMP3SkipsBadBitrateSync(t *testing.T) {
 	}
 }
 
+// flacFixture builds "fLaC" + a STREAMINFO block with the given rate/samples.
+func flacFixture(sampleRate, totalSamples uint64) []byte {
+	b := append([]byte("fLaC"), 0x00, 0x00, 0x00, 0x22) // STREAMINFO, length 34
+	info := make([]byte, 34)
+	packed := (sampleRate << 44) | (uint64(1) << 41) | (uint64(15) << 36) | totalSamples
+	binary.BigEndian.PutUint64(info[10:18], packed)
+	return append(b, info...)
+}
+
+func TestFLACDurationReadsStreamInfo(t *testing.T) {
+	secs, err := flacDuration(bytes.NewReader(flacFixture(44100, 44100*600)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secs != 600 {
+		t.Errorf("flac duration = %v, want 600s", secs)
+	}
+}
+
+func TestMP4TruncatedReturnsError(t *testing.T) {
+	// ftyp with no moov (a partial download) must error, not report a duration.
+	ftyp := box("ftyp", []byte("isom\x00\x00\x00\x00"))
+	if _, err := mp4Duration(bytes.NewReader(ftyp), int64(len(ftyp))); err == nil {
+		t.Error("truncated mp4 (no moov) should error")
+	}
+}
+
+func TestAudioDurationMixedFormats(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "01.m4b"), mp4Fixture(1000, 600000), 0o644); err != nil { // 10m
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "02.flac"), flacFixture(44100, 44100*300), 0o644); err != nil { // 5m
+		t.Fatal(err)
+	}
+	mins, err := AudioDuration(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mins != 15 {
+		t.Errorf("mixed m4b+flac folder = %d min, want 15", mins)
+	}
+}
+
+func TestAudioDurationUnsupportedContributesZero(t *testing.T) {
+	dir := t.TempDir()
+	// .opus is recognized as audio but the probe can't measure it — it must
+	// contribute 0 without failing the whole book.
+	if err := os.WriteFile(filepath.Join(dir, "a.opus"), []byte("OggS not really opus"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mins, err := AudioDuration(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mins != 0 {
+		t.Errorf("unsupported-only folder = %d min, want 0", mins)
+	}
+}
+
 func TestAudioDurationSumsFolder(t *testing.T) {
 	dir := t.TempDir()
 	data := mp4Fixture(1000, 600000) // 10 minutes each
