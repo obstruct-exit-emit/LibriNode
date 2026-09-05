@@ -1407,6 +1407,16 @@ button.link.back:hover {
   flex-basis: 100%;
   max-width: none;
 }
+.narrator-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.narrator-chips .toggle {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+}
 
 @media (max-width: 600px) {
   .detail-head {

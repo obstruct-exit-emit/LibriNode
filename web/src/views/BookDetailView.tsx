@@ -23,32 +23,32 @@ function wikiUrl(name: string): string {
   )}&go=Go`;
 }
 
-// NarratorLinks renders each narrator as a Wikipedia link. A full-cast narration
-// can list a dozen names, so it shows the first few and collapses the rest.
+// NarratorLinks renders each narrator as a Wikipedia link chip (CantiNode's
+// external-link style). A full-cast narration can list a dozen names, so it
+// shows the first several and collapses the rest.
 function NarratorLinks({ narrator }: { narrator: string }) {
   const names = narrator
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
-  const shown = names.slice(0, 3);
+  const shown = names.slice(0, 6);
   const extra = names.length - shown.length;
   return (
-    <>
-      {shown.map((name, i) => (
-        <span key={name}>
-          {i > 0 && ", "}
-          <a
-            href={wikiUrl(name)}
-            target="_blank"
-            rel="noreferrer"
-            title={`Look up ${name} on Wikipedia`}
-          >
-            {name}
-          </a>
-        </span>
+    <div className="narrator-chips">
+      {shown.map((name) => (
+        <a
+          key={name}
+          className="toggle"
+          href={wikiUrl(name)}
+          target="_blank"
+          rel="noreferrer"
+          title={`Look up ${name} on Wikipedia`}
+        >
+          {name} ↗
+        </a>
       ))}
-      {extra > 0 && ` +${extra}`}
-    </>
+      {extra > 0 && <span className="muted">+{extra} more</span>}
+    </div>
   );
 }
 
@@ -202,11 +202,9 @@ export default function BookDetailView({
             <>
               <div className="detail-stats">
                 {narrator && (
-                  <div className="detail-stat">
+                  <div className="detail-stat wide">
                     <span className="detail-stat-label">Narrator</span>
-                    <span className="detail-stat-value" title={narrator}>
-                      🎧 <NarratorLinks narrator={narrator} />
-                    </span>
+                    <NarratorLinks narrator={narrator} />
                   </div>
                 )}
                 {runtimeMinutes > 0 && (
