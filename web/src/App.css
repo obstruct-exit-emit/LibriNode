@@ -1415,7 +1415,8 @@ button.link.back:hover {
 }
 /* .toggle is scoped to button.toggle, so an <a> chip gets no box — give the
    narrator links the same bordered-button look CantiNode uses for its links. */
-.narrator-chips .toggle {
+.narrator-chips .toggle,
+.credits-list .toggle {
   display: inline-block;
   background: transparent;
   border: 1px solid var(--border);
@@ -1426,9 +1427,30 @@ button.link.back:hover {
   padding: 0.25rem 0.6rem;
   transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
 }
-.narrator-chips .toggle:hover {
+.narrator-chips .toggle:hover,
+.credits-list .toggle:hover {
   border-color: var(--accent);
   color: var(--text);
+}
+
+/* Narrator credits modal (adapted from CantiNode's TrackCreditsModal). */
+.credits-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.credits-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.88rem;
 }
 
 @media (max-width: 600px) {

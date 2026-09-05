@@ -23,31 +23,66 @@ function wikiUrl(name: string): string {
   )}&go=Go`;
 }
 
-// NarratorLinks renders each narrator as a Wikipedia link chip (CantiNode's
-// external-link style). A full-cast narration can list a dozen names, so it
-// shows the first several and collapses the rest.
-function NarratorLinks({ narrator }: { narrator: string }) {
-  const names = narrator
+function splitNarrators(narrator: string): string[] {
+  return narrator
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
-  const shown = names.slice(0, 6);
-  const extra = names.length - shown.length;
+}
+
+// NarratorChip shows a single narrator as a Wikipedia link chip, or — for a
+// full cast — one "N narrators" button that opens the modal, so a dozen names
+// never crowd the page.
+function NarratorChip({ names, onShowAll }: { names: string[]; onShowAll: () => void }) {
   return (
     <div className="narrator-chips">
-      {shown.map((name) => (
+      {names.length === 1 ? (
         <a
-          key={name}
           className="toggle"
-          href={wikiUrl(name)}
+          href={wikiUrl(names[0])}
           target="_blank"
           rel="noreferrer"
-          title={`Look up ${name} on Wikipedia`}
+          title={`Look up ${names[0]} on Wikipedia`}
         >
-          {name} ↗
+          {names[0]} ↗
         </a>
-      ))}
-      {extra > 0 && <span className="muted">+{extra} more</span>}
+      ) : (
+        <button className="toggle" onClick={onShowAll} title="Show all narrators">
+          {names.length} narrators
+        </button>
+      )}
+    </div>
+  );
+}
+
+// NarratorsModal lists every narrator, each with a Wikipedia link — mirrors
+// CantiNode's TrackCreditsModal (the "Featuring" popup): the app's modal shell
+// and a bordered credits-list row per name.
+function NarratorsModal({ names, onClose }: { names: string[]; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Narrators</h3>
+        <ul className="credits-list">
+          {names.map((name, i) => (
+            <li key={i}>
+              <span>{name}</span>
+              <a
+                className="toggle"
+                href={wikiUrl(name)}
+                target="_blank"
+                rel="noreferrer"
+                title={`Search Wikipedia for ${name}`}
+              >
+                Wikipedia ↗
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div className="settings-actions">
+          <button onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -81,6 +116,7 @@ export default function BookDetailView({
   const [grabNotice, setGrabNotice] = useState("");
   const [fileBusy, setFileBusy] = useState(false);
   const [fileNotice, setFileNotice] = useState("");
+  const [showNarrators, setShowNarrators] = useState(false);
 
   const reload = useCallback(() => {
     api
@@ -120,6 +156,7 @@ export default function BookDetailView({
     .map((s) => s.toUpperCase())
     .join(", ");
   const narrator = files.find((f) => f.narrator)?.narrator ?? "";
+  const narratorNames = splitNarrators(narrator);
   const runtimeMinutes = files.find((f) => f.runtimeMinutes)?.runtimeMinutes ?? 0;
   const trackCount = files.find((f) => f.tracks?.length)?.tracks?.length ?? 0;
   const basePath = files[0]?.path ?? "";
@@ -201,10 +238,10 @@ export default function BookDetailView({
           {files.length > 0 && (
             <>
               <div className="detail-stats">
-                {narrator && (
+                {narratorNames.length > 0 && (
                   <div className="detail-stat wide">
                     <span className="detail-stat-label">Narrator</span>
-                    <NarratorLinks narrator={narrator} />
+                    <NarratorChip names={narratorNames} onShowAll={() => setShowNarrators(true)} />
                   </div>
                 )}
                 {runtimeMinutes > 0 && (
@@ -446,6 +483,9 @@ export default function BookDetailView({
             ))}
           </ul>
         </section>
+      )}
+      {showNarrators && (
+        <NarratorsModal names={narratorNames} onClose={() => setShowNarrators(false)} />
       )}
     </>
   );
