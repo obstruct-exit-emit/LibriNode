@@ -1413,9 +1413,22 @@ button.link.back:hover {
   gap: 0.35rem;
   align-items: center;
 }
+/* .toggle is scoped to button.toggle, so an <a> chip gets no box — give the
+   narrator links the same bordered-button look CantiNode uses for its links. */
 .narrator-chips .toggle {
-  font-size: 0.8rem;
-  padding: 0.2rem 0.6rem;
+  display: inline-block;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.narrator-chips .toggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 @media (max-width: 600px) {
