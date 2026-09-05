@@ -2736,6 +2736,7 @@ const tagFieldGroups: { title: string; fields: { key: keyof TagWriteSettings; la
   {
     title: "Additional",
     fields: [
+      { key: "disableGenre", label: "Genre" },
       { key: "disableDescription", label: "Description" },
       { key: "disableIdentifier", label: "ISBN / ASIN" },
     ],

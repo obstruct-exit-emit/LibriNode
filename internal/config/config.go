@@ -647,6 +647,7 @@ type TagWriteSettings struct {
 	DisableNarrator    bool `yaml:"disable_narrator" json:"disableNarrator"`
 	DisableDate        bool `yaml:"disable_date" json:"disableDate"`
 	DisableSeries      bool `yaml:"disable_series" json:"disableSeries"`
+	DisableGenre       bool `yaml:"disable_genre" json:"disableGenre"`
 	DisableDescription bool `yaml:"disable_description" json:"disableDescription"`
 	DisableIdentifier  bool `yaml:"disable_identifier" json:"disableIdentifier"`
 	DisableCoverImage  bool `yaml:"disable_cover_image" json:"disableCoverImage"`
@@ -679,6 +680,7 @@ func (c *Config) TagWriteToggles() tagwriter.Toggles {
 		Narrator:    !c.TagWrite.DisableNarrator,
 		Date:        !c.TagWrite.DisableDate,
 		Series:      !c.TagWrite.DisableSeries,
+		Genre:       !c.TagWrite.DisableGenre,
 		Description: !c.TagWrite.DisableDescription,
 		Identifier:  !c.TagWrite.DisableIdentifier,
 		CoverImage:  !c.TagWrite.DisableCoverImage,

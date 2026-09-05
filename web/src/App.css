@@ -1377,6 +1377,22 @@ button.link.back:hover {
   overflow: hidden;
 }
 
+/* Genre chips under a book's header facts. */
+.detail-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0.25rem;
+}
+.genre-chip {
+  font-size: 0.72rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  background: var(--muted-soft);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* Labeled fact grid in a detail header (narrator, runtime, format, size, path). */
 .detail-stats {
   display: flex;

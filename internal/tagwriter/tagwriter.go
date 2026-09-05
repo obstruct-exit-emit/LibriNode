@@ -31,6 +31,7 @@ type Tags struct {
 	Date        string // → date (release date or year)
 	Series      string // → movement name + SERIES (what players shelve a series under)
 	SeriesIndex string // → movement number + SERIES-PART (position in the series)
+	Genre       string // → genre (the book's genres, comma-joined)
 	Description string // → comment + DESCRIPTION
 	ISBN        string // → ISBN (from an ebook edition, if any)
 	ASIN        string // → ASIN (from the audiobook edition, if any)
@@ -49,6 +50,7 @@ type Toggles struct {
 	Narrator    bool
 	Date        bool
 	Series      bool
+	Genre       bool
 	Description bool
 	Identifier  bool
 	CoverImage  bool
@@ -58,7 +60,7 @@ type Toggles struct {
 // preference.
 var AllEnabled = Toggles{
 	Title: true, Author: true, Album: true, Narrator: true, Date: true,
-	Series: true, Description: true, Identifier: true, CoverImage: true,
+	Series: true, Genre: true, Description: true, Identifier: true, CoverImage: true,
 }
 
 // Write embeds tags into the audio file at path. Only enabled, non-empty fields

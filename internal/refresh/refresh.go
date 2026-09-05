@@ -361,6 +361,7 @@ func (s *Service) persistBook(ctx context.Context, p metadata.Provider, remote *
 		ReleaseDate: remote.ReleaseDate,
 		Rating:      remote.Rating,
 		CoverURL:    remote.CoverURL,
+		Genres:      remote.Genres,
 		Monitored:   monitored,
 	}
 	if err := s.store.UpsertBook(book); err != nil {

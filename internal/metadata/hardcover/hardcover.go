@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -423,6 +424,7 @@ const authorQuery = `query Author($id: Int!, $lang: String!) {
         release_date
         rating
         cached_image
+        cached_tags
         users_count
         compilation
         contributions_aggregate { aggregate { count } }
@@ -453,6 +455,7 @@ type gqlBook struct {
 	ReleaseDate string           `json:"release_date"`
 	Rating      float64          `json:"rating"`
 	CachedImage json.RawMessage  `json:"cached_image"`
+	CachedTags  json.RawMessage  `json:"cached_tags"`
 	BookSeries  []gqlSeriesEntry `json:"book_series"`
 	// Bibliography-quality fields (author query only; absent elsewhere → zero).
 	UsersCount      int               `json:"users_count"`
@@ -474,6 +477,7 @@ func (b *gqlBook) toMetadata() metadata.Book {
 		ReleaseDate: b.ReleaseDate,
 		Rating:      b.Rating,
 		CoverURL:    imageURL(b.CachedImage),
+		Genres:      genresFromCachedTags(b.CachedTags),
 	}
 	for _, se := range b.BookSeries {
 		if se.Series.ID.String() == "" {
@@ -485,6 +489,40 @@ func (b *gqlBook) toMetadata() metadata.Book {
 			Description: se.Series.Description,
 			Position:    se.Position,
 		})
+	}
+	return out
+}
+
+// maxGenres caps how many of a book's genre tags LibriNode keeps — enough to be
+// useful in a tag or a header without turning into noise.
+const maxGenres = 6
+
+// genresFromCachedTags pulls the genre tag names out of Hardcover's cached_tags
+// blob — a category-keyed map ({"Genre": [{tag, count, …}], "Mood": […], …}) —
+// ordered most-agreed (highest count) first and capped at maxGenres.
+func genresFromCachedTags(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var byCategory map[string][]struct {
+		Tag   string `json:"tag"`
+		Count int    `json:"count"`
+	}
+	if err := json.Unmarshal(raw, &byCategory); err != nil {
+		return nil
+	}
+	genres := byCategory["Genre"]
+	sort.SliceStable(genres, func(i, j int) bool { return genres[i].Count > genres[j].Count })
+	var out []string
+	for _, g := range genres {
+		name := strings.TrimSpace(g.Tag)
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+		if len(out) >= maxGenres {
+			break
+		}
 	}
 	return out
 }
@@ -623,6 +661,7 @@ const bookQuery = `query Book($id: Int!) {
     release_date
     rating
     cached_image
+    cached_tags
     contributions {
       author { id name }
     }

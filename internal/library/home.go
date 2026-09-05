@@ -269,15 +269,16 @@ const primarySeriesCols = `,
 // attaching the primary series link when the book has one.
 func scanBookWithSeries(rows *sql.Rows) (*Book, error) {
 	var b Book
-	var st string
+	var genres, st string
 	var sp float64
 	if err := rows.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
-		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
+		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &genres, &b.Monitored,
 		&b.InEbookLibrary, &b.EbookMonitored, &b.InAudiobookLibrary, &b.AudiobookMonitored,
 		&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.HasColorFile, &b.HasMonoFile,
 		&b.AddedAt, &b.UpdatedAt, &st, &sp); err != nil {
 		return nil, err
 	}
+	b.Genres = splitGenres(genres)
 	if st != "" {
 		b.Series = []SeriesLink{{Title: st, Position: sp}}
 	}

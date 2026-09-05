@@ -38,6 +38,9 @@ func writeTagLib(path string, tags Tags, clear bool, enabled Toggles) error {
 		setFieldIfPresent(set, taglib.MovementNumber, tags.SeriesIndex)
 		setFieldIfPresent(set, "SERIES-PART", tags.SeriesIndex)
 	}
+	if enabled.Genre {
+		setFieldIfPresent(set, taglib.Genre, tags.Genre)
+	}
 	if enabled.Description {
 		setFieldIfPresent(set, taglib.Comment, tags.Description)
 		setFieldIfPresent(set, "DESCRIPTION", tags.Description)

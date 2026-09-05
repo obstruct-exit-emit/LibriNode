@@ -45,6 +45,7 @@ export interface Book {
   releaseDate: string;
   rating: number;
   coverUrl: string;
+  genres?: string[];
   monitored: boolean;
   inEbookLibrary: boolean;
   ebookMonitored: boolean;
@@ -537,6 +538,7 @@ export interface TagWriteSettings {
   disableNarrator: boolean;
   disableDate: boolean;
   disableSeries: boolean;
+  disableGenre: boolean;
   disableDescription: boolean;
   disableIdentifier: boolean;
   disableCoverImage: boolean;

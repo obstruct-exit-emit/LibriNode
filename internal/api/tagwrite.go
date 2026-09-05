@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/librinode/librinode/internal/config"
@@ -152,6 +153,7 @@ func (s *server) writeTagsForBook(ctx context.Context, book *library.Book, autho
 		Date:        book.ReleaseDate,
 		Series:      seriesTitle,
 		SeriesIndex: seriesIndex,
+		Genre:       strings.Join(book.Genres, ", "),
 		Description: book.Description,
 		ISBN:        isbn,
 		ASIN:        asin,

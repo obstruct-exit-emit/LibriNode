@@ -66,6 +66,9 @@ type Book struct {
 	AuthorName      string       `json:"authorName"`
 	Series          []SeriesLink `json:"series,omitempty"`
 	Editions        []Edition    `json:"editions,omitempty"`
+	// Genres are the book's work-level genre tags (most-agreed first), when the
+	// provider carries them. Shared across the book's formats.
+	Genres []string `json:"genres,omitempty"`
 	// Source names the origin provider; see Author.Source.
 	Source string `json:"metadataSource,omitempty"`
 }

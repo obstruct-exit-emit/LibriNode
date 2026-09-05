@@ -297,6 +297,13 @@ export default function BookDetailView({
               )}
             </>
           )}
+          {book.genres && book.genres.length > 0 && (
+            <div className="detail-genres">
+              {book.genres.map((g) => (
+                <span key={g} className="genre-chip">{g}</span>
+              ))}
+            </div>
+          )}
           {book.description && <p className="detail-desc">{book.description}</p>}
           <div className="settings-actions">
             <button

@@ -330,18 +330,18 @@ func (s *Store) UpsertBook(b *Book) error {
 	if b.ID != 0 {
 		_, err := s.db.Exec(`
 			UPDATE books SET author_id = ?, metadata_source = ?, media_type = ?, foreign_id = ?,
-				title = ?, sort_title = ?, description = ?, release_date = ?, rating = ?, cover_url = ?,
+				title = ?, sort_title = ?, description = ?, release_date = ?, rating = ?, cover_url = ?, genres = ?,
 				updated_at = datetime('now')
 			WHERE id = ?`,
 			b.AuthorID, b.Source, b.MediaType, b.ForeignID, b.Title, b.SortTitle,
-			b.Description, b.ReleaseDate, b.Rating, b.CoverURL, b.ID,
+			b.Description, b.ReleaseDate, b.Rating, b.CoverURL, joinGenres(b.Genres), b.ID,
 		)
 		return err
 	}
 	return s.db.QueryRow(`
-		INSERT INTO books (author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
+		INSERT INTO books (author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, genres, monitored,
 			in_ebook_library, ebook_monitored, in_audiobook_library, audiobook_monitored)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (metadata_source, foreign_id) DO UPDATE SET
 			author_id = excluded.author_id,
 			media_type = excluded.media_type,
@@ -351,10 +351,11 @@ func (s *Store) UpsertBook(b *Book) error {
 			release_date = excluded.release_date,
 			rating = excluded.rating,
 			cover_url = excluded.cover_url,
+			genres = excluded.genres,
 			updated_at = datetime('now')
 		RETURNING id`,
 		b.AuthorID, b.Source, b.MediaType, b.ForeignID, b.Title, b.SortTitle,
-		b.Description, b.ReleaseDate, b.Rating, b.CoverURL, b.Monitored,
+		b.Description, b.ReleaseDate, b.Rating, b.CoverURL, joinGenres(b.Genres), b.Monitored,
 		b.InEbookLibrary, b.EbookMonitored, b.InAudiobookLibrary, b.AudiobookMonitored,
 	).Scan(&b.ID)
 }
@@ -493,7 +494,7 @@ func (s *Store) DeleteAuthorBookFilesForFormat(authorID int64, mediaType string)
 	return err
 }
 
-const bookCols = `id, author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, monitored,
+const bookCols = `id, author_id, metadata_source, media_type, foreign_id, title, sort_title, description, release_date, rating, cover_url, genres, monitored,
 	in_ebook_library, ebook_monitored, in_audiobook_library, audiobook_monitored,
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id),
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'ebook'),
@@ -504,8 +505,9 @@ const bookCols = `id, author_id, metadata_source, media_type, foreign_id, title,
 
 func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	var b Book
+	var genres string
 	err := row.Scan(&b.ID, &b.AuthorID, &b.Source, &b.MediaType, &b.ForeignID, &b.Title, &b.SortTitle,
-		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &b.Monitored,
+		&b.Description, &b.ReleaseDate, &b.Rating, &b.CoverURL, &genres, &b.Monitored,
 		&b.InEbookLibrary, &b.EbookMonitored, &b.InAudiobookLibrary, &b.AudiobookMonitored,
 		&b.HasFile, &b.HasEbookFile, &b.HasAudiobookFile, &b.HasColorFile, &b.HasMonoFile,
 		&b.AddedAt, &b.UpdatedAt)
@@ -515,7 +517,19 @@ func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	if err != nil {
 		return nil, err
 	}
+	b.Genres = splitGenres(genres)
 	return &b, nil
+}
+
+// Genres are stored newline-joined in the books.genres column — a separator
+// that never appears inside a genre name, so a round-trip is exact.
+func joinGenres(g []string) string { return strings.Join(g, "\n") }
+
+func splitGenres(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\n")
 }
 
 func (s *Store) GetBook(id int64) (*Book, error) {

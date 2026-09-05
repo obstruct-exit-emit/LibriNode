@@ -54,7 +54,10 @@ type Book struct {
 	ReleaseDate string  `json:"releaseDate"`
 	Rating      float64 `json:"rating"`
 	CoverURL    string  `json:"coverUrl"`
-	Monitored   bool    `json:"monitored"`
+	// Genres are the book's work-level genre tags (most-agreed first), from the
+	// metadata provider; empty when unknown.
+	Genres    []string `json:"genres,omitempty"`
+	Monitored bool     `json:"monitored"`
 	// Per-format library membership (prose books only): a book shows in
 	// the Ebooks/Audiobooks library only when owned or deliberately added
 	// there; each membership has its own monitored flag.

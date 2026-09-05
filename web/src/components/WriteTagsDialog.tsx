@@ -40,7 +40,7 @@ export default function WriteTagsDialog({
               <div className="write-tags-option-title">Merge (recommended)</div>
               <p className="muted">
                 Only touches the fields LibriNode manages — title, author, album,
-                series, narrator, date, description, identifiers, and cover.
+                series, narrator, date, genre, description, identifiers, and cover.
                 Everything else already on the file (ratings, custom fields from
                 other taggers) is left untouched.
               </p>
