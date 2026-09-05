@@ -165,6 +165,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("PUT /api/v1/book/{id}/monitor", s.auth(s.handleMonitorBook))
 	mux.HandleFunc("PUT /api/v1/book/{id}/library", s.auth(s.handleBookLibrary))
 	mux.HandleFunc("POST /api/v1/book/{id}/write-tags", s.auth(s.handleWriteBookTags))
+	mux.HandleFunc("POST /api/v1/author/{id}/write-tags", s.auth(s.handleWriteAuthorTags))
 	mux.HandleFunc("GET /api/v1/libraries", s.auth(s.handleLibraries))
 	mux.HandleFunc("GET /api/v1/home", s.auth(s.handleHome))
 	mux.HandleFunc("GET /api/v1/wanted", s.auth(s.handleWanted))

@@ -4,13 +4,16 @@ import { useState } from "react";
 // vs clear-first — so clear-first doesn't need its own entry in the action row.
 // Mirrors CantiNode's WriteTagsDialog.
 export default function WriteTagsDialog({
+  scope = "book",
   onConfirm,
   onClose,
 }: {
+  scope?: "book" | "author";
   onConfirm: (clear: boolean) => void;
   onClose: () => void;
 }) {
   const [clear, setClear] = useState(false);
+  const target = scope === "author" ? "every audiobook by this author" : "this book's audiobook file(s)";
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -22,8 +25,8 @@ export default function WriteTagsDialog({
       >
         <h3>Write tags</h3>
         <p className="muted">
-          Embed LibriNode's metadata into this book's audiobook file(s), so
-          Audiobookshelf, Plex, or a phone app read it straight from the file.
+          Embed LibriNode's metadata into {target}, so Audiobookshelf, Plex, or a
+          phone app read it straight from the file.
         </p>
         <div className="write-tags-options">
           <label className={`write-tags-option${clear ? "" : " selected"}`}>
@@ -53,9 +56,10 @@ export default function WriteTagsDialog({
             <div>
               <div className="write-tags-option-title">Clear first</div>
               <p className="muted">
-                Wipes every tag LibriNode doesn't manage before writing —
-                existing cover art (a fresh one is re-embedded if enabled),
-                comments, ratings, custom fields. <strong>This cannot be undone.</strong>
+                Wipes every tag LibriNode doesn't manage across {target} before
+                writing — existing cover art (a fresh one is re-embedded if
+                enabled), comments, ratings, custom fields.{" "}
+                <strong>This cannot be undone.</strong>
               </p>
             </div>
           </label>

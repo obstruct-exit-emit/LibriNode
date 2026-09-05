@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
+import WriteTagsDialog from "../components/WriteTagsDialog";
 import { DetailSkeleton } from "../components/Skeleton";
 import {
   SortSelect,
@@ -37,6 +38,7 @@ export default function AuthorDetailView({
   const [books, setBooks] = useState<Book[]>([]);
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [showWriteTags, setShowWriteTags] = useState(false);
   const [notice, setNotice] = useState("");
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [providerOptions, setProviderOptions] = useState<string[]>([]);
@@ -117,6 +119,17 @@ export default function AuthorDetailView({
       await api.refreshAuthor(author.id);
       return "✓ Metadata refreshed";
     });
+
+  const writeTags = (clear: boolean) => {
+    setShowWriteTags(false);
+    headerAction(async () => {
+      const r = await api.writeAuthorTags(author.id, clear);
+      const errs = r.errors ?? [];
+      return errs.length > 0
+        ? `✗ Wrote tags to ${r.written} file(s); ${errs.length} failed`
+        : `✓ Tags written to ${r.written} file(s)`;
+    });
+  };
 
   const searchWanted = () =>
     headerAction(async () => {
@@ -264,6 +277,15 @@ export default function AuthorDetailView({
             >
               Refresh metadata
             </button>
+            {library === "audiobook" && (
+              <button
+                disabled={busy}
+                title="Embed LibriNode's metadata into every audiobook by this author"
+                onClick={() => setShowWriteTags(true)}
+              >
+                Write tags…
+              </button>
+            )}
             <button
               className={author.mirror ? "toggle on" : "toggle"}
               disabled={busy}
@@ -348,6 +370,9 @@ export default function AuthorDetailView({
               onConfirm={remove}
               onCancel={() => setConfirmRemove(false)}
             />
+          )}
+          {showWriteTags && (
+            <WriteTagsDialog scope="author" onConfirm={writeTags} onClose={() => setShowWriteTags(false)} />
           )}
         </div>
       </section>

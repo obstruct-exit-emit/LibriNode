@@ -886,6 +886,11 @@ export const api = {
       `/api/v1/book/${id}/write-tags`,
       { ...json({ clear }), method: "POST" },
     ),
+  writeAuthorTags: (id: number, clear: boolean) =>
+    request<{ written: number; errors: string[] }>(
+      `/api/v1/author/${id}/write-tags`,
+      { ...json({ clear }), method: "POST" },
+    ),
   getNamingSettings: () => request<NamingSettings>("/api/v1/settings/naming"),
   saveNamingSettings: (templates: Partial<NamingSettings>) =>
     request<NamingSettings>("/api/v1/settings/naming", {

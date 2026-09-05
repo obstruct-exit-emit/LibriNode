@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/librinode/librinode/internal/config"
+	"github.com/librinode/librinode/internal/library"
 	"github.com/librinode/librinode/internal/scanner"
 	"github.com/librinode/librinode/internal/tagwriter"
 )
@@ -32,7 +33,7 @@ func (s *server) handleSaveTagWriteSettings(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, s.cfg.TagWriteSettingsValue())
 }
 
-// handleWriteBookTags embeds LibriNode's metadata into a book's audiobook
+// handleWriteBookTags embeds LibriNode's metadata into one book's audiobook
 // file(s) — the one action that mutates file contents, so it's explicit. clear
 // (from the body) wipes unmanaged tags first; which fields are written comes
 // from the per-field settings.
@@ -42,11 +43,7 @@ func (s *server) handleWriteBookTags(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	var req struct {
-		Clear bool `json:"clear"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&req) // body optional (defaults to merge)
-
+	clear := clearOption(r)
 	book, err := s.store.GetBook(id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -57,13 +54,54 @@ func (s *server) handleWriteBookTags(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	files, err := s.store.ListBookFiles(id)
+	toggles := s.cfg.TagWriteToggles()
+	written, errs := s.writeTagsForBook(r.Context(), book, author, toggles, clear)
+	if written == 0 && len(errs) == 0 {
+		writeError(w, http.StatusBadRequest, "no audiobook files to tag")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"written": written, "errors": errs})
+}
+
+// handleWriteAuthorTags writes tags to every audiobook by an author in one pass.
+func (s *server) handleWriteAuthorTags(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	clear := clearOption(r)
+	author, err := s.store.GetAuthor(id)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-
+	books, err := s.store.ListBooks(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	toggles := s.cfg.TagWriteToggles()
+	written := 0
+	errs := []string{}
+	for i := range books {
+		if books[i].MediaType != "book" {
+			continue // only prose (ebook/audiobook) books carry audiobook files
+		}
+		bw, be := s.writeTagsForBook(r.Context(), &books[i], author, toggles, clear)
+		written += bw
+		errs = append(errs, be...)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"written": written, "errors": errs})
+}
+
+// writeTagsForBook writes one book's metadata into each of its audiobook files,
+// returning how many files were written and any per-file errors.
+func (s *server) writeTagsForBook(ctx context.Context, book *library.Book, author *library.Author, toggles tagwriter.Toggles, clear bool) (int, []string) {
+	files, err := s.store.ListBookFiles(book.ID)
+	if err != nil {
+		return 0, []string{err.Error()}
+	}
 	narrator := ""
 	var paths []string
 	for _, f := range files {
@@ -76,15 +114,13 @@ func (s *server) handleWriteBookTags(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, audioFilesUnder(f.Path)...)
 	}
 	if len(paths) == 0 {
-		writeError(w, http.StatusBadRequest, "no audiobook files to tag")
-		return
+		return 0, nil
 	}
 
 	var cover []byte
 	if toggles.CoverImage && book.CoverURL != "" {
-		cover, _ = fetchImageBytes(r.Context(), book.CoverURL) // best-effort
+		cover, _ = fetchImageBytes(ctx, book.CoverURL) // best-effort
 	}
-
 	tags := tagwriter.Tags{
 		Title:      book.Title,
 		Author:     author.Name,
@@ -95,18 +131,28 @@ func (s *server) handleWriteBookTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	written := 0
-	errs := []string{} // never nil — JSON-encodes as [] so the client can read .length
+	errs := []string{} // non-nil so the JSON stays [] even with no errors
 	for _, p := range paths {
 		if !tagwriter.IsSupported(p) {
 			continue
 		}
-		if err := tagwriter.Write(p, tags, req.Clear, toggles); err != nil {
+		if err := tagwriter.Write(p, tags, clear, toggles); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", filepath.Base(p), err))
 			continue
 		}
 		written++
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"written": written, "errors": errs})
+	return written, errs
+}
+
+// clearOption reads the optional {"clear": bool} body every write-tags endpoint
+// accepts (no body = merge).
+func clearOption(r *http.Request) bool {
+	var req struct {
+		Clear bool `json:"clear"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	return req.Clear
 }
 
 // audioFilesUnder returns the audio file at path, or every audio file within it
