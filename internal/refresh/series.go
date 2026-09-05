@@ -109,6 +109,7 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 			Description: description,
 			ReleaseDate: issue.ReleaseDate,
 			CoverURL:    coverURL,
+			Genres:      remote.Genres, // a series' genres apply to every volume
 			Monitored:   volMonitored,
 		}
 		if err := s.store.UpsertBook(book); err != nil {

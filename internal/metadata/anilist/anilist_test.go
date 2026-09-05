@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/librinode/librinode/internal/metadata"
@@ -14,6 +15,7 @@ import (
 const mediaJSON = `{
 	"id": 30002, "title": {"english": "Berserk", "romaji": "Berserk"},
 	"description": "<p>Guts, a former mercenary.</p>",
+	"genres": ["Action", "Adventure", "Drama", "Fantasy", "Horror", "Psychological", "Supernatural"],
 	"volumes": 41, "startDate": {"year": 1989},
 	"coverImage": {"large": "https://img.anilist/berserk.jpg"},
 	"staff": {"edges": [
@@ -160,6 +162,10 @@ func TestGetSeries(t *testing.T) {
 	}
 	if s.Issues[4].Number != 5 || s.Issues[4].Title != "Vol. 5" {
 		t.Errorf("issue 5 = %+v", s.Issues[4])
+	}
+	// Genres carry through, capped at maxGenres (the 7th, "Supernatural", drops).
+	if got := strings.Join(s.Genres, ","); got != "Action,Adventure,Drama,Fantasy,Horror,Psychological" {
+		t.Errorf("genres = %q, want six, capped", got)
 	}
 
 	if _, err := c.GetSeries(context.Background(), "999"); !errors.Is(err, metadata.ErrNotFound) {

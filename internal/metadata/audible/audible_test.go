@@ -72,6 +72,33 @@ func TestFindEditionsParsesFiltersOrders(t *testing.T) {
 	}
 }
 
+// TestFindEditionsGenresFromLadders: the "Genres" category ladders flatten,
+// broad→narrow, into a distinct genre list (non-genre roots ignored, dupes
+// collapsed), used to supplement a book with no genres of its own.
+func TestFindEditionsGenresFromLadders(t *testing.T) {
+	const body = `{"products":[{"asin":"EN1","title":"Dune","authors":[{"name":"Frank Herbert"}],"narrators":[{"name":"Scott Brick"}],"runtime_length_min":1262,"format_type":"unabridged","language":"english","category_ladders":[
+	  {"root":"Genres","ladder":[{"name":"Literature & Fiction"},{"name":"Classics"}]},
+	  {"root":"Genres","ladder":[{"name":"Science Fiction & Fantasy"},{"name":"Science Fiction"},{"name":"Space Opera"}]},
+	  {"root":"Contributors","ladder":[{"name":"Scott Brick"}]}
+	]}]}`
+	c := New(WithEndpoint(serve(t, body).URL), WithLanguage("english"))
+
+	eds, err := c.FindEditions(context.Background(), "Dune", "Frank Herbert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eds) != 1 {
+		t.Fatalf("editions = %d, want 1", len(eds))
+	}
+	got := strings.Join(eds[0].Genres, "|")
+	// Broad→narrow across both Genres ladders, deduped; the Contributors ladder
+	// (Scott Brick) is not a genre and stays out.
+	want := "Literature & Fiction|Classics|Science Fiction & Fantasy|Science Fiction|Space Opera"
+	if got != want {
+		t.Errorf("genres = %q, want %q", got, want)
+	}
+}
+
 // TestFindEditionsLanguagePreference: a configured language keeps that language
 // (and unknown-language editions) and drops the others — but falls back to
 // everything when the work has no edition in the preferred language.

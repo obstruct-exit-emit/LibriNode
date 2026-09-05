@@ -455,6 +455,22 @@ func (s *Service) enrichAudiobook(ctx context.Context, book *library.Book, autho
 		}
 		keep = append(keep, ed.ForeignID)
 	}
+	// Supplement genres: a book the book provider gave none for borrows the
+	// audiobook's category genres (editions are best-match-first, so take the
+	// first that carries any).
+	if len(book.Genres) == 0 {
+		for _, ed := range eds {
+			if len(ed.Genres) == 0 {
+				continue
+			}
+			if err := s.store.SetBookGenres(book.ID, ed.Genres); err != nil {
+				slog.Warn("supplementing audiobook genres", "book", book.Title, "err", err)
+			} else {
+				book.Genres = ed.Genres
+			}
+			break
+		}
+	}
 	// Drop this provider's editions the search no longer returns, so a stale or
 	// earlier over-broad match heals itself instead of lingering.
 	if err := s.store.RetireSourceEditions(book.ID, ap.Name(), keep); err != nil {

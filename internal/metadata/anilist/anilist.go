@@ -129,8 +129,9 @@ type gqlMedia struct {
 		English string `json:"english"`
 		Romaji  string `json:"romaji"`
 	} `json:"title"`
-	Description string `json:"description"`
-	Volumes     int    `json:"volumes"`
+	Description string   `json:"description"`
+	Genres      []string `json:"genres"`
+	Volumes     int      `json:"volumes"`
 	StartDate   struct {
 		Year int `json:"year"`
 	} `json:"startDate"`
@@ -154,6 +155,7 @@ const mediaFields = `
 	isAdult
 	title { english romaji }
 	description(asHtml: false)
+	genres
 	volumes
 	startDate { year }
 	coverImage { large }
@@ -184,7 +186,28 @@ func (m *gqlMedia) toResult(preferRomaji bool) metadata.SeriesResult {
 		Year:        m.StartDate.Year,
 		CoverURL:    m.CoverImage.Large,
 		IssueCount:  m.Volumes,
+		Genres:      capGenres(m.Genres),
 	}
+}
+
+// maxGenres caps how many genre tags a series keeps — matching the book
+// provider's cap, enough to be useful without turning into noise.
+const maxGenres = 6
+
+// capGenres trims empties and limits the list to maxGenres, keeping the
+// provider's order (AniList lists a manga's genres by relevance).
+func capGenres(in []string) []string {
+	var out []string
+	for _, g := range in {
+		if g = strings.TrimSpace(g); g == "" {
+			continue
+		}
+		out = append(out, g)
+		if len(out) >= maxGenres {
+			break
+		}
+	}
+	return out
 }
 
 func (c *Client) SearchSeries(ctx context.Context, query string) ([]metadata.SeriesResult, error) {

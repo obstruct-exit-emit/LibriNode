@@ -24,8 +24,13 @@ import (
 const DefaultEndpoint = "https://api.audible.com/1.0/catalog"
 
 // searchGroups asks for the contributor list (authors + narrators), runtime and
-// format attributes, publisher/language, and cover images in one call.
-const searchGroups = "contributors,media,product_attrs,product_desc"
+// format attributes, publisher/language, cover images, and the category ladders
+// (genre hierarchy) in one call.
+const searchGroups = "contributors,media,product_attrs,product_desc,category_ladders"
+
+// maxGenres caps how many genre tags an audiobook contributes when it
+// supplements a book that has none of its own.
+const maxGenres = 6
 
 // maxEditions caps how many audiobook editions of one work we keep — a popular
 // classic can have dozens of narrations; the most relevant handful is plenty.
@@ -89,8 +94,18 @@ type product struct {
 	ReleaseDate    string            `json:"release_date"`
 	PublisherName  string            `json:"publisher_name"`
 	Language       string            `json:"language"`
-	IsAdultProduct bool              `json:"is_adult_product"`
-	ProductImages  map[string]string `json:"product_images"`
+	IsAdultProduct  bool              `json:"is_adult_product"`
+	ProductImages   map[string]string `json:"product_images"`
+	CategoryLadders []categoryLadder  `json:"category_ladders"`
+}
+
+// categoryLadder is one Audible browse path (broad → narrow), grouped under a
+// root such as "Genres".
+type categoryLadder struct {
+	Root   string `json:"root"`
+	Ladder []struct {
+		Name string `json:"name"`
+	} `json:"ladder"`
 }
 
 type named struct {
@@ -269,7 +284,33 @@ func toEdition(p product) metadata.Edition {
 		Narrator:       strings.Join(names, ", "),
 		RuntimeMinutes: p.RuntimeMinutes,
 		Abridged:       strings.EqualFold(p.FormatType, "abridged"),
+		Genres:         genresFromLadders(p.CategoryLadders),
 	}
+}
+
+// genresFromLadders flattens the "Genres" category ladders into a distinct,
+// order-preserving list (each ladder runs broad → narrow, e.g. Science Fiction
+// & Fantasy → Science Fiction → Space Opera), capped at maxGenres.
+func genresFromLadders(ladders []categoryLadder) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, l := range ladders {
+		if !strings.EqualFold(l.Root, "Genres") {
+			continue
+		}
+		for _, step := range l.Ladder {
+			name := strings.TrimSpace(step.Name)
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+			if len(out) >= maxGenres {
+				return out
+			}
+		}
+	}
+	return out
 }
 
 // titleScore rates how well a product's title matches the wanted work: 2 for an

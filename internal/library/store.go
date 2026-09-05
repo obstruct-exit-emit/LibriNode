@@ -521,6 +521,15 @@ func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	return &b, nil
 }
 
+// SetBookGenres overwrites just a book's genres — used to supplement a book
+// that carries none from its book provider with the audiobook provider's
+// category genres, without disturbing its other fields.
+func (s *Store) SetBookGenres(id int64, genres []string) error {
+	_, err := s.db.Exec(`UPDATE books SET genres = ?, updated_at = datetime('now') WHERE id = ?`,
+		joinGenres(genres), id)
+	return err
+}
+
 // Genres are stored newline-joined in the books.genres column — a separator
 // that never appears inside a genre name, so a round-trip is exact.
 func joinGenres(g []string) string { return strings.Join(g, "\n") }

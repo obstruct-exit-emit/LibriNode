@@ -104,6 +104,9 @@ type SeriesResult struct {
 	CoverURL    string  `json:"coverUrl,omitempty"`
 	IssueCount  int     `json:"issueCount"`
 	Issues      []Issue `json:"issues,omitempty"` // populated by GetSeries
+	// Genres are the series' genre tags (manga/comic), when the provider carries
+	// them (AniList does; ComicVine has none). Shared by every volume.
+	Genres []string `json:"genres,omitempty"`
 }
 
 // Issue is one volume (manga) or issue (comic) of a series.
@@ -132,6 +135,9 @@ type Edition struct {
 	Narrator       string `json:"narrator,omitempty"`
 	RuntimeMinutes int    `json:"runtimeMinutes,omitempty"`
 	Abridged       bool   `json:"abridged,omitempty"`
+	// Genres carries the audiobook provider's category genres — used only to
+	// supplement a book that has none from its book provider.
+	Genres []string `json:"genres,omitempty"`
 }
 
 // AudiobookProvider enriches a prose book with audiobook-edition metadata that
