@@ -202,9 +202,10 @@ export default function BookDetailView({
     api
       .writeBookTags(book.id, clear)
       .then((r) => {
+        const errs = r.errors ?? [];
         setGrabNotice(
-          r.errors.length > 0
-            ? `✗ Wrote ${r.written} file(s); ${r.errors.length} failed: ${r.errors[0]}`
+          errs.length > 0
+            ? `✗ Wrote ${r.written} file(s); ${errs.length} failed: ${errs[0]}`
             : `✓ Tags written to ${r.written} file(s)`,
         );
       })

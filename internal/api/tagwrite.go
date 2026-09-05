@@ -95,7 +95,7 @@ func (s *server) handleWriteBookTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	written := 0
-	var errs []string
+	errs := []string{} // never nil — JSON-encodes as [] so the client can read .length
 	for _, p := range paths {
 		if !tagwriter.IsSupported(p) {
 			continue
