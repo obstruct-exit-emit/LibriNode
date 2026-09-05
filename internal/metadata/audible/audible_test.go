@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -138,6 +139,36 @@ func TestFindEditionsRejectsLongerTitles(t *testing.T) {
 	}
 	if len(eds) != 2 {
 		t.Fatalf("editions = %d, want 2 (Dune + Dune Unabridged, not Dune Messiah): %+v", len(eds), eds)
+	}
+}
+
+// TestFindEditionsMergesQueryVariants: Audible ranks "title author" and the
+// bare "title" differently — one narration surfaces only in the second. The
+// merge must return both.
+func TestFindEditionsMergesQueryVariants(t *testing.T) {
+	wilson := `{"asin":"W","title":"Brightness Reef","authors":[{"name":"David Brin"}],"narrators":[{"name":"George K. Wilson"}],"runtime_length_min":1548,"format_type":"unabridged","language":"english"}`
+	berkrot := `{"asin":"B","title":"Brightness Reef","authors":[{"name":"David Brin"}],"narrators":[{"name":"Peter Berkrot"}],"runtime_length_min":774,"format_type":"unabridged","language":"english"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(strings.ToLower(r.URL.Query().Get("keywords")), "brin") {
+			_, _ = w.Write([]byte(`{"products":[` + wilson + `]}`)) // "title author" — only Wilson
+		} else {
+			_, _ = w.Write([]byte(`{"products":[` + wilson + `,` + berkrot + `]}`)) // bare title — both
+		}
+	}))
+	defer srv.Close()
+
+	eds, err := New(WithEndpoint(srv.URL), WithLanguage("english")).
+		FindEditions(context.Background(), "Brightness Reef", "David Brin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, e := range eds {
+		got[e.Narrator] = true
+	}
+	if !got["George K. Wilson"] || !got["Peter Berkrot"] {
+		t.Fatalf("editions = %+v, want both narrators (merged from both query variants)", eds)
 	}
 }
 

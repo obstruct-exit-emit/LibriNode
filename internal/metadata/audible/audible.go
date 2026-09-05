@@ -110,7 +110,15 @@ func (c *Client) FindEditions(ctx context.Context, title, author string) ([]meta
 	if title == "" {
 		return nil, nil
 	}
-	products, err := c.search(ctx, strings.TrimSpace(title+" "+author))
+	// Audible ranks "title author" and a bare "title" differently, so an edition
+	// (a second narration, a re-release) can rank out of one query but not the
+	// other. Run both and merge by ASIN, catching editions either would miss on
+	// its own.
+	queries := []string{title}
+	if a := strings.TrimSpace(author); a != "" {
+		queries = []string{title + " " + a, title}
+	}
+	products, err := c.searchMerged(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +187,37 @@ func (c *Client) FindEditions(ctx context.Context, title, author string) ([]meta
 			break
 		}
 		out = append(out, m.ed)
+	}
+	return out, nil
+}
+
+// searchMerged runs each query and unions the products by ASIN (first
+// occurrence wins), so an edition surfaced by only one query's ranking is still
+// included. It returns an error only when the first query fails outright; a
+// later variant failing is ignored so one hiccup doesn't drop results already
+// gathered.
+func (c *Client) searchMerged(ctx context.Context, queries []string) ([]product, error) {
+	seen := map[string]bool{}
+	var out []product
+	var firstErr error
+	for i, q := range queries {
+		products, err := c.search(ctx, q)
+		if err != nil {
+			if i == 0 {
+				firstErr = err
+			}
+			continue
+		}
+		for _, p := range products {
+			if p.ASIN == "" || seen[p.ASIN] {
+				continue
+			}
+			seen[p.ASIN] = true
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 && firstErr != nil {
+		return nil, firstErr
 	}
 	return out, nil
 }
