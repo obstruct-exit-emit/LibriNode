@@ -35,7 +35,7 @@ func TestMatchAudiobookNarrators(t *testing.T) {
 	}
 
 	// 968 minutes ≈ the 970-minute Ray Porter edition (not the 300m abridged).
-	if err := s.MatchAudiobookNarrators(b.ID, func(string) (int, error) { return 968, nil }); err != nil {
+	if err := s.MatchAudiobookNarrators(b.ID, func(string) (int, error) { return 968, nil }, nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.GetBookFile(f.ID)
@@ -47,12 +47,54 @@ func TestMatchAudiobookNarrators(t *testing.T) {
 	}
 
 	// 600 minutes is far from both editions → runtime recorded, no narrator.
-	if err := s.MatchAudiobookNarrators(b.ID, func(string) (int, error) { return 600, nil }); err != nil {
+	if err := s.MatchAudiobookNarrators(b.ID, func(string) (int, error) { return 600, nil }, nil); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetBookFile(f.ID)
 	if got.RuntimeMinutes != 600 || got.Narrator != "" {
 		t.Fatalf("off-match = %dm / %q, want 600 / \"\" (neither edition within tolerance)", got.RuntimeMinutes, got.Narrator)
+	}
+}
+
+// TestMatchAudiobookNarratorFromFileTags: what the file itself declares (a tag /
+// .opf narrator) wins over duration-matching — the case where the owned edition
+// isn't in any catalog.
+func TestMatchAudiobookNarratorFromFileTags(t *testing.T) {
+	s := newTestStore(t)
+	res, err := s.db.Exec(`INSERT INTO root_folders (media_type, path) VALUES ('audiobook', ?)`, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootID, _ := res.LastInsertId()
+	a := &Author{Source: "t", ForeignID: "a1", Name: "David Brin"}
+	if err := s.UpsertAuthor(a); err != nil {
+		t.Fatal(err)
+	}
+	b := &Book{AuthorID: a.ID, Source: "t", ForeignID: "b1", Title: "Brightness Reef"}
+	if err := s.UpsertBook(b); err != nil {
+		t.Fatal(err)
+	}
+	// A catalog edition at 968m — duration alone would pick Ray Porter.
+	if err := s.UpsertEdition(&Edition{BookID: b.ID, Source: "audible", ForeignID: "E", Format: "audiobook", Narrator: "Ray Porter", RuntimeMinutes: 968}); err != nil {
+		t.Fatal(err)
+	}
+	f := &BookFile{RootFolderID: rootID, BookID: b.ID, MediaType: "audiobook", Path: "/audio/br.m4b", Format: "m4b"}
+	if err := s.UpsertBookFile(f); err != nil {
+		t.Fatal(err)
+	}
+
+	// The file names its own narrator; that wins over the 968m match.
+	if err := s.MatchAudiobookNarrators(b.ID,
+		func(string) (int, error) { return 968, nil },
+		func(string) string { return "Erin Jones" }); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetBookFile(f.ID)
+	if got.Narrator != "Erin Jones" {
+		t.Fatalf("narrator = %q, want Erin Jones (file's own tag wins over duration-match)", got.Narrator)
+	}
+	if got.RuntimeMinutes != 968 {
+		t.Errorf("runtime = %d, want 968 (still recorded)", got.RuntimeMinutes)
 	}
 }
 

@@ -3,6 +3,7 @@ module github.com/librinode/librinode
 go 1.25.0
 
 require (
+	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/nwaples/rardecode/v2 v2.2.5
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.53.0

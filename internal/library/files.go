@@ -147,15 +147,17 @@ func scanBookFile(row interface{ Scan(...any) error }) (*BookFile, error) {
 	return &f, nil
 }
 
-// MatchAudiobookNarrators probes each of a book's audiobook files, records its
-// total runtime, and — when the book has audiobook editions with runtimes —
-// attaches the narrator of the closest-matching edition. This is how a file's
-// narrator gets named when it appears nowhere in the filename or tags: a
-// 970-minute file matches the 970-minute (Ray Porter) edition, not the
-// 300-minute abridged one. A file with no edition within tolerance keeps its
-// runtime but no narrator, for a person to resolve. durationOf is injected
-// (scanner.AudioDuration) so the library layer carries no audio-parsing code.
-func (s *Store) MatchAudiobookNarrators(bookID int64, durationOf func(string) (int, error)) error {
+// MatchAudiobookNarrators records each of a book's audiobook files' total
+// runtime and its narrator. The narrator is taken first from what the file
+// itself declares (narratorOf — embedded tags / .opf sidecar), which is
+// authoritative for the edition actually owned and covers files from any source
+// no catalog carries. Only when the file names no one does it fall back to
+// duration-matching: the audiobook edition whose runtime is closest (a
+// 970-minute file matches the 970-minute Ray Porter edition, not the 300-minute
+// abridged one), leaving the narrator blank when nothing is close. Both readers
+// are injected (scanner.AudioNarrator / scanner.AudioDuration) so the library
+// layer carries no audio-parsing code. narratorOf may be nil (duration-only).
+func (s *Store) MatchAudiobookNarrators(bookID int64, durationOf func(string) (int, error), narratorOf func(string) string) error {
 	files, err := s.listBookFiles(`WHERE book_id = ? AND media_type = 'audiobook'`, bookID)
 	if err != nil || len(files) == 0 {
 		return err
@@ -165,14 +167,28 @@ func (s *Store) MatchAudiobookNarrators(bookID int64, durationOf func(string) (i
 		return err
 	}
 	for _, f := range files {
-		mins, derr := durationOf(f.Path)
-		if derr != nil || mins <= 0 {
-			continue // unreadable or empty — leave whatever it had
+		narrator := ""
+		if narratorOf != nil {
+			narrator = narratorOf(f.Path)
 		}
-		if _, err := s.db.Exec(
-			`UPDATE book_files SET runtime_minutes = ?, narrator = ? WHERE id = ?`,
-			mins, bestNarrator(mins, editions), f.ID); err != nil {
-			return err
+		mins, derr := durationOf(f.Path)
+		if narrator == "" && derr == nil && mins > 0 {
+			narrator = bestNarrator(mins, editions)
+		}
+		switch {
+		case derr == nil && mins > 0:
+			if _, err := s.db.Exec(
+				`UPDATE book_files SET runtime_minutes = ?, narrator = ? WHERE id = ?`,
+				mins, narrator, f.ID); err != nil {
+				return err
+			}
+		case narrator != "":
+			// Couldn't measure the runtime, but the file named its narrator —
+			// still record that.
+			if _, err := s.db.Exec(
+				`UPDATE book_files SET narrator = ? WHERE id = ?`, narrator, f.ID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

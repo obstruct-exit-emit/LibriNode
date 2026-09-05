@@ -461,7 +461,7 @@ func (s *Service) enrichAudiobook(ctx context.Context, book *library.Book, autho
 	}
 	// With the editions and their runtimes now stored, match any owned audiobook
 	// file against them to name its narrator.
-	if err := s.store.MatchAudiobookNarrators(book.ID, scanner.AudioDuration); err != nil {
+	if err := s.store.MatchAudiobookNarrators(book.ID, scanner.AudioDuration, scanner.AudioNarrator); err != nil {
 		slog.Warn("matching audiobook narrator", "book", book.Title, "err", err)
 	}
 }
