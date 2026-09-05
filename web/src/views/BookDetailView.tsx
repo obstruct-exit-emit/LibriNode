@@ -14,14 +14,42 @@ function formatRuntime(min: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-// A full-cast narration can list a dozen names; keep the inline label short.
-function narratorSummary(narrator: string): string {
+// Wikipedia's "Go" search: redirects straight to the article when the title
+// matches (e.g. a well-known narrator), otherwise lands on search results — so
+// the link is always useful and never a dead page.
+function wikiUrl(name: string): string {
+  return `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(
+    name.trim(),
+  )}&go=Go`;
+}
+
+// NarratorLinks renders each narrator as a Wikipedia link. A full-cast narration
+// can list a dozen names, so it shows the first few and collapses the rest.
+function NarratorLinks({ narrator }: { narrator: string }) {
   const names = narrator
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
-  if (names.length <= 2) return narrator;
-  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  const shown = names.slice(0, 3);
+  const extra = names.length - shown.length;
+  return (
+    <>
+      {shown.map((name, i) => (
+        <span key={name}>
+          {i > 0 && ", "}
+          <a
+            href={wikiUrl(name)}
+            target="_blank"
+            rel="noreferrer"
+            title={`Look up ${name} on Wikipedia`}
+          >
+            {name}
+          </a>
+        </span>
+      ))}
+      {extra > 0 && ` +${extra}`}
+    </>
+  );
 }
 
 // Full-page book detail, mirroring the author page: header with cover art,
@@ -177,7 +205,7 @@ export default function BookDetailView({
                   <div className="detail-stat">
                     <span className="detail-stat-label">Narrator</span>
                     <span className="detail-stat-value" title={narrator}>
-                      🎧 {narratorSummary(narrator)}
+                      🎧 <NarratorLinks narrator={narrator} />
                     </span>
                   </div>
                 )}
