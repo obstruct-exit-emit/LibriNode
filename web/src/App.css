@@ -1406,6 +1406,15 @@ button.link.back:hover {
 .detail-stat.wide {
   flex-basis: 100%;
   max-width: none;
+  min-width: 0;
+}
+/* A long path (the only wide value) must wrap, not run nowrap off the edge and
+   drag the whole card wider than the viewport. */
+.detail-stat.wide .detail-stat-value {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
 }
 .narrator-chips {
   display: flex;
