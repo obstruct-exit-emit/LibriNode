@@ -641,12 +641,15 @@ func (c *Config) SetNaming(ns NamingSettings) error {
 // everything, rather than "disable everything" — the same negative-polarity
 // trick CantiNode uses to keep the default safe.
 type TagWriteSettings struct {
-	DisableTitle      bool `yaml:"disable_title" json:"disableTitle"`
-	DisableAuthor     bool `yaml:"disable_author" json:"disableAuthor"`
-	DisableAlbum      bool `yaml:"disable_album" json:"disableAlbum"`
-	DisableNarrator   bool `yaml:"disable_narrator" json:"disableNarrator"`
-	DisableDate       bool `yaml:"disable_date" json:"disableDate"`
-	DisableCoverImage bool `yaml:"disable_cover_image" json:"disableCoverImage"`
+	DisableTitle       bool `yaml:"disable_title" json:"disableTitle"`
+	DisableAuthor      bool `yaml:"disable_author" json:"disableAuthor"`
+	DisableAlbum       bool `yaml:"disable_album" json:"disableAlbum"`
+	DisableNarrator    bool `yaml:"disable_narrator" json:"disableNarrator"`
+	DisableDate        bool `yaml:"disable_date" json:"disableDate"`
+	DisableSeries      bool `yaml:"disable_series" json:"disableSeries"`
+	DisableDescription bool `yaml:"disable_description" json:"disableDescription"`
+	DisableIdentifier  bool `yaml:"disable_identifier" json:"disableIdentifier"`
+	DisableCoverImage  bool `yaml:"disable_cover_image" json:"disableCoverImage"`
 }
 
 // SetTagWrite persists which tag fields Write embeds.
@@ -670,12 +673,15 @@ func (c *Config) TagWriteToggles() tagwriter.Toggles {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return tagwriter.Toggles{
-		Title:      !c.TagWrite.DisableTitle,
-		Author:     !c.TagWrite.DisableAuthor,
-		Album:      !c.TagWrite.DisableAlbum,
-		Narrator:   !c.TagWrite.DisableNarrator,
-		Date:       !c.TagWrite.DisableDate,
-		CoverImage: !c.TagWrite.DisableCoverImage,
+		Title:       !c.TagWrite.DisableTitle,
+		Author:      !c.TagWrite.DisableAuthor,
+		Album:       !c.TagWrite.DisableAlbum,
+		Narrator:    !c.TagWrite.DisableNarrator,
+		Date:        !c.TagWrite.DisableDate,
+		Series:      !c.TagWrite.DisableSeries,
+		Description: !c.TagWrite.DisableDescription,
+		Identifier:  !c.TagWrite.DisableIdentifier,
+		CoverImage:  !c.TagWrite.DisableCoverImage,
 	}
 }
 

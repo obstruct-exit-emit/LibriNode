@@ -536,6 +536,9 @@ export interface TagWriteSettings {
   disableAlbum: boolean;
   disableNarrator: boolean;
   disableDate: boolean;
+  disableSeries: boolean;
+  disableDescription: boolean;
+  disableIdentifier: boolean;
   disableCoverImage: boolean;
 }
 

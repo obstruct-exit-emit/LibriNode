@@ -2730,6 +2730,14 @@ const tagFieldGroups: { title: string; fields: { key: keyof TagWriteSettings; la
       { key: "disableAlbum", label: "Album" },
       { key: "disableNarrator", label: "Narrator" },
       { key: "disableDate", label: "Release Date" },
+      { key: "disableSeries", label: "Series" },
+    ],
+  },
+  {
+    title: "Additional",
+    fields: [
+      { key: "disableDescription", label: "Description" },
+      { key: "disableIdentifier", label: "ISBN / ASIN" },
     ],
   },
   {

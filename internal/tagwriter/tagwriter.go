@@ -24,30 +24,42 @@ var ErrUnsupportedFormat = errors.New("tagwriter: unsupported format")
 // database (the matched book/author, and the narrator it read or matched), not
 // re-derived from the file's own existing tags.
 type Tags struct {
-	Title    string // → title
-	Author   string // → artist and album artist (Audiobookshelf reads authors from these)
-	Album    string // → album (usually the title, or the series)
-	Narrator string // → composer, the long-standing audiobook narrator convention
-	Date     string // → date (release date or year)
+	Title       string // → title
+	Author      string // → artist and album artist (Audiobookshelf reads authors from these)
+	Album       string // → album (usually the title, or the series)
+	Narrator    string // → composer, the long-standing audiobook narrator convention
+	Date        string // → date (release date or year)
+	Series      string // → movement name + SERIES (what players shelve a series under)
+	SeriesIndex string // → movement number + SERIES-PART (position in the series)
+	Description string // → comment + DESCRIPTION
+	ISBN        string // → ISBN (from an ebook edition, if any)
+	ASIN        string // → ASIN (from the audiobook edition, if any)
 	// CoverImage, when non-empty and enabled, is embedded as the front cover.
 	CoverImage []byte
 }
 
 // Toggles gates which of Tags' fields Write actually touches — one bool per
 // field. A disabled field is omitted from the write entirely (never set, never
-// cleared). Settings-driven; AllEnabled is the default.
+// cleared). Settings-driven; AllEnabled is the default. Identifier covers ISBN
+// and ASIN together.
 type Toggles struct {
-	Title      bool
-	Author     bool
-	Album      bool
-	Narrator   bool
-	Date       bool
-	CoverImage bool
+	Title       bool
+	Author      bool
+	Album       bool
+	Narrator    bool
+	Date        bool
+	Series      bool
+	Description bool
+	Identifier  bool
+	CoverImage  bool
 }
 
 // AllEnabled writes every field — the default when a caller has no per-field
 // preference.
-var AllEnabled = Toggles{Title: true, Author: true, Album: true, Narrator: true, Date: true, CoverImage: true}
+var AllEnabled = Toggles{
+	Title: true, Author: true, Album: true, Narrator: true, Date: true,
+	Series: true, Description: true, Identifier: true, CoverImage: true,
+}
 
 // Write embeds tags into the audio file at path. Only enabled, non-empty fields
 // are touched; everything else in the file is left alone. clear first strips

@@ -29,6 +29,23 @@ func writeTagLib(path string, tags Tags, clear bool, enabled Toggles) error {
 	if enabled.Date {
 		setFieldIfPresent(set, taglib.Date, tags.Date)
 	}
+	if enabled.Series {
+		// Movement name/number is the MP4 series convention Audiobookshelf and
+		// Apple Books read; the plain SERIES/SERIES-PART pair covers ID3/Vorbis
+		// players. Write both so a series shelves correctly wherever it lands.
+		setFieldIfPresent(set, taglib.MovementName, tags.Series)
+		setFieldIfPresent(set, "SERIES", tags.Series)
+		setFieldIfPresent(set, taglib.MovementNumber, tags.SeriesIndex)
+		setFieldIfPresent(set, "SERIES-PART", tags.SeriesIndex)
+	}
+	if enabled.Description {
+		setFieldIfPresent(set, taglib.Comment, tags.Description)
+		setFieldIfPresent(set, "DESCRIPTION", tags.Description)
+	}
+	if enabled.Identifier {
+		setFieldIfPresent(set, "ISBN", tags.ISBN)
+		setFieldIfPresent(set, "ASIN", tags.ASIN)
+	}
 
 	var opts taglib.WriteOption
 	if clear {

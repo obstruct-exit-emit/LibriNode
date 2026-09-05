@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/librinode/librinode/internal/config"
@@ -121,13 +123,39 @@ func (s *server) writeTagsForBook(ctx context.Context, book *library.Book, autho
 	if toggles.CoverImage && book.CoverURL != "" {
 		cover, _ = fetchImageBytes(ctx, book.CoverURL) // best-effort
 	}
+
+	// Series (the first series link), and identifiers from the book's editions —
+	// ISBN from any edition, ASIN preferring the audiobook edition matching the
+	// owned file's narrator.
+	seriesTitle, seriesIndex := "", ""
+	if links, err := s.store.ListSeriesForBook(book.ID); err == nil && len(links) > 0 {
+		seriesTitle = links[0].Title
+		seriesIndex = formatSeriesIndex(links[0].Position)
+	}
+	isbn, asin := "", ""
+	if editions, err := s.store.ListEditions(book.ID); err == nil {
+		for _, e := range editions {
+			if isbn == "" && e.ISBN13 != "" {
+				isbn = e.ISBN13
+			}
+			if e.Format == "audiobook" && e.ASIN != "" && (asin == "" || e.Narrator == narrator) {
+				asin = e.ASIN
+			}
+		}
+	}
+
 	tags := tagwriter.Tags{
-		Title:      book.Title,
-		Author:     author.Name,
-		Album:      book.Title,
-		Narrator:   narrator,
-		Date:       book.ReleaseDate,
-		CoverImage: cover,
+		Title:       book.Title,
+		Author:      author.Name,
+		Album:       book.Title,
+		Narrator:    narrator,
+		Date:        book.ReleaseDate,
+		Series:      seriesTitle,
+		SeriesIndex: seriesIndex,
+		Description: book.Description,
+		ISBN:        isbn,
+		ASIN:        asin,
+		CoverImage:  cover,
 	}
 
 	written := 0
@@ -173,6 +201,18 @@ func audioFilesUnder(path string) []string {
 		return nil
 	})
 	return out
+}
+
+// formatSeriesIndex renders a series position as a tag string: "1" for a whole
+// number, "1.5" otherwise, "" for none.
+func formatSeriesIndex(pos float64) string {
+	if pos <= 0 {
+		return ""
+	}
+	if pos == math.Trunc(pos) {
+		return strconv.FormatInt(int64(pos), 10)
+	}
+	return strconv.FormatFloat(pos, 'g', -1, 64)
 }
 
 func fetchImageBytes(ctx context.Context, url string) ([]byte, error) {
