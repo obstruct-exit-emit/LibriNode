@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/librinode/librinode/internal/metadata"
+	"github.com/librinode/librinode/internal/tagwriter"
 )
 
 // MetadataSettings selects the active metadata provider and stores each
@@ -437,8 +438,9 @@ type Config struct {
 	Naming   NamingSettings   `yaml:"naming"`
 	// No omitempty: Import defaults to all-on, so an all-off choice must be
 	// written explicitly rather than dropped and re-defaulted on load.
-	Import  ImportSettings `yaml:"import"`
-	Timings TimingSettings `yaml:"timings,omitempty"`
+	Import   ImportSettings   `yaml:"import"`
+	Timings  TimingSettings   `yaml:"timings,omitempty"`
+	TagWrite TagWriteSettings `yaml:"tag_write,omitempty"`
 	// PathMappingList translates client-reported download paths onto this
 	// machine's filesystem (Completed Download Handling reads them).
 	PathMappingList []PathMapping `yaml:"path_mappings,omitempty"`
@@ -630,6 +632,51 @@ func (c *Config) SetNaming(ns NamingSettings) error {
 	c.Naming = ns
 	c.mu.Unlock()
 	return c.save()
+}
+
+// TagWriteSettings controls which fields "Write tags" embeds — Settings →
+// Audiobooks → "Tags to write". Every field is a "Disable" flag, not "Enable",
+// on purpose: a bool's zero value is false, so a config.yaml predating this
+// section (or a fresh install) reads back as "nothing disabled" = write
+// everything, rather than "disable everything" — the same negative-polarity
+// trick CantiNode uses to keep the default safe.
+type TagWriteSettings struct {
+	DisableTitle      bool `yaml:"disable_title" json:"disableTitle"`
+	DisableAuthor     bool `yaml:"disable_author" json:"disableAuthor"`
+	DisableAlbum      bool `yaml:"disable_album" json:"disableAlbum"`
+	DisableNarrator   bool `yaml:"disable_narrator" json:"disableNarrator"`
+	DisableDate       bool `yaml:"disable_date" json:"disableDate"`
+	DisableCoverImage bool `yaml:"disable_cover_image" json:"disableCoverImage"`
+}
+
+// SetTagWrite persists which tag fields Write embeds.
+func (c *Config) SetTagWrite(t TagWriteSettings) error {
+	c.mu.Lock()
+	c.TagWrite = t
+	c.mu.Unlock()
+	return c.save()
+}
+
+// TagWriteSettingsValue returns the stored per-field settings.
+func (c *Config) TagWriteSettingsValue() TagWriteSettings {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.TagWrite
+}
+
+// TagWriteToggles maps the stored (negative-polarity) settings to the
+// tagwriter.Toggles the writer wants — a field is written unless disabled.
+func (c *Config) TagWriteToggles() tagwriter.Toggles {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return tagwriter.Toggles{
+		Title:      !c.TagWrite.DisableTitle,
+		Author:     !c.TagWrite.DisableAuthor,
+		Album:      !c.TagWrite.DisableAlbum,
+		Narrator:   !c.TagWrite.DisableNarrator,
+		Date:       !c.TagWrite.DisableDate,
+		CoverImage: !c.TagWrite.DisableCoverImage,
+	}
 }
 
 // NamingSettings returns the current naming templates.

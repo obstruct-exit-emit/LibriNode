@@ -1960,3 +1960,48 @@ button.link.back:hover {
   justify-content: center;
   margin-top: 1rem;
 }
+
+/* Write-tags dialog (adapted from CantiNode's WriteTagsDialog). */
+.write-tags-modal {
+  max-width: 32rem;
+}
+.write-tags-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1.25rem;
+}
+.write-tags-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.write-tags-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.write-tags-option input[type="radio"] {
+  margin-top: 0.25rem;
+  flex: none;
+}
+.write-tags-option-title {
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+/* Per-field "Tags to write" settings grid. */
+.tag-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.35rem 1rem;
+}
+.tag-toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, proxiedImage, type Author, type Book } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
+import WriteTagsDialog from "../components/WriteTagsDialog";
 import { DetailSkeleton } from "../components/Skeleton";
 import { downloadPct, useQueue } from "../useQueue";
 import { formatBytes } from "../format";
@@ -117,6 +118,7 @@ export default function BookDetailView({
   const [fileBusy, setFileBusy] = useState(false);
   const [fileNotice, setFileNotice] = useState("");
   const [showNarrators, setShowNarrators] = useState(false);
+  const [showWriteTags, setShowWriteTags] = useState(false);
 
   const reload = useCallback(() => {
     api
@@ -192,6 +194,21 @@ export default function BookDetailView({
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
       .finally(() => setSearching(false));
+  };
+
+  const writeTags = (clear: boolean) => {
+    setShowWriteTags(false);
+    setGrabNotice("");
+    api
+      .writeBookTags(book.id, clear)
+      .then((r) => {
+        setGrabNotice(
+          r.errors.length > 0
+            ? `✗ Wrote ${r.written} file(s); ${r.errors.length} failed: ${r.errors[0]}`
+            : `✓ Tags written to ${r.written} file(s)`,
+        );
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   };
 
   const year = book.releaseDate ? ` (${book.releaseDate.slice(0, 4)})` : "";
@@ -298,6 +315,14 @@ export default function BookDetailView({
             >
               {showReleases ? "Hide releases" : "Search releases"}
             </button>
+            {library === "audiobook" && files.length > 0 && (
+              <button
+                onClick={() => setShowWriteTags(true)}
+                title="Embed LibriNode's metadata into the audiobook file(s) so other players read it"
+              >
+                Write tags…
+              </button>
+            )}
             {grabNotice && (
               <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
             )}
@@ -486,6 +511,9 @@ export default function BookDetailView({
       )}
       {showNarrators && (
         <NarratorsModal names={narratorNames} onClose={() => setShowNarrators(false)} />
+      )}
+      {showWriteTags && (
+        <WriteTagsDialog onConfirm={writeTags} onClose={() => setShowWriteTags(false)} />
       )}
     </>
   );

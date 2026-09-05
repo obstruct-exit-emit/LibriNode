@@ -527,6 +527,18 @@ export class ApiError extends Error {
   }
 }
 
+// TagWriteSettings mirrors config.TagWriteSettings' negative polarity — a
+// "disable" flag per field, so the default (nothing disabled) writes everything.
+// The checkbox UI inverts each at render so it reads positively.
+export interface TagWriteSettings {
+  disableTitle: boolean;
+  disableAuthor: boolean;
+  disableAlbum: boolean;
+  disableNarrator: boolean;
+  disableDate: boolean;
+  disableCoverImage: boolean;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, {
     ...init,
@@ -862,6 +874,18 @@ export const api = {
   testIndexer: (ind: Omit<Indexer, "id" | "addedAt">) =>
     request<{ ok: boolean }>("/api/v1/indexer/test", json(ind)),
 
+  getTagWriteSettings: () =>
+    request<TagWriteSettings>("/api/v1/settings/tag-write"),
+  saveTagWriteSettings: (s: TagWriteSettings) =>
+    request<TagWriteSettings>("/api/v1/settings/tag-write", {
+      ...json(s),
+      method: "PUT",
+    }),
+  writeBookTags: (id: number, clear: boolean) =>
+    request<{ written: number; errors: string[] }>(
+      `/api/v1/book/${id}/write-tags`,
+      { ...json({ clear }), method: "POST" },
+    ),
   getNamingSettings: () => request<NamingSettings>("/api/v1/settings/naming"),
   saveNamingSettings: (templates: Partial<NamingSettings>) =>
     request<NamingSettings>("/api/v1/settings/naming", {

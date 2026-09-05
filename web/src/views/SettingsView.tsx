@@ -16,6 +16,7 @@ import {
   type QualityProfile,
   type RootFolder,
   type SystemStatus,
+  type TagWriteSettings,
   type TimingSettings,
   type UserAccount,
 } from "../api";
@@ -150,7 +151,12 @@ export default function SettingsView({
       {group === "Quality Profiles" && (
         <QualityProfilesCard onError={onError} activeTypes={activeTypes} />
       )}
-      {group === "Metadata" && <MetadataCard onError={onError} />}
+      {group === "Metadata" && (
+        <>
+          <MetadataCard onError={onError} />
+          <TagWriteCard onError={onError} />
+        </>
+      )}
       {group === "Indexers" && <IndexersCard onError={onError} />}
       {group === "Download Clients" && (
         <>
@@ -2709,6 +2715,106 @@ function RootFoldersCard({
         />
       )}
       {notice && <p className="notice bad">{notice}</p>}
+    </section>
+  );
+}
+
+// tagFieldGroups: each key is TagWriteSettings' negative-polarity field name;
+// the checkbox is inverted at render so it reads positively (checked = written).
+const tagFieldGroups: { title: string; fields: { key: keyof TagWriteSettings; label: string }[] }[] = [
+  {
+    title: "Core",
+    fields: [
+      { key: "disableTitle", label: "Title" },
+      { key: "disableAuthor", label: "Author" },
+      { key: "disableAlbum", label: "Album" },
+      { key: "disableNarrator", label: "Narrator" },
+      { key: "disableDate", label: "Release Date" },
+    ],
+  },
+  {
+    title: "Cover art",
+    fields: [{ key: "disableCoverImage", label: "Embedded cover art" }],
+  },
+];
+
+// TagWriteCard toggles which fields "Write tags" embeds into an audiobook —
+// everything on by default. A disabled field is left alone on a write (never
+// set, never cleared), the same as a field LibriNode has no data for.
+function TagWriteCard({ onError }: { onError: (message: string) => void }) {
+  const [settings, setSettings] = useState<TagWriteSettings | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    api
+      .getTagWriteSettings()
+      .then(setSettings)
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  }, [onError]);
+
+  if (!settings) return <p className="muted">Loading…</p>;
+
+  const setAll = (disabled: boolean) => {
+    const next = { ...settings };
+    for (const group of tagFieldGroups) for (const f of group.fields) next[f.key] = disabled;
+    setSettings(next);
+  };
+
+  const save = () => {
+    setBusy(true);
+    setNotice("");
+    api
+      .saveTagWriteSettings(settings)
+      .then((s) => {
+        setSettings(s);
+        setNotice("✓ Saved");
+      })
+      .catch((err: unknown) => setNotice(`✗ ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <section className="card">
+      <h2>Tags to Write</h2>
+      <p className="muted">
+        Which fields the audiobook "Write tags" action embeds into a file's own
+        tags — everything is on by default. Turning a field off leaves it alone
+        on the file (never cleared), the same as a field LibriNode has no data
+        for.
+      </p>
+      <div className="settings-actions">
+        <button className="toggle" onClick={() => setAll(false)}>
+          Select all
+        </button>
+        <button className="toggle" onClick={() => setAll(true)}>
+          Select none
+        </button>
+      </div>
+      {tagFieldGroups.map((groupDef) => (
+        <Section key={groupDef.title} title={groupDef.title}>
+          <div className="tag-toggle-grid">
+            {groupDef.fields.map((f) => (
+              <label key={f.key} className="tag-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={!settings[f.key]}
+                  onChange={(e) => setSettings({ ...settings, [f.key]: !e.target.checked })}
+                />
+                {f.label}
+              </label>
+            ))}
+          </div>
+        </Section>
+      ))}
+      <div className="settings-actions">
+        <button disabled={busy} onClick={save}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+        {notice && (
+          <span className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</span>
+        )}
+      </div>
     </section>
   );
 }
