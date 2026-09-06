@@ -104,6 +104,31 @@ export interface BookFile {
   tracks?: { name: string; size: number }[];
 }
 
+// BookFileTags is one audiobook file's own embedded tags, read live off disk
+// (not a scan snapshot, which goes stale after a "Write tags" call) plus its
+// audio properties — see getBookFileTags.
+export interface BookFileTags {
+  title: string;
+  author: string;
+  albumArtist: string;
+  album: string;
+  narrator: string;
+  series: string;
+  seriesPart: string;
+  genre: string;
+  date: string;
+  description: string;
+  isbn: string;
+  asin: string;
+  format: string;
+  codec?: string;
+  durationSeconds: number;
+  bitrate: number;
+  sampleRate: number;
+  channels: number;
+  hasCover: boolean;
+}
+
 export interface RootFolder {
   id: number;
   mediaType: string;
@@ -891,6 +916,8 @@ export const api = {
       `/api/v1/book/${id}/write-tags`,
       { ...json({ clear }), method: "POST" },
     ),
+  getBookFileTags: (id: number) =>
+    request<BookFileTags>(`/api/v1/book-file/${id}/tags`),
   writeAuthorTags: (id: number, clear: boolean) =>
     request<{ written: number; errors: string[] }>(
       `/api/v1/author/${id}/write-tags`,

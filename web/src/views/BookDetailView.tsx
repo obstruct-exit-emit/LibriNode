@@ -3,6 +3,7 @@ import { api, proxiedImage, type Author, type Book, type Edition } from "../api"
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
 import WriteTagsDialog from "../components/WriteTagsDialog";
+import BookFileTagsModal from "../components/BookFileTagsModal";
 import { DetailSkeleton } from "../components/Skeleton";
 import { downloadPct, useQueue } from "../useQueue";
 import { formatBytes } from "../format";
@@ -134,7 +135,7 @@ export default function BookDetailView({
   const [addingOther, setAddingOther] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
   const [fileBusy, setFileBusy] = useState(false);
-  const [fileNotice, setFileNotice] = useState("");
+  const [tagsFile, setTagsFile] = useState<{ id: number; name: string } | null>(null);
   const [showNarrators, setShowNarrators] = useState(false);
   const [showWriteTags, setShowWriteTags] = useState(false);
   const [prefLang, setPrefLang] = useState("english");
@@ -254,6 +255,36 @@ export default function BookDetailView({
         );
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
+  };
+
+  // Organize moves this book's file(s) to match the naming templates. It's a
+  // book-level action (renaming one file of a multi-file audiobook in isolation
+  // is pointless), so it lives in the action row, not per file.
+  const organizeFiles = async () => {
+    setFileBusy(true);
+    setGrabNotice("");
+    try {
+      const preview = await api.renamePreview(undefined, undefined, undefined, book.id);
+      if (preview.moves.length === 0) {
+        setGrabNotice("✓ Already organized — files match the naming templates.");
+        return;
+      }
+      const ok = await confirmDlg({
+        title: "Organize files",
+        message:
+          `Move ${preview.moves.length} file(s) to match the naming templates?\n\n` +
+          preview.moves.map((m) => `${m.from}\n  → ${m.to}`).join("\n"),
+        confirmLabel: "Organize",
+      });
+      if (!ok) return;
+      const applied = await api.renameApply(undefined, undefined, undefined, book.id);
+      setGrabNotice(`✓ Moved ${applied.moves.length} file(s).`);
+      reload();
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setFileBusy(false);
+    }
   };
 
   const year = book.releaseDate ? ` (${book.releaseDate.slice(0, 4)})` : "";
@@ -391,6 +422,15 @@ export default function BookDetailView({
                 Write tags…
               </button>
             )}
+            {files.length > 0 && (
+              <button
+                disabled={fileBusy}
+                onClick={organizeFiles}
+                title="Move this book's file(s) to match the naming templates"
+              >
+                Organize…
+              </button>
+            )}
             {grabNotice && (
               <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
             )}
@@ -481,7 +521,6 @@ export default function BookDetailView({
       {files.length > 0 && (
         <section className="card">
           <h2>Files ({files.length})</h2>
-          {fileNotice && <p className="notice ok">{fileNotice}</p>}
           <ul className="rows">
             {files.map((f) => (
               <li key={f.id}>
@@ -493,66 +532,15 @@ export default function BookDetailView({
                     <span className="muted">
                       {f.format} · {formatBytes(f.size)}
                     </span>
-                    <button
-                      className="toggle"
-                      disabled={fileBusy}
-                      title="Move this book's files to match the naming templates"
-                      onClick={async () => {
-                        setFileBusy(true);
-                        setFileNotice("");
-                        try {
-                          const preview = await api.renamePreview(undefined, undefined, undefined, book.id);
-                          if (preview.moves.length === 0) {
-                            setFileNotice("✓ Already organized — files match the naming templates.");
-                            return;
-                          }
-                          const ok = await confirmDlg({
-                            title: "Organize files",
-                            message:
-                              `Move ${preview.moves.length} file(s) to match the naming templates?\n\n` +
-                              preview.moves.map((m) => `${m.from}\n  → ${m.to}`).join("\n"),
-                            confirmLabel: "Organize",
-                          });
-                          if (!ok) return;
-                          const applied = await api.renameApply(undefined, undefined, undefined, book.id);
-                          setFileNotice(`✓ Moved ${applied.moves.length} file(s).`);
-                          reload();
-                        } catch (err) {
-                          onError(String(err instanceof Error ? err.message : err));
-                        } finally {
-                          setFileBusy(false);
-                        }
-                      }}
-                    >
-                      organize
-                    </button>
-                    <button
-                      className="danger"
-                      disabled={fileBusy}
-                      title="Delete this file from disk and forget it"
-                      onClick={async () => {
-                        const ok = await confirmDlg({
-                          title: "Delete file",
-                          message: `Delete this file from disk?\n\n${f.path}\n\nThe book loses this copy; without it the book counts as wanted again.`,
-                          confirmLabel: "Delete file",
-                          danger: true,
-                        });
-                        if (!ok) return;
-                        setFileBusy(true);
-                        setFileNotice("");
-                        try {
-                          await api.dismissFile(f.id, true);
-                          setFileNotice("✓ File deleted.");
-                          reload();
-                        } catch (err) {
-                          onError(String(err instanceof Error ? err.message : err));
-                        } finally {
-                          setFileBusy(false);
-                        }
-                      }}
-                    >
-                      delete
-                    </button>
+                    {f.mediaType === "audiobook" && (
+                      <button
+                        className="toggle"
+                        title="View this file's own embedded tags, read live off disk"
+                        onClick={() => setTagsFile({ id: f.id, name: f.path })}
+                      >
+                        tags
+                      </button>
+                    )}
                   </span>
                 </div>
                 {(f.tracks?.length ?? 0) > 0 && (
@@ -582,6 +570,13 @@ export default function BookDetailView({
       )}
       {showWriteTags && (
         <WriteTagsDialog onConfirm={writeTags} onClose={() => setShowWriteTags(false)} />
+      )}
+      {tagsFile && (
+        <BookFileTagsModal
+          fileId={tagsFile.id}
+          fileName={tagsFile.name}
+          onClose={() => setTagsFile(null)}
+        />
       )}
     </>
   );
