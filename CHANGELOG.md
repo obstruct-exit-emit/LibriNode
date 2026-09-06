@@ -11,6 +11,11 @@ Everything to date — Phases 0–5 (feature-complete) plus the pre-1.0 hardenin
 in progress. Highlights from the hardening period, newest first:
 
 ### Changed
+- **The book page's file list is tidier.** Organize moved up to the header
+  action row (it always renamed the whole book, so a per-file button made no
+  sense for a multi-file audiobook), and the per-file delete was removed — the
+  deliberate way to drop a copy is Remove-from-library with its delete-files
+  option. Genre chips now sit above the file path rather than below it.
 - **Prowlarr is now a native indexer (a direct connection), replacing the
   Readarr application-sync emulation.** Add your Prowlarr instance under
   Settings → Indexers (type **Prowlarr**, URL + API key) and one connection
@@ -35,6 +40,29 @@ in progress. Highlights from the hardening period, newest first:
   visits (per browser) instead of resetting to grid every time.
 
 ### Added
+- **Write LibriNode's metadata into your files** ("Write tags" on a book, and on
+  an author for every book at once). Audiobooks go through TagLib (via WASM, no
+  cgo): title, author, album, narrator (composer), date, series
+  (movement/`SERIES`), genre, description (comment), and ISBN/ASIN, plus the
+  cover. EPUBs are rewritten in place through their OPF (title, creator,
+  `dc:subject` genres, description, date, `calibre:series`, and an ISBN
+  identifier if the file lacks one) — a surgical `<metadata>` edit that leaves
+  every other part of the archive byte-for-byte unchanged. MOBI/AZW3/PDF stay
+  read-only. A **Merge** mode only touches the fields LibriNode manages;
+  **Clear first** (audio only) wipes unmanaged tags before writing. Which fields
+  are written is configurable under **Settings → Metadata → Tags to write**.
+- **View a file's embedded tags.** Every file row on the book page has a **tags**
+  button (and, for a multi-file audiobook, a **⋯** menu on each track) that opens
+  a viewer reading that file's own tags live off disk — the trustworthy answer
+  to "what's actually on this file right now," which a Write-tags pass then
+  corrects. Reads audiobook tags via TagLib and ebook metadata from EPUB (OPF),
+  MOBI/AZW3 (EXTH), and PDF (Info dict).
+- **Genres**, captured from the metadata providers — Hardcover's work tags,
+  AniList genres for manga, Audible category ladders for audiobooks — stored per
+  book, shown as chips on the book page, and written into file tags.
+- **Edition facts on the ebook page** — publisher, language, and ISBN drawn from
+  the book's editions (choosing the edition that best matches your metadata
+  language), so an ebook page reads as fully as an audiobook's.
 - **Retry a failed grab from Activity.** A failed entry in Activity → History
   now carries a "Search again" button that re-runs that book's automatic
   search in place — no need to open the book, so a transient failure isn't a

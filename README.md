@@ -46,6 +46,7 @@ LibriNode is an **alternative** to tools like Readarr (books; development has en
 
 **🏷️ Reader-ready output**
 - Audiobookshelf folder layouts with `metadata.opf`; Kavita/Komga layouts with `ComicInfo.xml`; OPF sidecars for Calibre
+- **Write tags into the files themselves** — title, author, series, narrator, genre, description, and identifiers embedded into audiobook tags (via TagLib) and EPUB metadata (via its OPF), so Audiobookshelf, Plex, or Calibre-Web read it straight from disk — plus a viewer for any file's own embedded tags
 - Smart scanning: ISBN/ASIN identifier matching (filename + embedded epub metadata), exact title matching, and fuzzy suggestions for everything else
 - Multi-book pack imports, colorized/monochrome manga variants, multi-file audiobooks as single units
 

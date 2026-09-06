@@ -44,6 +44,12 @@ naming:
   ebook_folder: "{Author Name}/{Book Title} ({Release Year})"
   ebook_file: "{Author Name} - {Series Title} {Series Position} - {Book Title} ({Release Year})"
   # audiobook_*, manga_*, comic_*, magazine_* — all editable in the UI
+tag_write:                       # which fields "Write tags" embeds into files
+                                 #   (Settings → Metadata → Tags to write). Every
+                                 #   field is a disable flag; all default to false
+                                 #   (i.e. written).
+  disable_title: false           # also disable_author / album / narrator / date /
+  disable_genre: false           #   series / description / identifier / cover_image
 import:                          # Completed Download Handling (Settings →
                                  # Download Clients → Import handling).
                                  # All default to true.
