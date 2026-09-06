@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, proxiedImage, type Author, type Book } from "../api";
+import { api, proxiedImage, type Author, type Book, type Edition } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
 import WriteTagsDialog from "../components/WriteTagsDialog";
@@ -29,6 +29,24 @@ function splitNarrators(narrator: string): string[] {
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
+}
+
+// pickEdition chooses the edition whose publisher/language/ISBN best represents
+// this book in this format: one in the preferred language and with complete
+// details wins, so the header never shows a stray foreign-language reprint's
+// data just because it sorted first (a popular classic can carry hundreds).
+function pickEdition(editions: Edition[], format: string, prefLang: string): Edition | undefined {
+  const inFormat = editions.filter((e) => e.format === format);
+  const pool = inFormat.length > 0 ? inFormat : editions;
+  const score = (e: Edition) =>
+    (prefLang && e.language.toLowerCase() === prefLang ? 4 : 0) +
+    (e.publisher ? 2 : 0) +
+    (e.isbn13 ? 1 : 0) +
+    (e.language ? 1 : 0);
+  return pool.reduce<Edition | undefined>(
+    (best, e) => (best === undefined || score(e) > score(best) ? e : best),
+    undefined,
+  );
 }
 
 // NarratorChip shows a single narrator as a Wikipedia link chip, or — for a
@@ -119,6 +137,7 @@ export default function BookDetailView({
   const [fileNotice, setFileNotice] = useState("");
   const [showNarrators, setShowNarrators] = useState(false);
   const [showWriteTags, setShowWriteTags] = useState(false);
+  const [prefLang, setPrefLang] = useState("english");
 
   const reload = useCallback(() => {
     api
@@ -131,6 +150,15 @@ export default function BookDetailView({
   }, [id, onError]);
 
   useEffect(reload, [reload]);
+
+  // The preferred metadata language steers which edition's details the header
+  // shows (see pickEdition). Best-effort; falls back to the English default.
+  useEffect(() => {
+    api
+      .getMetadataSettings()
+      .then((s) => s.language && setPrefLang(s.language.toLowerCase()))
+      .catch(() => {});
+  }, []);
 
   // Live download status for this book+format (shared, server-cached queue
   // poll). When an active download disappears — imported, failed, removed —
@@ -162,6 +190,22 @@ export default function BookDetailView({
   const runtimeMinutes = files.find((f) => f.runtimeMinutes)?.runtimeMinutes ?? 0;
   const trackCount = files.find((f) => f.tracks?.length)?.tracks?.length ?? 0;
   const basePath = files[0]?.path ?? "";
+
+  // Edition-level facts (publisher/language/ISBN), surfaced in the header grid
+  // so an ebook page isn't sparse next to an audiobook's. Prefer the edition
+  // matching this format, else any.
+  const edition = pickEdition(book.editions ?? [], library, prefLang);
+  const publisher = edition?.publisher ?? "";
+  const language = edition?.language ?? "";
+  const langLabel = language ? language.charAt(0).toUpperCase() + language.slice(1) : "";
+  const isbn = edition?.isbn13 ?? "";
+  // Edition facts enrich the ebook page (its file yields little beyond
+  // format/size); an audiobook page is already rich from its file's own
+  // narrator/runtime, and a representative edition's publisher can disagree
+  // with the actually-owned narration, so they're shown for ebooks only.
+  const showEditionFacts = library === "ebook";
+  const hasHeaderFacts =
+    files.length > 0 || (showEditionFacts && Boolean(publisher || language || isbn));
 
   const setMembership = (lib: string, member: boolean, mon: boolean, deleteFiles = false) => {
     api
@@ -253,55 +297,71 @@ export default function BookDetailView({
               </span>
             )}
           </p>
-          {files.length > 0 && (
-            <>
-              <div className="detail-stats">
-                {narratorNames.length > 0 && (
-                  <div className="detail-stat wide">
-                    <span className="detail-stat-label">Narrator</span>
-                    <NarratorChip names={narratorNames} onShowAll={() => setShowNarrators(true)} />
-                  </div>
-                )}
-                {runtimeMinutes > 0 && (
-                  <div className="detail-stat">
-                    <span className="detail-stat-label">Runtime</span>
-                    <span className="detail-stat-value">{formatRuntime(runtimeMinutes)}</span>
-                  </div>
-                )}
-                {formatList && (
-                  <div className="detail-stat">
-                    <span className="detail-stat-label">Format</span>
-                    <span className="detail-stat-value">{formatList}</span>
-                  </div>
-                )}
-                {trackCount > 1 && (
-                  <div className="detail-stat">
-                    <span className="detail-stat-label">Tracks</span>
-                    <span className="detail-stat-value">{trackCount}</span>
-                  </div>
-                )}
-                {totalSize > 0 && (
-                  <div className="detail-stat">
-                    <span className="detail-stat-label">Size</span>
-                    <span className="detail-stat-value">{formatBytes(totalSize)}</span>
-                  </div>
-                )}
-              </div>
-              {basePath && (
-                <div className="detail-stats">
-                  <div className="detail-stat wide">
-                    <span className="detail-stat-label">Path</span>
-                    <span className="detail-stat-value" title={basePath}>{basePath}</span>
-                  </div>
+          {hasHeaderFacts && (
+            <div className="detail-stats">
+              {narratorNames.length > 0 && (
+                <div className="detail-stat wide">
+                  <span className="detail-stat-label">Narrator</span>
+                  <NarratorChip names={narratorNames} onShowAll={() => setShowNarrators(true)} />
                 </div>
               )}
-            </>
+              {runtimeMinutes > 0 && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">Runtime</span>
+                  <span className="detail-stat-value">{formatRuntime(runtimeMinutes)}</span>
+                </div>
+              )}
+              {formatList && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">Format</span>
+                  <span className="detail-stat-value">{formatList}</span>
+                </div>
+              )}
+              {trackCount > 1 && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">Tracks</span>
+                  <span className="detail-stat-value">{trackCount}</span>
+                </div>
+              )}
+              {totalSize > 0 && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">Size</span>
+                  <span className="detail-stat-value">{formatBytes(totalSize)}</span>
+                </div>
+              )}
+              {showEditionFacts && publisher && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">Publisher</span>
+                  <span className="detail-stat-value">{publisher}</span>
+                </div>
+              )}
+              {showEditionFacts && langLabel && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">Language</span>
+                  <span className="detail-stat-value">{langLabel}</span>
+                </div>
+              )}
+              {showEditionFacts && isbn && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">ISBN</span>
+                  <span className="detail-stat-value">{isbn}</span>
+                </div>
+              )}
+            </div>
           )}
           {book.genres && book.genres.length > 0 && (
             <div className="detail-genres">
               {book.genres.map((g) => (
                 <span key={g} className="genre-chip">{g}</span>
               ))}
+            </div>
+          )}
+          {basePath && (
+            <div className="detail-stats">
+              <div className="detail-stat wide">
+                <span className="detail-stat-label">Path</span>
+                <span className="detail-stat-value" title={basePath}>{basePath}</span>
+              </div>
             </div>
           )}
           {book.description && <p className="detail-desc">{book.description}</p>}
