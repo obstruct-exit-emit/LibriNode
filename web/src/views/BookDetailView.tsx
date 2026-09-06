@@ -50,6 +50,56 @@ function pickEdition(editions: Edition[], format: string, prefLang: string): Edi
   );
 }
 
+// RowMenu is a compact "⋯" overflow button that reveals a small dropdown of
+// row actions, closing on an outside click or Escape — keeps per-file actions
+// (like viewing a track's tags) tucked away instead of crowding the row.
+function RowMenu({ items }: { items: { label: string; onClick: () => void }[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div className="row-menu" ref={ref}>
+      <button
+        className="toggle row-menu-btn"
+        title="More"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className="row-menu-pop" role="menu">
+          {items.map((it) => (
+            <button
+              key={it.label}
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                it.onClick();
+              }}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // NarratorChip shows a single narrator as a Wikipedia link chip, or — for a
 // full cast — one "N narrators" button that opens the modal, so a dozen names
 // never crowd the page.
@@ -135,7 +185,7 @@ export default function BookDetailView({
   const [addingOther, setAddingOther] = useState(false);
   const [grabNotice, setGrabNotice] = useState("");
   const [fileBusy, setFileBusy] = useState(false);
-  const [tagsFile, setTagsFile] = useState<{ id: number; name: string } | null>(null);
+  const [tagsFile, setTagsFile] = useState<{ id: number; name: string; track?: string } | null>(null);
   const [showNarrators, setShowNarrators] = useState(false);
   const [showWriteTags, setShowWriteTags] = useState(false);
   const [prefLang, setPrefLang] = useState("english");
@@ -553,7 +603,18 @@ export default function BookDetailView({
                         <li key={t.name}>
                           <div className="row">
                             <span className="file-path">🎵 {t.name}</span>
-                            <span className="muted">{formatBytes(t.size)}</span>
+                            <span className="row-actions">
+                              <span className="muted">{formatBytes(t.size)}</span>
+                              <RowMenu
+                                items={[
+                                  {
+                                    label: "View tags",
+                                    onClick: () =>
+                                      setTagsFile({ id: f.id, name: t.name, track: t.name }),
+                                  },
+                                ]}
+                              />
+                            </span>
                           </div>
                         </li>
                       ))}
@@ -575,6 +636,7 @@ export default function BookDetailView({
         <BookFileTagsModal
           fileId={tagsFile.id}
           fileName={tagsFile.name}
+          track={tagsFile.track}
           onClose={() => setTagsFile(null)}
         />
       )}

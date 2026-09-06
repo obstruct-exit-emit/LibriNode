@@ -1982,6 +1982,44 @@ button.link.back:hover {
   max-width: 32rem;
 }
 
+/* Compact "⋯" overflow menu for a row's secondary actions. */
+.row-menu {
+  position: relative;
+  display: inline-flex;
+}
+.row-menu-btn {
+  padding: 0.1rem 0.45rem;
+  line-height: 1;
+}
+.row-menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.25rem;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px var(--shadow);
+}
+.row-menu-pop button {
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 5px;
+}
+.row-menu-pop button:hover {
+  background: var(--accent-soft);
+  filter: none;
+}
+
 /* Embedded-tags viewer (a book file's own tags, read off disk). */
 .tag-modal {
   max-width: 32rem;

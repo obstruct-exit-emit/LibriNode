@@ -9,10 +9,14 @@ import { api, type BookFileTags } from "../api";
 export default function BookFileTagsModal({
   fileId,
   fileName,
+  track,
   onClose,
 }: {
   fileId: number;
   fileName: string;
+  // A specific file within a multi-file audiobook (folder-relative name); when
+  // absent, the unit's first file stands in.
+  track?: string;
   onClose: () => void;
 }) {
   const [tags, setTags] = useState<BookFileTags | null>(null);
@@ -24,7 +28,7 @@ export default function BookFileTagsModal({
     setLoading(true);
     setError("");
     api
-      .getBookFileTags(fileId)
+      .getBookFileTags(fileId, track)
       .then((t) => {
         if (!cancelled) setTags(t);
       })
@@ -37,7 +41,7 @@ export default function BookFileTagsModal({
     return () => {
       cancelled = true;
     };
-  }, [fileId]);
+  }, [fileId, track]);
 
   const duration = tags?.durationSeconds ? formatDuration(tags.durationSeconds) : "";
   const audio = tags
