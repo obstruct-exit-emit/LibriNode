@@ -60,7 +60,7 @@ func (s *server) handleWriteBookTags(w http.ResponseWriter, r *http.Request) {
 	toggles := s.cfg.TagWriteToggles()
 	written, errs := s.writeTagsForBook(r.Context(), book, author, toggles, clear)
 	if written == 0 && len(errs) == 0 {
-		writeError(w, http.StatusBadRequest, "no audiobook files to tag")
+		writeError(w, http.StatusBadRequest, "no writable files to tag")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"written": written, "errors": errs})
@@ -108,13 +108,17 @@ func (s *server) writeTagsForBook(ctx context.Context, book *library.Book, autho
 	narrator := ""
 	var paths []string
 	for _, f := range files {
-		if f.MediaType != "audiobook" {
-			continue
+		switch f.MediaType {
+		case "audiobook":
+			if narrator == "" {
+				narrator = f.Narrator
+			}
+			paths = append(paths, audioFilesUnder(f.Path)...)
+		case "ebook":
+			// The ebook file itself (EPUB is written; other formats are skipped
+			// by tagwriter.IsSupported below).
+			paths = append(paths, f.Path)
 		}
-		if narrator == "" {
-			narrator = f.Narrator
-		}
-		paths = append(paths, audioFilesUnder(f.Path)...)
 	}
 	if len(paths) == 0 {
 		return 0, nil

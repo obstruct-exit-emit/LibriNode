@@ -13,7 +13,7 @@ export default function WriteTagsDialog({
   onClose: () => void;
 }) {
   const [clear, setClear] = useState(false);
-  const target = scope === "author" ? "every audiobook by this author" : "this book's audiobook file(s)";
+  const target = scope === "author" ? "every book by this author" : "this book's file(s)";
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -25,8 +25,8 @@ export default function WriteTagsDialog({
       >
         <h3>Write tags</h3>
         <p className="muted">
-          Embed LibriNode's metadata into {target}, so Audiobookshelf, Plex, or a
-          phone app read it straight from the file.
+          Embed LibriNode's metadata into {target}, so other apps — Audiobookshelf,
+          Plex, Calibre-Web, a phone reader — read it straight from the file.
         </p>
         <div className="write-tags-options">
           <label className={`write-tags-option${clear ? "" : " selected"}`}>

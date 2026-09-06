@@ -241,6 +241,11 @@ export default function BookDetailView({
   const runtimeMinutes = files.find((f) => f.runtimeMinutes)?.runtimeMinutes ?? 0;
   const trackCount = files.find((f) => f.tracks?.length)?.tracks?.length ?? 0;
   const basePath = files[0]?.path ?? "";
+  // Which files "Write tags" can embed into: audiobook files (via TagLib) and
+  // EPUBs (via the OPF writer). MOBI/AZW3/PDF are read-only.
+  const hasWritableFiles = files.some(
+    (f) => f.mediaType === "audiobook" || f.format.toLowerCase() === "epub",
+  );
 
   // Edition-level facts (publisher/language/ISBN), surfaced in the header grid
   // so an ebook page isn't sparse next to an audiobook's. Prefer the edition
@@ -464,10 +469,10 @@ export default function BookDetailView({
             >
               {showReleases ? "Hide releases" : "Search releases"}
             </button>
-            {library === "audiobook" && files.length > 0 && (
+            {hasWritableFiles && (
               <button
                 onClick={() => setShowWriteTags(true)}
-                title="Embed LibriNode's metadata into the audiobook file(s) so other players read it"
+                title="Embed LibriNode's metadata into this book's file(s) so other apps read it"
               >
                 Write tags…
               </button>

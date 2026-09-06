@@ -68,6 +68,11 @@ var AllEnabled = Toggles{
 // the tags LibriNode doesn't manage (comments, ratings, an existing cover…)
 // before writing — a deliberate clean-slate rewrite.
 func Write(path string, tags Tags, clear bool, enabled Toggles) error {
+	if extOf(path) == "epub" {
+		// EPUB has its own OPF-rewrite writer (clear doesn't apply — it's a
+		// surgical metadata merge, never a whole-file wipe).
+		return writeEbook(path, tags, enabled)
+	}
 	if !IsSupported(path) {
 		return ErrUnsupportedFormat
 	}
@@ -76,9 +81,11 @@ func Write(path string, tags Tags, clear bool, enabled Toggles) error {
 
 // IsSupported reports whether Write can tag path's format — used by the API/UI
 // to decide whether to offer "Write tags" rather than failing after the fact.
+// Audio formats go through TagLib; EPUB through the OPF writer. MOBI/AZW3/PDF
+// are read-only (proprietary binary), so they're not supported for writing.
 func IsSupported(path string) bool {
 	switch extOf(path) {
-	case "mp3", "flac", "m4a", "m4b", "m4p", "ogg", "oga", "opus", "dsf", "wav":
+	case "mp3", "flac", "m4a", "m4b", "m4p", "ogg", "oga", "opus", "dsf", "wav", "epub":
 		return true
 	default:
 		return false

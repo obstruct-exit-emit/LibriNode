@@ -18,7 +18,7 @@ func readEPUB(path string) (*Tags, error) {
 	}
 	defer zr.Close()
 
-	f := findOPFFile(zr)
+	f := findOPFFile(&zr.Reader)
 	if f == nil {
 		return &Tags{}, nil // no package document — nothing to read
 	}
@@ -33,7 +33,7 @@ func readEPUB(path string) (*Tags, error) {
 // findOPFFile locates the package document: META-INF/container.xml names it, a
 // direct scan for a *.opf entry is the fallback. (Mirrors scanner.findOPF, kept
 // local so this package stands alone.)
-func findOPFFile(zr *zip.ReadCloser) *zip.File {
+func findOPFFile(zr *zip.Reader) *zip.File {
 	var firstOPF *zip.File
 	for _, f := range zr.File {
 		if strings.EqualFold(f.Name, "META-INF/container.xml") {
