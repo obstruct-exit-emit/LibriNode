@@ -582,7 +582,7 @@ export default function BookDetailView({
                     <span className="muted">
                       {f.format} · {formatBytes(f.size)}
                     </span>
-                    {f.mediaType === "audiobook" && (
+                    {(f.mediaType === "audiobook" || f.mediaType === "ebook") && (
                       <button
                         className="toggle"
                         title="View this file's own embedded tags, read live off disk"

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { api, type BookFileTags } from "../api";
+import { api, type FileTags } from "../api";
 
-// BookFileTagsModal shows one audiobook file's own embedded tags, read live off
-// disk (see getBookFileTags) rather than the scan-time snapshot — the point
-// being to answer "what does this file actually have on it right now," which
-// the cached data can't after a "Write tags" call. Adapted from CantiNode's
-// TrackFileTagsModal with an audiobook-appropriate field set.
+// BookFileTagsModal shows one file's own embedded tags, read live off disk (see
+// getBookFileTags) rather than the scan-time snapshot — the point being to
+// answer "what does this file actually have on it right now," which the cached
+// data can't after a "Write tags" call. Handles both an audiobook file's audio
+// tags and an ebook file's metadata. Adapted from CantiNode's TrackFileTagsModal.
 export default function BookFileTagsModal({
   fileId,
   fileName,
@@ -19,7 +19,7 @@ export default function BookFileTagsModal({
   track?: string;
   onClose: () => void;
 }) {
-  const [tags, setTags] = useState<BookFileTags | null>(null);
+  const [data, setData] = useState<FileTags | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -30,7 +30,7 @@ export default function BookFileTagsModal({
     api
       .getBookFileTags(fileId, track)
       .then((t) => {
-        if (!cancelled) setTags(t);
+        if (!cancelled) setData(t);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -43,34 +43,7 @@ export default function BookFileTagsModal({
     };
   }, [fileId, track]);
 
-  const duration = tags?.durationSeconds ? formatDuration(tags.durationSeconds) : "";
-  const audio = tags
-    ? [tags.format?.toUpperCase(), tags.codec?.toUpperCase(), tags.bitrate ? `${tags.bitrate} kbps` : "",
-       tags.sampleRate ? `${(tags.sampleRate / 1000).toFixed(1)} kHz` : "",
-       tags.channels ? `${tags.channels} ch` : ""]
-        .filter(Boolean)
-        .join(" · ")
-    : "";
-
-  const fields: [string, string][] = tags
-    ? [
-        ["Title", tags.title],
-        ["Author", tags.author],
-        ["Album Artist", tags.albumArtist],
-        ["Album", tags.album],
-        ["Narrator", tags.narrator],
-        ["Series", tags.series],
-        ["Series Part", tags.seriesPart],
-        ["Genre", tags.genre],
-        ["Date", tags.date],
-        ["Description", tags.description],
-        ["ISBN", tags.isbn],
-        ["ASIN", tags.asin],
-        ["Cover art", tags.hasCover ? "embedded" : ""],
-        ["Duration", duration],
-        ["Audio", audio],
-      ]
-    : [];
+  const fields = data ? fieldsFor(data) : [];
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -102,6 +75,55 @@ export default function BookFileTagsModal({
       </div>
     </div>
   );
+}
+
+function fieldsFor(data: FileTags): [string, string][] {
+  if (data.kind === "ebook" && data.ebook) {
+    const e = data.ebook;
+    return [
+      ["Title", e.title],
+      ["Author", e.author],
+      ["Series", e.series],
+      ["Series #", e.seriesIndex],
+      ["Genre", e.genre],
+      ["Language", e.language],
+      ["Publisher", e.publisher],
+      ["Date", e.date],
+      ["ISBN", e.isbn],
+      ["ASIN", e.asin],
+      ["Description", e.description],
+      ["Format", e.format ? e.format.toUpperCase() + (e.writable ? "" : " (read-only)") : ""],
+    ];
+  }
+  const a = data.audiobook;
+  if (!a) return [];
+  const duration = a.durationSeconds ? formatDuration(a.durationSeconds) : "";
+  const audio = [
+    a.format?.toUpperCase(),
+    a.codec?.toUpperCase(),
+    a.bitrate ? `${a.bitrate} kbps` : "",
+    a.sampleRate ? `${(a.sampleRate / 1000).toFixed(1)} kHz` : "",
+    a.channels ? `${a.channels} ch` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return [
+    ["Title", a.title],
+    ["Author", a.author],
+    ["Album Artist", a.albumArtist],
+    ["Album", a.album],
+    ["Narrator", a.narrator],
+    ["Series", a.series],
+    ["Series Part", a.seriesPart],
+    ["Genre", a.genre],
+    ["Date", a.date],
+    ["Description", a.description],
+    ["ISBN", a.isbn],
+    ["ASIN", a.asin],
+    ["Cover art", a.hasCover ? "embedded" : ""],
+    ["Duration", duration],
+    ["Audio", audio],
+  ];
 }
 
 // "3785" -> "1h 3m 5s"

@@ -104,10 +104,10 @@ export interface BookFile {
   tracks?: { name: string; size: number }[];
 }
 
-// BookFileTags is one audiobook file's own embedded tags, read live off disk
-// (not a scan snapshot, which goes stale after a "Write tags" call) plus its
-// audio properties — see getBookFileTags.
-export interface BookFileTags {
+// AudiobookFileTags is one audiobook file's own embedded tags, read live off
+// disk (not a scan snapshot, which goes stale after a "Write tags" call) plus
+// its audio properties.
+export interface AudiobookFileTags {
   title: string;
   author: string;
   albumArtist: string;
@@ -127,6 +127,32 @@ export interface BookFileTags {
   sampleRate: number;
   channels: number;
   hasCover: boolean;
+}
+
+// EbookFileTags is one ebook file's own embedded metadata (EPUB OPF, or a
+// best-effort read of MOBI/AZW3/PDF). writable is true only for EPUB.
+export interface EbookFileTags {
+  title: string;
+  author: string;
+  series: string;
+  seriesIndex: string;
+  genre: string;
+  description: string;
+  language: string;
+  publisher: string;
+  date: string;
+  isbn: string;
+  asin: string;
+  format: string;
+  writable: boolean;
+}
+
+// FileTags is the discriminated result of getBookFileTags — an audiobook file's
+// tags or an ebook file's metadata, depending on kind.
+export interface FileTags {
+  kind: "audiobook" | "ebook";
+  audiobook?: AudiobookFileTags;
+  ebook?: EbookFileTags;
 }
 
 export interface RootFolder {
@@ -917,7 +943,7 @@ export const api = {
       { ...json({ clear }), method: "POST" },
     ),
   getBookFileTags: (id: number, track?: string) =>
-    request<BookFileTags>(
+    request<FileTags>(
       `/api/v1/book-file/${id}/tags${track ? `?track=${encodeURIComponent(track)}` : ""}`,
     ),
   writeAuthorTags: (id: number, clear: boolean) =>
