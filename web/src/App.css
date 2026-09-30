@@ -541,6 +541,13 @@ button.toggle.on:hover:not(:disabled) {
   color: var(--muted);
 }
 
+/* Stalled download — connected but not progressing (no peers). A warning,
+   not a failure. */
+.owned.warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: var(--warn);
+}
+
 /* Slim download progress bar (Activity queue rows, book detail). */
 .progress {
   height: 4px;
@@ -563,6 +570,10 @@ button.toggle.on:hover:not(:disabled) {
 
 .progress-fill.bad {
   background: var(--danger);
+}
+
+.progress-fill.warn {
+  background: var(--warn);
 }
 
 /* Downloading badge: between wanted (muted) and owned (green). */

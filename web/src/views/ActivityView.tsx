@@ -188,9 +188,12 @@ export default function ActivityView({
                 </span>
                 <span className="row-actions">
                   <span className="muted">{it.client}</span>
-                  <span className={`owned ${it.status === "failed" ? "no" : "yes"}`}>
+                  <span
+                    className={`owned ${it.status === "failed" ? "no" : it.status === "stalled" ? "warn" : "yes"}`}
+                    title={it.status === "stalled" ? "Connected but not progressing — no seeds/peers" : undefined}
+                  >
                     {it.status}
-                    {it.status === "downloading" &&
+                    {(it.status === "downloading" || it.status === "stalled") &&
                       ` ${(it.progress * 100).toFixed(0)}%`}
                   </span>
                   <button
@@ -210,7 +213,7 @@ export default function ActivityView({
               )}
               <div className="progress" title={`${(it.progress * 100).toFixed(0)}%`}>
                 <div
-                  className={`progress-fill${it.status === "failed" ? " bad" : ""}${it.status === "completed" || it.status === "seeded" ? " done" : ""}`}
+                  className={`progress-fill${it.status === "failed" ? " bad" : ""}${it.status === "stalled" ? " warn" : ""}${it.status === "completed" || it.status === "seeded" ? " done" : ""}`}
                   style={{ width: `${Math.max(2, Math.min(100, it.progress * 100))}%` }}
                 />
               </div>

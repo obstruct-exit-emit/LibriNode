@@ -346,6 +346,11 @@ func (q *qbittorrent) resolve(ctx context.Context, dlURL string) (string, []byte
 // addFile uploads .torrent bytes to qBittorrent (multipart torrents field), so
 // a client that can't reach our indexer still gets the file.
 func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string) (string, error) {
+	// The .torrent's own info hash is exact and independent of whatever name the
+	// client reports — so, like a magnet, it's used directly instead of looking
+	// the torrent up by a title the client (or a debrid bridge) may have
+	// rewritten. findHash is only the fallback for an unparseable file.
+	infoHash, _ := torrentInfoHash(torrent)
 	before := q.snapshotHashes(ctx)
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
@@ -377,7 +382,11 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 	}
 	resp, err := attempt()
 	if err != nil {
-		// Slow bridge: the upload may have landed despite the timeout.
+		// Slow bridge: the upload may have landed despite the timeout. Confirm
+		// via the known info hash first, then a title lookup.
+		if infoHash != "" && q.hashLanded(ctx, infoHash) {
+			return infoHash, nil
+		}
 		if hash := q.findHash(title, before); hash != "" {
 			return hash, nil
 		}
@@ -389,6 +398,9 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 			return "", err
 		}
 		if resp, err = attempt(); err != nil {
+			if infoHash != "" && q.hashLanded(ctx, infoHash) {
+				return infoHash, nil
+			}
 			if hash := q.findHash(title, before); hash != "" {
 				return hash, nil
 			}
@@ -402,6 +414,11 @@ func (q *qbittorrent) addFile(ctx context.Context, torrent []byte, title string)
 	}
 	if strings.HasPrefix(string(body), "Fails") {
 		return "", fmt.Errorf("qbittorrent rejected the torrent")
+	}
+	// The upload succeeded, so the torrent is present under its own info hash —
+	// return it directly. Only an unparseable .torrent falls back to the title.
+	if infoHash != "" {
+		return infoHash, nil
 	}
 	return q.findHash(title, before), nil
 }
@@ -489,6 +506,11 @@ func qbitStatus(state string, progress float64) string {
 		return "failed"
 	case "pausedDL", "stoppedDL":
 		return "paused"
+	case "stalledDL":
+		// Connected but making no progress (no seeds/peers). Surfaced as its own
+		// warning state rather than blending into "downloading", so a dead
+		// torrent is visible instead of looking like a healthy slow one.
+		return "stalled"
 	case "queuedDL", "allocating", "metaDL", "checkingDL":
 		return "queued"
 	case "pausedUP", "stoppedUP":

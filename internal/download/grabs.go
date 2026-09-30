@@ -18,6 +18,11 @@ const (
 // double-clicked, or concurrently-swept, grab from reaching the client twice.
 var ErrGrabInFlight = errors.New("a grab for this book is already in flight")
 
+// ErrNoItemID means the client accepted the release but never gave back an id
+// to track it by — treated as an immediate failure (and the release blocklisted)
+// rather than recorded as a grab that only reveals itself as dead later.
+var ErrNoItemID = errors.New("download client returned no item id")
+
 // GrabRecord tracks one release sent to a download client and its outcome.
 type GrabRecord struct {
 	ID             int64  `json:"id"`

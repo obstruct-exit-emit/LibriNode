@@ -356,6 +356,17 @@ func (s *Service) GrabRelease(ctx context.Context, protocol, url, title, guid st
 			_ = s.store.DeleteGrab(grab.ID) // release the claim; the book stays grabbable
 			return nil, nil, err
 		}
+		if result.ID == "" {
+			// The client took the release but we couldn't resolve its id (a
+			// torrent whose name the client mutated past our match, say).
+			// Recording it now would leave a grab that looks healthy until the
+			// orphan sweep fails it ~10 min later; instead fail fast and
+			// blocklist, so the next auto-search moves to a different release
+			// rather than re-grabbing this same dead end over and over.
+			_ = s.store.DeleteGrab(grab.ID)
+			_ = s.store.AddBlock(guid, title, "download client returned no item id")
+			return nil, nil, fmt.Errorf("%w: %q", ErrNoItemID, title)
+		}
 		if err := s.store.FinishGrabClaim(grab.ID, result.ClientID, result.ID); err != nil {
 			return result, nil, fmt.Errorf("recording grab: %w", err)
 		}
@@ -368,6 +379,10 @@ func (s *Service) GrabRelease(ctx context.Context, protocol, url, title, guid st
 	result, err := s.Grab(ctx, protocol, url, title)
 	if err != nil {
 		return nil, nil, err
+	}
+	if result.ID == "" {
+		_ = s.store.AddBlock(guid, title, "download client returned no item id")
+		return nil, nil, fmt.Errorf("%w: %q", ErrNoItemID, title)
 	}
 	grab := &GrabRecord{
 		ClientConfigID: result.ClientID,
