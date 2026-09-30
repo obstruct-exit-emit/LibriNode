@@ -113,14 +113,22 @@ func TestSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(rels) != 2 {
-		t.Fatalf("releases = %d, want 2: %+v", len(rels), rels)
+	// The fixture page carries two unrelated books (Hunters of Dune, A Wizard of
+	// Earthsea). LibGen's req= search is broad full-text, so the title-relevance
+	// filter keeps only the row whose title actually matches the "dune" query.
+	if len(rels) != 1 {
+		t.Fatalf("releases = %d, want 1 (Earthsea filtered out): %+v", len(rels), rels)
 	}
 	if rels[0].DownloadURL != srv.URL+"/ads.php?md5=8fdb106f421adb411735aa99d746a037" {
 		t.Errorf("download URL = %q, want ads.php on the serving host", rels[0].DownloadURL)
 	}
 	if rels[0].Protocol != indexer.ProtocolDirect {
 		t.Errorf("protocol = %q", rels[0].Protocol)
+	}
+	// The filter is query-specific, not a blanket drop: the other fixture row
+	// comes back for its own title.
+	if got, err := s.Search(context.Background(), "earthsea", "ebook"); err != nil || len(got) != 1 {
+		t.Errorf("earthsea search = %d releases, %v; want 1", len(got), err)
 	}
 	if err := s.Test(context.Background()); err != nil {
 		t.Errorf("Test: %v", err)

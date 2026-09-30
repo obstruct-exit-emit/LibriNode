@@ -325,8 +325,29 @@ func (c *Client) SearchBooks(ctx context.Context, query string) ([]metadata.Book
 		}
 		books = append(books, r.book)
 	}
+
+	// Demote third-party study aids below the real works. These carry their own
+	// distinct titles ("Summary of Project Hail Mary", "… Study Guide"), so the
+	// same-title de-junking above never touches them, yet the provider often
+	// ranks one above the novel it summarizes. A stable partition keeps them in
+	// the results (some are wanted) but never ahead of the book itself.
+	if len(books) > 1 {
+		var primary, aids []metadata.Book
+		for _, b := range books {
+			if summaryCompanion.MatchString(b.Title) {
+				aids = append(aids, b)
+			} else {
+				primary = append(primary, b)
+			}
+		}
+		books = append(primary, aids...)
+	}
 	return books, nil
 }
+
+// summaryCompanion matches a third-party study aid / summary / companion by its
+// title — the kind of cash-in that clutters a book search above the real novel.
+var summaryCompanion = regexp.MustCompile(`(?i)\b(summary of|summary and analysis|summary & analysis|study guide|conversation starters|key takeaways|analysis of|companion to|sparknotes|cliffs?notes|quicklet|instaread|workbook (for|to)|a guide to reading)\b|\|\s*summary\b`)
 
 var (
 	// splitMarker matches a trailing split-edition suffix — "(1 of 2)", ", Part

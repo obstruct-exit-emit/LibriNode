@@ -21,9 +21,52 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/librinode/librinode/internal/indexer"
 )
+
+// libgenStopwords are short words dropped from a title-relevance check so a
+// match isn't defeated by one being absent from an otherwise-correct result.
+var libgenStopwords = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "from": true, "novel": true,
+}
+
+// significantWords reduces s to its lowercased 3+ character alphanumeric words,
+// minus stopwords.
+func significantWords(s string) []string {
+	var out []string
+	for _, w := range tokenize(s) {
+		if len(w) >= 3 && !libgenStopwords[w] {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// titleCarriesWords reports whether title contains every word as one of its own
+// tokens. No words (an empty query) keeps everything.
+func titleCarriesWords(title string, words []string) bool {
+	if len(words) == 0 {
+		return true
+	}
+	have := map[string]bool{}
+	for _, w := range tokenize(title) {
+		have[w] = true
+	}
+	for _, w := range words {
+		if !have[w] {
+			return false
+		}
+	}
+	return true
+}
+
+func tokenize(s string) []string {
+	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
 
 const (
 	// Name is both the registry key and the stored indexer type.
@@ -113,6 +156,14 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 		return nil, fmt.Errorf("no configured site URL answered (tried %d): %w", len(s.bases), err)
 	}
 
+	// LibGen's req= search is broad full-text (title, author, series, periodical,
+	// description), so a title query can drag in dozens of unrelated rows —
+	// journal PDFs and papers that merely mention the words. Keep only rows whose
+	// own title carries every significant word of the query, so "The Infinite
+	// Extent" stops returning 47 unrelated journals. The shared scorer still does
+	// the final book-specific matching on what survives.
+	queryWords := significantWords(query)
+
 	seen := map[string]bool{}
 	releases := []indexer.Release{}
 	for _, res := range parseResults(page) {
@@ -120,6 +171,9 @@ func (s *searcher) Search(ctx context.Context, query, mediaType string) ([]index
 			break
 		}
 		if seen[res.MD5] {
+			continue
+		}
+		if !titleCarriesWords(res.Title, queryWords) {
 			continue
 		}
 		seen[res.MD5] = true
