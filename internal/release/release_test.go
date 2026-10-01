@@ -109,6 +109,41 @@ func TestDerivativeWorkRejected(t *testing.T) {
 	}
 }
 
+func TestNonAuthorVariationsRejected(t *testing.T) {
+	prefs := DefaultEbookPreferences()
+	book := &library.Book{Title: "Pride and Prejudice"}
+	author := &library.Author{Name: "Jane Austen"}
+
+	// The four non-Austen books that were still approved for Pride and
+	// Prejudice: three carry a derivative marker (variation/companion), the
+	// first carries none and is caught only by the leading-author check (it
+	// names Debra White Smith up front, Jane Austen only in a series tag).
+	for _, title := range []string{
+		"Debra White Smith – [Jane Austen 01] – First Impressions (Pride and Prejudice) EPUB",
+		"Maria Grace – Netherfield: Rogue Dragon – A Pride and Prejudice Variation EPUB",
+		"Rose Fairbanks – The Secrets of Pemberley – A Pride and Prejudice Variation EPUB",
+		"Rebecca Ann Collins – The Pemberley Chronicles: A Companion Volume to Pride and Prejudice EPUB",
+	} {
+		c := Score(rel(title, indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
+		if c.Approved {
+			t.Errorf("non-Austen book approved: %q (rejections: %v)", title, c.Rejections)
+		}
+	}
+
+	// The real book still approves — leading author, and the "Title - Author"
+	// order where the lead is the title itself.
+	for _, title := range []string{
+		"Jane Austen - Pride and Prejudice EPUB",
+		"Jane Austen – Pride and Prejudice (Penguin Classics) EPUB",
+		"Pride and Prejudice - Jane Austen EPUB",
+	} {
+		c := Score(rel(title, indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
+		if !c.Approved {
+			t.Errorf("real book rejected: %q (rejections: %v)", title, c.Rejections)
+		}
+	}
+}
+
 func TestScoreGeneric(t *testing.T) {
 	prefs := DefaultEbookPreferences()
 

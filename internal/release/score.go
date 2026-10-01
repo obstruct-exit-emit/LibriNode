@@ -25,7 +25,32 @@ var titleStopwords = map[string]bool{
 // the book itself — retellings, sequels/prequels, study guides, summaries. They
 // name the original's title (and usually its author), so without this they slip
 // past the title and author checks as the book they merely reference.
-var derivativeWork = regexp.MustCompile(`(?i)\b(retelling|reimagin|inspired by|based on the (novel|book|story|works)|sequel to|prequel to|companion to|study guide|summary of|summary and analysis|sparknotes|cliffs?\s*notes|a guide to reading)\b`)
+var derivativeWork = regexp.MustCompile(`(?i)\b(retelling|reimagin|variation|inspired by|based on the (novel|book|story|works)|sequel to|prequel to|companion|study guide|summary of|summary and analysis|sparknotes|cliffs?\s*notes|a guide to reading)\b`)
+
+// leadingAuthorSegment returns the author credit a prose release leads with —
+// the run before the first " - "/en-dash/em-dash or "[" — after stripping any
+// leading bracket/paren tag. "Debra White Smith – [Jane Austen 01] – First
+// Impressions" yields "Debra White Smith". A release with no such delimiter
+// returns the whole title, which the caller treats as "no distinct author
+// credit" because it contains the book title.
+func leadingAuthorSegment(rawTitle string) string {
+	t := strings.TrimSpace(rawTitle)
+	for strings.HasPrefix(t, "[") || strings.HasPrefix(t, "(") {
+		close := map[byte]byte{'[': ']', '(': ')'}[t[0]]
+		i := strings.IndexByte(t, close)
+		if i < 0 {
+			break
+		}
+		t = strings.TrimSpace(t[i+1:])
+	}
+	cut := len(t)
+	for _, d := range []string{" - ", " – ", " — ", " -- ", "[", "("} {
+		if i := strings.Index(t, d); i >= 0 && i < cut {
+			cut = i
+		}
+	}
+	return strings.TrimSpace(t[:cut])
+}
 
 // authorMatches reports whether a release mentions the author: either the
 // full normalized name as a contiguous run, or — for "Last, First" style
@@ -611,8 +636,25 @@ func (c *Candidate) matchBook(book *library.Book, author *library.Author, otherT
 		if c.Release.Keywords != "" {
 			matchText = relNorm + " " + scanner.Normalize(c.Release.Keywords)
 		}
-		if authorNorm != "" && !authorMatches(matchText, authorNorm) {
+		if authorNorm == "" {
+			// no author to check against
+		} else if !authorMatches(matchText, authorNorm) {
 			c.reject("does not mention the author")
+		} else {
+			// The author IS mentioned somewhere — but prose releases lead with
+			// the author ("Author - [Series] - Title"), so a spin-off that merely
+			// references the original ("Debra White Smith - [Jane Austen 01] -
+			// First Impressions (Pride and Prejudice)") names a DIFFERENT author
+			// up front while the wanted one shows up only in a series tag or a
+			// parenthetical. Reject when the leading author isn't the wanted one.
+			// Skipped for a "Title - Author" release (the lead is the title) and
+			// when there's no author-like lead at all, so a tag-only or
+			// title-led name still relies on the mention check above.
+			lead := scanner.Normalize(leadingAuthorSegment(c.Release.Title))
+			leadIsTitle := len(bookKeys) > 0 && bookKeys[0] != "" && strings.Contains(lead, bookKeys[0])
+			if lead != "" && !leadIsTitle && !authorMatches(lead, authorNorm) {
+				c.reject("names a different author than " + author.Name)
+			}
 		}
 	}
 
