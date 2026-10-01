@@ -40,6 +40,23 @@ in progress. Highlights from the hardening period, newest first:
   visits (per browser) instead of resetting to grid every time.
 
 ### Added
+- **Add from anywhere, in any format.** Search — global or on a library page —
+  now searches the metadata provider for authors and books at once, and each
+  result adds with a one-click choice of **Ebooks**, **Audiobooks**, or **Both**.
+  The global search is no longer a dead end for content you don't own yet. "Both"
+  turns on mirroring: author-level for an author, per-title for a book.
+- **Per-title ebook↔audiobook mirror**, alongside the existing author-level one.
+  A single title can track across the two formats — own or want it in one, want
+  it in the other — without mirroring the author's whole bibliography. Toggled
+  from a **⋯** menu on each title.
+- **Update and Restart buttons** on **Settings → System** (admin only). Restart
+  shuts down gracefully for the service supervisor (e.g. systemd `Restart=always`)
+  to respawn; Update runs a command you configure (`system.update_command`) in
+  its own transient `systemd-run` unit, so it survives the restart it triggers.
+  The Update button appears only once a command is set.
+- **The release browser collapses near-identical copies** — a dozen mirrors of
+  the same file become one best-scored row tagged "+N more", with a "collapse
+  copies" toggle to list every one. Auto grab is unchanged.
 - **Write LibriNode's metadata into your files** ("Write tags" on a book, and on
   an author for every book at once). Audiobooks go through TagLib (via WASM, no
   cgo): title, author, album, narrator (composer), date, series
