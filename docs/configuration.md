@@ -180,6 +180,28 @@ plus `config.yaml`, stored under `<data>/backups`. Restore stages the files
 and applies them on the next restart, keeping the replaced ones as
 `*.pre-restore`. Download the zips somewhere safe.
 
+## Update & restart
+
+**System** has admin-only **Restart** and **Update** buttons.
+
+- **Restart** shuts LibriNode down gracefully and exits. It only comes back if
+  something restarts it — run LibriNode under a supervisor that does, e.g. a
+  systemd unit with `Restart=always`. (Also the quick way to apply a staged
+  backup restore.)
+- **Update** runs a command you set — the same one you'd type to update your
+  install — and only appears once it's configured:
+
+  ```yaml
+  system:
+    update_command: "update"   # e.g. a script that pulls, builds, and restarts
+  ```
+
+  The command is launched in its own transient systemd unit (`systemd-run`), so
+  it survives the restart it triggers. It's set here by hand, **not** editable
+  in the web UI, so a compromised session can't choose what the server runs; it
+  runs as LibriNode's own user, so make sure that user can run it (full paths /
+  permissions as needed).
+
 ## Image cache
 
 Two kinds of images are cached under `<data>/covers`, both disposable and
