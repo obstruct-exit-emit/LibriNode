@@ -197,10 +197,14 @@ and applies them on the next restart, keeping the replaced ones as
   ```
 
   The command is launched in its own transient systemd unit (`systemd-run`), so
-  it survives the restart it triggers. It's set here by hand, **not** editable
-  in the web UI, so a compromised session can't choose what the server runs; it
-  runs as LibriNode's own user, so make sure that user can run it (full paths /
-  permissions as needed).
+  it survives the restart it triggers, and runs through a **login shell**
+  (`bash -lc`) so it gets the same `PATH` an admin has in the console — an update
+  script that calls out to `node`/`npm`/`go` works without hard-coding their
+  paths. It's set here by hand, **not** editable in the web UI, so a compromised
+  session can't choose what the server runs; it runs as LibriNode's own user, so
+  make sure that user can run it. An update script should also **build first and
+  restart last** (and the service should set `Restart=always`), so a failed
+  build can never leave the service down.
 
 ## Image cache
 
