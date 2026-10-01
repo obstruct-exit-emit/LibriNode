@@ -46,6 +46,22 @@ function isPack(c: ReleaseCandidate): boolean {
   return c.parsed.pack === true || (c.parsed.volumeEnd ?? 0) > (c.parsed.volume ?? 0);
 }
 
+// dedupKey groups near-identical releases — the same protocol and formats with
+// the same significant title words, regardless of author order or punctuation
+// (a dozen Library Genesis mirrors of one epub, "Ann Leckie - X" vs "Leckie,
+// Ann - X (2013) english epub"). Different formats/protocols stay distinct.
+function dedupKey(c: ReleaseCandidate): string {
+  const words = c.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((w) => w.length > 1)
+    .sort()
+    .join(" ");
+  const fmts = [...(c.parsed.formats ?? [])].sort().join(",");
+  return `${c.protocol}|${fmts}|${words}`;
+}
+
 export default function ReleaseBrowser({
   bookId,
   mediaType,
@@ -71,6 +87,8 @@ export default function ReleaseBrowser({
   const [showRejected, setShowRejected] = useState(false);
   const [proto, setProto] = useState<ProtoFilter>("all");
   const [sort, setSort] = useState<SortKey>("score");
+  // Collapse near-identical copies (the common case: many mirrors of one file).
+  const [collapse, setCollapse] = useState(true);
   // Per-release grab state, keyed by guid+indexer: "sending", "✓ …", "✗ …".
   const [grabState, setGrabState] = useState<Record<string, string>>({});
 
@@ -100,28 +118,46 @@ export default function ReleaseBrowser({
 
   const approved = useMemo(() => (releases ?? []).filter((c) => c.approved), [releases]);
 
+  // shown is the rendered list: filtered, optionally collapsed to one row per
+  // distinct release (carrying how many copies it stands for), then sorted.
   const shown = useMemo(() => {
     let list = showRejected ? (releases ?? []) : approved;
     if (proto !== "all") list = list.filter((c) => c.protocol === proto);
-    const sorted = [...list];
+
+    let rows: { c: ReleaseCandidate; copies: number }[];
+    if (collapse) {
+      const groups = new Map<string, { c: ReleaseCandidate; copies: number }>();
+      for (const c of list) {
+        const k = dedupKey(c);
+        const g = groups.get(k);
+        if (!g) groups.set(k, { c, copies: 1 });
+        else {
+          g.copies++;
+          if (c.score > g.c.score) g.c = c; // keep the best-scored representative
+        }
+      }
+      rows = [...groups.values()];
+    } else {
+      rows = list.map((c) => ({ c, copies: 1 }));
+    }
+
     switch (sort) {
       case "size":
-        sorted.sort((a, b) => b.size - a.size);
+        rows.sort((a, b) => b.c.size - a.c.size);
         break;
       case "seeders":
-        sorted.sort((a, b) => b.seeders - a.seeders);
+        rows.sort((a, b) => b.c.seeders - a.c.seeders);
         break;
       case "age":
-        sorted.sort((a, b) => ageValue(b.publishDate) - ageValue(a.publishDate));
+        rows.sort((a, b) => ageValue(b.c.publishDate) - ageValue(a.c.publishDate));
         break;
       default:
-        // Best first: approved above rejected, then by score.
-        sorted.sort((a, b) =>
-          a.approved !== b.approved ? (a.approved ? -1 : 1) : b.score - a.score,
+        rows.sort((a, b) =>
+          a.c.approved !== b.c.approved ? (a.c.approved ? -1 : 1) : b.c.score - a.c.score,
         );
     }
-    return sorted;
-  }, [releases, approved, showRejected, proto, sort]);
+    return rows;
+  }, [releases, approved, showRejected, proto, sort, collapse]);
 
   const grab = (c: ReleaseCandidate) => {
     const key = c.guid + c.indexer;
@@ -183,6 +219,14 @@ export default function ReleaseBrowser({
           >
             all
           </button>
+          <span className="rb-sep" />
+          <button
+            className={collapse ? "toggle on" : "toggle"}
+            onClick={() => setCollapse((v) => !v)}
+            title="Collapse near-identical copies (e.g. many mirrors of the same file) into one best row"
+          >
+            collapse copies
+          </button>
           {presentProtocols.length > 1 && (
             <>
               <span className="rb-sep" />
@@ -238,7 +282,7 @@ export default function ReleaseBrowser({
         </p>
       ) : (
         <ul className="rows rb-list">
-          {shown.map((c) => {
+          {shown.map(({ c, copies }) => {
             const key = c.guid + c.indexer;
             const state = grabState[key];
             return (
@@ -282,6 +326,14 @@ export default function ReleaseBrowser({
                 </div>
                 <div className="rb-meta muted">
                   {c.indexer}
+                  {copies > 1 && (
+                    <span
+                      className="pill rb-copies"
+                      title="Near-identical copies collapsed here (the same file from several sources). Turn off “collapse copies” to list them all."
+                    >
+                      +{copies - 1} more
+                    </span>
+                  )}
                   <span className={`metric${sort === "size" ? " on" : ""}`} title="Size">
                     📦 {formatBytes(c.size) || "—"}
                   </span>
