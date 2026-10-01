@@ -230,6 +230,13 @@ func run(dataDir string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		return srv.Shutdown(ctx)
+	case <-bg.Restart:
+		// An admin hit "Restart" in the UI: shut down gracefully and return, so
+		// the service supervisor (systemd Restart=always) starts a fresh process.
+		logger.Info("restart requested — shutting down for the supervisor to respawn")
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return srv.Shutdown(ctx)
 	}
 }
 

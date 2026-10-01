@@ -9,6 +9,8 @@ export default function SystemView({
   onError: (message: string) => void;
 }) {
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { confirmDlg, toast } = useUi();
 
   useEffect(() => {
     api
@@ -17,12 +19,71 @@ export default function SystemView({
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
 
+  const restart = async () => {
+    const ok = await confirmDlg({
+      title: "Restart LibriNode",
+      message:
+        "Restart the LibriNode service now? It'll be unavailable for a few seconds while it comes back.",
+      confirmLabel: "Restart now",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.systemRestart();
+      toast("Restarting — LibriNode will be back in a few seconds.", "ok");
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const update = async () => {
+    const ok = await confirmDlg({
+      title: "Update LibriNode",
+      message:
+        "Run the update now? This pulls and builds the latest version and then restarts LibriNode — it'll be briefly unavailable.",
+      confirmLabel: "Update now",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.systemUpdate();
+      toast("Update started — LibriNode will restart itself when it finishes.", "ok");
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!status) return <p className="muted">Loading…</p>;
 
   return (
     <>
       <section className="card">
-        <h2>System</h2>
+        <div className="card-head">
+          <h2>System</h2>
+          <span className="row-actions">
+            {status.canUpdate && (
+              <button
+                disabled={busy}
+                onClick={update}
+                title="Pull, build, and restart the latest version"
+              >
+                Update
+              </button>
+            )}
+            <button
+              className="toggle"
+              disabled={busy}
+              onClick={restart}
+              title="Restart the LibriNode service now"
+            >
+              Restart
+            </button>
+          </span>
+        </div>
         <dl className="status-grid">
           <dt>Version</dt>
           <dd>{status.appVersion ?? status.version}</dd>

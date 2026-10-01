@@ -2,8 +2,10 @@ package api
 
 import (
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
+	"os/exec"
 	"runtime"
 	"strings"
 	"time"
@@ -56,8 +58,49 @@ func (s *server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"startTime":   startTime.UTC().Format(time.RFC3339),
 		"ipAddresses": localIPs(),
 		"port":        s.cfg.Port,
+		// Whether the admin "Update" button is available (a command is set);
+		// "Restart" is always available.
+		"canUpdate": strings.TrimSpace(s.cfg.UpdateCommand()) != "",
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleSystemRestart gracefully stops the server so the service supervisor
+// (systemd Restart=always) brings it straight back — the UI's "Restart" button.
+// It replies first, then triggers the shutdown a beat later so the response
+// reaches the browser before the process goes down.
+func (s *server) handleSystemRestart(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "restarting"})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	slog.Info("restart requested from the UI")
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		s.restartOnce.Do(func() { close(s.restart) })
+	}()
+}
+
+// handleSystemUpdate launches the configured update command detached from this
+// process, in its own transient systemd unit — so the command (which typically
+// ends by restarting LibriNode) survives the very restart it triggers instead
+// of being killed with this service's cgroup. No-op (400) when unconfigured.
+func (s *server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
+	cmd := strings.TrimSpace(s.cfg.UpdateCommand())
+	if cmd == "" {
+		writeError(w, http.StatusBadRequest,
+			"no update command configured — set system.update_command in config.yaml")
+		return
+	}
+	c := exec.Command("systemd-run", "--collect", "--quiet", "/bin/sh", "-c", cmd)
+	if err := c.Start(); err != nil {
+		slog.Error("starting update command", "err", err)
+		writeError(w, http.StatusInternalServerError, "failed to start update: "+err.Error())
+		return
+	}
+	go func() { _ = c.Wait() }() // reap systemd-run (exits once the unit is up)
+	slog.Info("update started from the UI", "command", cmd)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updating"})
 }
 
 // handleIndex serves the embedded web UI: real files directly, anything else

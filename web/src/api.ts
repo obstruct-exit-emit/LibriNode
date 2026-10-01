@@ -12,6 +12,8 @@ export interface SystemStatus {
   startTime: string;
   ipAddresses: string[];
   port: number;
+  // Whether the admin "Update" button is available (a command is configured).
+  canUpdate?: boolean;
 }
 
 export interface Author {
@@ -627,6 +629,10 @@ const json = (body: unknown): RequestInit => ({
 
 export const api = {
   systemStatus: () => request<SystemStatus>("/api/v1/system/status"),
+  systemRestart: () =>
+    request<{ status: string }>("/api/v1/system/restart", { method: "POST" }),
+  systemUpdate: () =>
+    request<{ status: string }>("/api/v1/system/update", { method: "POST" }),
   authStatus: () => request<AuthStatus>("/api/v1/auth/status"),
   // First-run wizard: only answers/claims on a fresh instance — no API key.
   setupStatus: () => request<{ needed: boolean }>("/api/v1/setup/status"),

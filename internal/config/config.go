@@ -288,6 +288,18 @@ func (u UserAccount) EffectiveRole() string {
 
 // AuthSettings holds the optional login accounts. No users means
 // authentication is disabled (the UI falls back to the API-key prompt).
+// SystemSettings holds the host command the admin "Update" button runs. It is
+// set in config.yaml by hand — deliberately NOT web-editable — so a compromised
+// web session can't choose what command the server executes. Empty hides the
+// button. (Restart needs no command: the process exits gracefully and the
+// service supervisor restarts it.)
+type SystemSettings struct {
+	// UpdateCommand is the shell command "Update" runs — e.g. "update" — the
+	// same thing you'd type in the console. It is launched detached (systemd-run)
+	// so it survives the restart it triggers.
+	UpdateCommand string `yaml:"update_command,omitempty"`
+}
+
 type AuthSettings struct {
 	// Legacy single account from pre-multi-user config files; migrated into
 	// Users on load and dropped from the file on the next save.
@@ -441,6 +453,7 @@ type Config struct {
 	Import   ImportSettings   `yaml:"import"`
 	Timings  TimingSettings   `yaml:"timings,omitempty"`
 	TagWrite TagWriteSettings `yaml:"tag_write,omitempty"`
+	System   SystemSettings   `yaml:"system,omitempty"`
 	// PathMappingList translates client-reported download paths onto this
 	// machine's filesystem (Completed Download Handling reads them).
 	PathMappingList []PathMapping `yaml:"path_mappings,omitempty"`
@@ -692,6 +705,14 @@ func (c *Config) NamingSettings() NamingSettings {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.Naming
+}
+
+// UpdateCommand returns the admin "Update" button's configured shell command,
+// or "" when it isn't set (the button is then unavailable).
+func (c *Config) UpdateCommand() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.System.UpdateCommand
 }
 
 // ImportSettings returns the current import options.

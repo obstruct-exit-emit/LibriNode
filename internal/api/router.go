@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -49,6 +50,10 @@ type server struct {
 	sessions       *sessionStore
 	webFS          fs.FS // nil when no frontend build is embedded
 	version        string
+	// restart is closed (once) when an admin asks the process to restart; main
+	// selects on it and shuts down gracefully, letting the supervisor respawn.
+	restart     chan struct{}
+	restartOnce sync.Once
 }
 
 // Background bundles the services main runs on periodic loops. NewRouter owns
@@ -61,6 +66,9 @@ type Background struct {
 	Health   *health.Service
 	Importer *importer.Service
 	Search   *autosearch.Service
+	// Restart is closed when an admin triggers a restart from the UI; main
+	// shuts down gracefully and exits so the service supervisor brings it back.
+	Restart <-chan struct{}
 }
 
 // NewRouter builds the API handler and returns the background services the
@@ -90,6 +98,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 		images:    imagecache.New(filepath.Join(cfg.DataDir(), "covers", "remote")),
 		sessions:  newSessionStore(),
 		version:   version,
+		restart:   make(chan struct{}),
 	}
 	if dist, ok := web.FS(); ok {
 		s.webFS = dist
@@ -129,6 +138,8 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 	mux.HandleFunc("PUT /api/v1/auth/users/{username}/role", s.requireAdmin(s.handleSetUserRole))
 	mux.HandleFunc("POST /api/v1/auth/apikey/regenerate", s.requireAdmin(s.handleRegenerateAPIKey))
 	mux.HandleFunc("GET /api/v1/system/status", s.auth(s.handleSystemStatus))
+	mux.HandleFunc("POST /api/v1/system/restart", s.requireAdmin(s.handleSystemRestart))
+	mux.HandleFunc("POST /api/v1/system/update", s.requireAdmin(s.handleSystemUpdate))
 	mux.HandleFunc("GET /api/v1/image", s.auth(s.handleImage))
 	mux.HandleFunc("GET /api/v1/backup", s.requireAdmin(s.handleListBackups))
 	mux.HandleFunc("POST /api/v1/backup", s.requireAdmin(s.handleCreateBackup))
@@ -245,7 +256,7 @@ func NewRouter(cfg *config.Config, db *sql.DB, providers *metadata.Manager, vers
 
 	mux.HandleFunc("/", s.handleIndex)
 
-	return logRequests(mux), &Background{Health: s.health, Importer: s.importer, Search: s.search}
+	return logRequests(mux), &Background{Health: s.health, Importer: s.importer, Search: s.search, Restart: s.restart}
 }
 
 // handleHealth returns the cached result of the last background health run
