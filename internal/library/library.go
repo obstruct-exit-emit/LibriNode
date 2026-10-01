@@ -65,6 +65,10 @@ type Book struct {
 	EbookMonitored     bool `json:"ebookMonitored"`
 	InAudiobookLibrary bool `json:"inAudiobookLibrary"`
 	AudiobookMonitored bool `json:"audiobookMonitored"`
+	// Mirror keeps THIS title in lockstep across the two formats (the per-book
+	// counterpart of Author.Mirror); the book is effectively mirrored when this
+	// or the author's flag is set.
+	Mirror             bool `json:"mirror"`
 	HasFile            bool `json:"hasFile"` // any media type
 	HasEbookFile       bool `json:"hasEbookFile"`
 	HasAudiobookFile   bool `json:"hasAudiobookFile"`

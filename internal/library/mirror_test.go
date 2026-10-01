@@ -48,6 +48,65 @@ func TestMirrorReconcileUnifiesExistingBooks(t *testing.T) {
 	}
 }
 
+// TestBookMirrorScopedToOneTitle: per-book mirror brings only that title into
+// both formats (not the author's other books), and leaves the author's own
+// mirror flag off.
+func TestBookMirrorScopedToOneTitle(t *testing.T) {
+	s := newTestStore(t)
+	a := &Author{Source: "t", ForeignID: "a1", Name: "Terry"}
+	if err := s.UpsertAuthor(a); err != nil {
+		t.Fatal(err)
+	}
+	mirrored := &Book{AuthorID: a.ID, Source: "t", ForeignID: "b1", Title: "Mort"}
+	other := &Book{AuthorID: a.ID, Source: "t", ForeignID: "b2", Title: "Reaper Man"}
+	for _, b := range []*Book{mirrored, other} {
+		if err := s.UpsertBook(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SetBookLibrary(mirrored.ID, "ebook", true, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetBookLibrary(other.ID, "ebook", true, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetBookMirror(mirrored.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetBook(mirrored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Mirror || !got.InEbookLibrary || !got.InAudiobookLibrary || !got.AudiobookMonitored {
+		t.Errorf("mirrored book = %+v, want mirror + both formats in/monitored", got)
+	}
+	// The author's other book is untouched, and the author is NOT globally mirrored.
+	ob, err := s.GetBook(other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ob.InAudiobookLibrary || ob.Mirror {
+		t.Errorf("other book leaked into audiobook / got mirrored: %+v", ob)
+	}
+	au, err := s.GetAuthor(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if au.Mirror {
+		t.Error("author mirror flag should stay off for a per-book mirror")
+	}
+
+	// A later per-format write on the mirrored book lands on both formats.
+	if err := s.SetBookLibrary(mirrored.ID, "ebook", false, false); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetBook(mirrored.ID); got.InEbookLibrary || got.InAudiobookLibrary {
+		t.Errorf("removing one format of a mirrored book should clear both: %+v", got)
+	}
+}
+
 // TestMirrorTogglePropagates: with mirror on, a per-format library write lands
 // on both formats, and a removal clears both.
 func TestMirrorTogglePropagates(t *testing.T) {

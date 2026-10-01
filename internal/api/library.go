@@ -466,6 +466,30 @@ func (s *server) handleMirrorAuthor(w http.ResponseWriter, r *http.Request) {
 	s.writeAuthorDetail(w, http.StatusOK, id)
 }
 
+// handleMirrorBook turns one title's ebook↔audiobook mirroring on or off — the
+// per-book counterpart of handleMirrorAuthor. Turning it on brings the title
+// into both format libraries at once, so the refreshed book detail reflects the
+// new membership and monitoring.
+func (s *server) handleMirrorBook(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Mirror bool `json:"mirror"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if err := s.store.SetBookMirror(id, req.Mirror); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.writeBookDetail(w, http.StatusOK, id)
+}
+
 // handleAuthorProvider sets (or with "" clears) the author's per-record
 // provider override — it beats the global Settings → Metadata selection on
 // the next refresh, including a disabled ("None") book provider.
