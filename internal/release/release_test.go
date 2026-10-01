@@ -83,6 +83,32 @@ func rel(title string, protocol string, size int64, seeders int) indexer.Release
 	}
 }
 
+func TestDerivativeWorkRejected(t *testing.T) {
+	prefs := DefaultEbookPreferences()
+	book := &library.Book{Title: "Pride and Prejudice"}
+	author := &library.Author{Name: "Jane Austen"}
+
+	// A retelling names both the original title and author, so it clears the
+	// title and author checks — the derivative-marker reject is what stops it.
+	for _, title := range []string{
+		"Debra White Smith - First Impressions: A Retelling of Jane Austen's Pride and Prejudice EPUB",
+		"Jane Austen's Pride and Prejudice: A Study Guide EPUB",
+		"Pride and Prejudice by Jane Austen - Summary and Analysis EPUB",
+	} {
+		c := Score(rel(title, indexer.ProtocolUsenet, 1<<20, -1), prefs, book, author, nil)
+		if c.Approved {
+			t.Errorf("derivative work approved: %q (rejections: %v)", title, c.Rejections)
+		}
+	}
+
+	// The real book still approves.
+	real := Score(rel("Jane Austen - Pride and Prejudice EPUB", indexer.ProtocolUsenet, 1<<20, -1),
+		prefs, book, author, nil)
+	if !real.Approved {
+		t.Errorf("the real book was rejected: %v", real.Rejections)
+	}
+}
+
 func TestScoreGeneric(t *testing.T) {
 	prefs := DefaultEbookPreferences()
 

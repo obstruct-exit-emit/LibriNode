@@ -21,6 +21,12 @@ var titleStopwords = map[string]bool{
 	"or": true, "in": true, "to": true, "vs": true, "versus": true, "for": true,
 }
 
+// derivativeWork matches release titles for works built ON a book rather than
+// the book itself — retellings, sequels/prequels, study guides, summaries. They
+// name the original's title (and usually its author), so without this they slip
+// past the title and author checks as the book they merely reference.
+var derivativeWork = regexp.MustCompile(`(?i)\b(retelling|reimagin|inspired by|based on the (novel|book|story|works)|sequel to|prequel to|companion to|study guide|summary of|summary and analysis|sparknotes|cliffs?\s*notes|a guide to reading)\b`)
+
 // authorMatches reports whether a release mentions the author: either the
 // full normalized name as a contiguous run, or — for "Last, First" style
 // sources like Libgen where the words are present but reordered — every
@@ -522,6 +528,16 @@ func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned m
 // matchBook rejects releases that don't look like the wanted book.
 func (c *Candidate) matchBook(book *library.Book, author *library.Author, otherTitles []string) {
 	relNorm := scanner.Normalize(c.Release.Title)
+
+	// A derivative work — a retelling, sequel, study guide, summary — names the
+	// original's title AND often its author, so it passes both the title and
+	// author checks below even though it is a different book by a different
+	// author ("First Impressions: A Retelling of Jane Austen's Pride and
+	// Prejudice"). Reject on the derivative marker itself, unless the wanted
+	// book's own title carries it (a study guide the user deliberately added).
+	if derivativeWork.MatchString(relNorm) && !derivativeWork.MatchString(scanner.Normalize(book.Title)) {
+		c.reject("looks like a companion/derivative work, not the book itself")
+	}
 
 	bookKeys := scanner.TitleKeys(book.Title)
 	switch idx := matchedKeyIndex(relNorm, bookKeys); {
