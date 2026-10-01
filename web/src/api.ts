@@ -51,6 +51,9 @@ export interface Book {
   ebookMonitored: boolean;
   inAudiobookLibrary: boolean;
   audiobookMonitored: boolean;
+  // This title is mirrored across ebook ↔ audiobook (per-book; also effectively
+  // true when the author is mirrored).
+  mirror: boolean;
   hasFile: boolean;
   hasEbookFile: boolean;
   hasAudiobookFile: boolean;
@@ -741,6 +744,11 @@ export const api = {
       ...json({ mirror }),
       method: "PUT",
     }),
+  mirrorBook: (id: number, mirror: boolean) =>
+    request<Book>(`/api/v1/book/${id}/mirror`, {
+      ...json({ mirror }),
+      method: "PUT",
+    }),
   // Scope with authorId (one author's books) or library (a format library's
   // member books, filtered server-side); omit both only where the whole
   // library's books are genuinely needed (e.g. global search).
@@ -1071,3 +1079,34 @@ export const api = {
       { method: "DELETE" },
     ),
 };
+
+// AddTarget is the format choice offered when adding: one library, or both at
+// once. "both" also turns on mirroring so the two formats track each other.
+export type AddTarget = "ebook" | "audiobook" | "both";
+
+export const addTargetLabel: Record<AddTarget, string> = {
+  ebook: "Ebooks",
+  audiobook: "Audiobooks",
+  both: "both (mirrored)",
+};
+
+// addAuthorTo adds an author into one format library, or both at once with
+// author-level mirroring (every book, both formats, now and future).
+export async function addAuthorTo(foreignAuthorId: string, target: AddTarget): Promise<Author> {
+  if (target === "both") {
+    const a = await api.addAuthor(foreignAuthorId, "ebook");
+    return api.mirrorAuthor(a.id, true);
+  }
+  return api.addAuthor(foreignAuthorId, target);
+}
+
+// addBookTo adds one title into a format library, or both at once with per-book
+// mirroring (that title tracks across the two formats, without mirroring the
+// author's whole bibliography).
+export async function addBookTo(foreignBookId: string, target: AddTarget): Promise<Book> {
+  if (target === "both") {
+    const b = await api.addBook(foreignBookId, "ebook");
+    return api.mirrorBook(b.id, true);
+  }
+  return api.addBook(foreignBookId, target);
+}

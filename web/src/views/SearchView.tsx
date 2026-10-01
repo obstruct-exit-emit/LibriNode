@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, proxiedImage, type Author, type Book, type Series } from "../api";
 import { libraryLabels } from "../App";
+import AddPanel from "../components/AddPanel";
 import { RowsSkeleton } from "../components/Skeleton";
 
 // Global search: one query across every library — authors, prose books, and
@@ -23,8 +24,9 @@ export default function SearchView({
   const [authors, setAuthors] = useState<Author[] | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [series, setSeries] = useState<Series[]>([]);
+  const [showAdd, setShowAdd] = useState(false);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     Promise.all([api.listAuthors(), api.listBooks(), api.listSeries()])
       .then(([a, b, s]) => {
         setAuthors(a);
@@ -33,6 +35,8 @@ export default function SearchView({
       })
       .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)));
   }, [onError]);
+
+  useEffect(reload, [reload]);
 
   const q = query.trim().toLowerCase();
   const hits = useMemo(() => {
@@ -67,15 +71,23 @@ export default function SearchView({
   return (
     <>
       <section className="card">
-        <h2>
-          Search: “{query}” <span className="muted">({total} found)</span>
-        </h2>
-        {total === 0 && (
+        <div className="card-head">
+          <h2>
+            Search: “{query}” <span className="muted">({total} found)</span>
+          </h2>
+          <button className="toggle" onClick={() => setShowAdd((v) => !v)}>
+            {showAdd ? "Close" : "➕ Add new"}
+          </button>
+        </div>
+        {total === 0 && !showAdd && (
           <p className="muted">
-            Nothing in your libraries matches. To add new content, use{" "}
-            <strong>+ Add</strong> on a library page — it searches the metadata
-            provider.
+            Nothing in your libraries matches “{query}”. Hit{" "}
+            <strong>➕ Add new</strong> to search the metadata provider and add it
+            as an ebook, audiobook, or both.
           </p>
+        )}
+        {showAdd && (
+          <AddPanel initialTerm={query} onAdded={reload} onError={onError} />
         )}
       </section>
 

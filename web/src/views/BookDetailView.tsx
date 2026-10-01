@@ -4,6 +4,7 @@ import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
 import WriteTagsDialog from "../components/WriteTagsDialog";
 import BookFileTagsModal from "../components/BookFileTagsModal";
+import RowMenu from "../components/RowMenu";
 import { DetailSkeleton } from "../components/Skeleton";
 import { downloadPct, useQueue } from "../useQueue";
 import { formatBytes } from "../format";
@@ -47,56 +48,6 @@ function pickEdition(editions: Edition[], format: string, prefLang: string): Edi
   return pool.reduce<Edition | undefined>(
     (best, e) => (best === undefined || score(e) > score(best) ? e : best),
     undefined,
-  );
-}
-
-// RowMenu is a compact "⋯" overflow button that reveals a small dropdown of
-// row actions, closing on an outside click or Escape — keeps per-file actions
-// (like viewing a track's tags) tucked away instead of crowding the row.
-function RowMenu({ items }: { items: { label: string; onClick: () => void }[] }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-  return (
-    <div className="row-menu" ref={ref}>
-      <button
-        className="toggle row-menu-btn"
-        title="More"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        ⋯
-      </button>
-      {open && (
-        <div className="row-menu-pop" role="menu">
-          {items.map((it) => (
-            <button
-              key={it.label}
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                it.onClick();
-              }}
-            >
-              {it.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 

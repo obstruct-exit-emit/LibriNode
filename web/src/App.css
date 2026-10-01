@@ -1641,6 +1641,24 @@ button.link.back:hover {
   overflow: hidden;
 }
 
+/* Per-card format choice: Ebooks / Audiobooks / Both. */
+.add-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.add-targets button {
+  width: 100%;
+  font-size: 0.74rem;
+  padding: 0.3rem 0.4rem;
+}
+.add-done {
+  font-size: 0.78rem;
+  color: var(--ok);
+  text-align: center;
+  padding: 0.35rem 0 0.15rem;
+}
+
 /* ---- Skeleton loading states ---- */
 
 .skel {
@@ -2026,9 +2044,42 @@ button.link.back:hover {
   padding: 0.35rem 0.6rem;
   border-radius: 5px;
 }
-.row-menu-pop button:hover {
+.row-menu-pop button:hover:not(:disabled) {
   background: var(--accent-soft);
   filter: none;
+}
+.row-menu-pop button.on {
+  color: var(--ok);
+}
+.row-menu-pop button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Overflow "⋯" menu anchored in the corner of a poster card. */
+.poster-wrap {
+  position: relative;
+  display: flex;
+}
+.poster-wrap > .poster-card {
+  flex: 1;
+  min-width: 0;
+}
+.poster-corner {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+}
+.poster-corner .row-menu-btn {
+  background: var(--overlay);
+  border-color: transparent;
+  color: #fff;
+}
+.poster-corner .row-menu-btn:hover:not(:disabled) {
+  border-color: transparent;
+  color: #fff;
+  filter: brightness(1.2);
 }
 
 /* Embedded-tags viewer (a book file's own tags, read off disk). */

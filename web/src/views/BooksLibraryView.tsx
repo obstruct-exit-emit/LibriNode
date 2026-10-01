@@ -5,10 +5,8 @@ import {
   type Author,
   type Book,
   type RenameMove,
-  type SearchAuthor,
-  type SearchBook,
 } from "../api";
-import AddResultsGrid, { type AddResult } from "../components/AddResultsGrid";
+import AddPanel from "../components/AddPanel";
 import { PosterGridSkeleton } from "../components/Skeleton";
 import UnmatchedCard from "../components/UnmatchedCard";
 import WantedCard from "../components/WantedCard";
@@ -158,9 +156,7 @@ export default function BooksLibraryView({
         </div>
         {notice && <p className="muted">{notice}</p>}
 
-        {showAdd && (
-          <AddPanel library={library} onAdded={() => { reload(); }} onError={onError} />
-        )}
+        {showAdd && <AddPanel onAdded={reload} onError={onError} />}
 
         {renamePlan && (renamePlan.length > 0 || cleanupPlan.length > 0) && (
           <div className="rename-plan">
@@ -294,89 +290,5 @@ export default function BooksLibraryView({
         onError={onError}
       />
     </>
-  );
-}
-
-// AddPanel searches the metadata provider and adds into THIS library.
-function AddPanel({
-  library,
-  onAdded,
-  onError,
-}: {
-  library: "ebook" | "audiobook";
-  onAdded: () => void;
-  onError: (message: string) => void;
-}) {
-  const [term, setTerm] = useState("");
-  const [kind, setKind] = useState<"author" | "book">("author");
-  const [authors, setAuthors] = useState<SearchAuthor[]>([]);
-  const [books, setBooks] = useState<SearchBook[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-
-  const search = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!term.trim()) return;
-    setBusy(true);
-    setNotice("");
-    const done = () => setBusy(false);
-    if (kind === "author") {
-      api.searchAuthors(term).then((r) => { setAuthors(r); setBooks([]); }, (err: unknown) =>
-        onError(String(err instanceof Error ? err.message : err))).finally(done);
-    } else {
-      api.searchBooks(term).then((r) => { setBooks(r); setAuthors([]); }, (err: unknown) =>
-        onError(String(err instanceof Error ? err.message : err))).finally(done);
-    }
-  };
-
-  const searched = authors.length > 0 || books.length > 0;
-  const results: AddResult[] = [
-    ...authors.map((a) => ({
-      key: a.foreignAuthorId,
-      title: a.name,
-      subtitle: a.bookCount ? `${a.bookCount} books` : undefined,
-      imageUrl: a.imageUrl || undefined,
-      addLabel: "Add author",
-      add: () => api.addAuthor(a.foreignAuthorId, library),
-    })),
-    ...books.map((b) => ({
-      key: b.foreignBookId,
-      title: b.title,
-      subtitle:
-        b.authorName + (b.releaseDate ? ` · ${b.releaseDate.slice(0, 4)}` : ""),
-      imageUrl: b.coverUrl || undefined,
-      addLabel: "Add book",
-      add: () => api.addBook(b.foreignBookId, library),
-    })),
-  ];
-
-  return (
-    <div className="add-panel">
-      <form onSubmit={search} className="search-form">
-        <select value={kind} onChange={(e) => setKind(e.target.value as "author" | "book")}>
-          <option value="author">Author</option>
-          <option value="book">Book</option>
-        </select>
-        <input
-          placeholder="Search the metadata provider…"
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          autoFocus
-        />
-        <button type="submit" disabled={busy || !term.trim()}>
-          {busy ? "Searching…" : "Search"}
-        </button>
-      </form>
-      {notice && (
-        <p className={notice.startsWith("✗") ? "notice bad" : "notice ok"}>{notice}</p>
-      )}
-      {!busy && !searched && notice === "" && (
-        <p className="muted">
-          Search {kind === "author" ? "authors" : "books"} on the metadata
-          provider — results appear here with cover art.
-        </p>
-      )}
-      <AddResultsGrid results={results} onAdded={onAdded} />
-    </div>
   );
 }

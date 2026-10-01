@@ -1,20 +1,24 @@
 import { useState } from "react";
-import { proxiedImage } from "../api";
+import { proxiedImage, addTargetLabel, type AddTarget } from "../api";
 import { useUi } from "../ui";
 
-// AddResultsGrid renders provider search results as a poster grid — cover
-// art, title, subtitle, optional blurb, and a per-card Add button with its
-// own progress → added state. Shared by every library's add flow so search
-// results look as good as the library itself.
+// AddResultsGrid renders provider search results as a poster grid — cover art,
+// title, subtitle, optional blurb — each with a one-click format choice:
+// Ebooks, Audiobooks, or Both (mirrored). Shared by every add flow.
 export interface AddResult {
   key: string;
   title: string;
   subtitle?: string;
   blurb?: string;
   imageUrl?: string;
-  addLabel: string;
-  add: () => Promise<unknown>;
+  add: (target: AddTarget) => Promise<unknown>;
 }
+
+const targets: { target: AddTarget; label: string; title: string }[] = [
+  { target: "ebook", label: "📖 Ebooks", title: "Add to the Ebooks library" },
+  { target: "audiobook", label: "🎧 Audiobooks", title: "Add to the Audiobooks library" },
+  { target: "both", label: "⇄ Both", title: "Add to both and mirror ebook ↔ audiobook" },
+];
 
 export default function AddResultsGrid({
   results,
@@ -24,16 +28,17 @@ export default function AddResultsGrid({
   onAdded: () => void;
 }) {
   const { toast } = useUi();
-  const [state, setState] = useState<Record<string, "busy" | "added">>({});
+  // Per-card state: "busy" (which target is adding) or the target it was added to.
+  const [state, setState] = useState<Record<string, { busy?: AddTarget; added?: AddTarget }>>({});
 
   if (results.length === 0) return null;
 
-  const add = (r: AddResult) => {
-    setState((s) => ({ ...s, [r.key]: "busy" }));
-    r.add()
+  const add = (r: AddResult, target: AddTarget) => {
+    setState((s) => ({ ...s, [r.key]: { busy: target } }));
+    r.add(target)
       .then(() => {
-        setState((s) => ({ ...s, [r.key]: "added" }));
-        toast(`Added "${r.title}" to this library`, "ok");
+        setState((s) => ({ ...s, [r.key]: { added: target } }));
+        toast(`Added "${r.title}" to ${addTargetLabel[target]}`, "ok");
         onAdded();
       })
       .catch((err: unknown) => {
@@ -68,9 +73,23 @@ export default function AddResultsGrid({
               )}
               {r.blurb && <p className="add-blurb">{r.blurb}</p>}
             </div>
-            <button disabled={!!st} onClick={() => add(r)}>
-              {st === "added" ? "✓ Added" : st === "busy" ? "Adding…" : r.addLabel}
-            </button>
+            {st?.added ? (
+              <span className="add-done">✓ Added to {addTargetLabel[st.added]}</span>
+            ) : (
+              <div className="add-targets">
+                {targets.map((t) => (
+                  <button
+                    key={t.target}
+                    className="toggle"
+                    title={t.title}
+                    disabled={!!st?.busy}
+                    onClick={() => add(r, t.target)}
+                  >
+                    {st?.busy === t.target ? "Adding…" : t.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}

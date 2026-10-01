@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, proxiedImage, type Author, type Book, type RenameMove } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import WriteTagsDialog from "../components/WriteTagsDialog";
+import RowMenu from "../components/RowMenu";
 import { DetailSkeleton } from "../components/Skeleton";
 import {
   SortSelect,
@@ -191,23 +192,59 @@ export default function AuthorDetailView({
       .finally(() => setBusy(false));
   };
 
+  // Per-title mirror toggle (shown in each book's "⋯" menu). When the whole
+  // author is mirrored, the title is already in lockstep, so the item shows
+  // that state and is disabled.
+  const toggleBookMirror = (b: Book) => {
+    setBusy(true);
+    setNotice("");
+    api
+      .mirrorBook(b.id, !b.mirror)
+      .then(() => {
+        setNotice(
+          b.mirror
+            ? `Stopped mirroring “${b.title}”`
+            : `Mirroring “${b.title}” across ebook ↔ audiobook`,
+        );
+        reload();
+      })
+      .catch((err: unknown) => onError(String(err instanceof Error ? err.message : err)))
+      .finally(() => setBusy(false));
+  };
+  const bookMenu = (b: Book) => (
+    <RowMenu
+      items={[
+        {
+          label: author.mirror ? "Mirrored with the author" : "Mirror ebook ↔ audiobook",
+          active: b.mirror || author.mirror,
+          disabled: busy || author.mirror,
+          onClick: () => toggleBookMirror(b),
+        },
+      ]}
+    />
+  );
+
   const renderPoster = (b: Book) => {
     const bookOwned = library === "ebook" ? b.hasEbookFile : b.hasAudiobookFile;
     const monitored = library === "ebook" ? b.ebookMonitored : b.audiobookMonitored;
     return (
-      <button key={b.id} className="poster-card" onClick={() => onOpenBook(b.id)}>
-        {b.coverUrl ? (
-          <img className="poster" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
-        ) : (
-          <div className="poster fallback">{b.title.charAt(0)}</div>
-        )}
-        <span className="poster-title">{b.title}</span>
-        <span className="poster-sub">
-          {b.releaseDate ? b.releaseDate.slice(0, 4) + " · " : ""}
-          {bookOwned ? "owned" : "wanted"}
-          {!monitored && " · unmonitored"}
-        </span>
-      </button>
+      <div key={b.id} className="poster-wrap">
+        <button className="poster-card" onClick={() => onOpenBook(b.id)}>
+          {b.coverUrl ? (
+            <img className="poster" src={proxiedImage(b.coverUrl)} alt="" loading="lazy" />
+          ) : (
+            <div className="poster fallback">{b.title.charAt(0)}</div>
+          )}
+          <span className="poster-title">{b.title}</span>
+          <span className="poster-sub">
+            {b.releaseDate ? b.releaseDate.slice(0, 4) + " · " : ""}
+            {bookOwned ? "owned" : "wanted"}
+            {!monitored && " · unmonitored"}
+            {(b.mirror || author.mirror) && " · ⇄"}
+          </span>
+        </button>
+        <div className="poster-corner">{bookMenu(b)}</div>
+      </div>
     );
   };
 
@@ -225,9 +262,13 @@ export default function AuthorDetailView({
           <span className="row-actions">
             {b.releaseDate && <span className="muted">{b.releaseDate.slice(0, 4)}</span>}
             {!monitored && <span className="muted">unmonitored</span>}
+            {(b.mirror || author.mirror) && (
+              <span className="owned yes" title="Mirrored across ebook ↔ audiobook">⇄</span>
+            )}
             <span className={bookOwned ? "owned yes" : "owned no"}>
               {bookOwned ? "owned" : "wanted"}
             </span>
+            {bookMenu(b)}
           </span>
         </div>
       </li>
