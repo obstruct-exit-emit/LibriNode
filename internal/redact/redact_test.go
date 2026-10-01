@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -79,6 +80,28 @@ func TestValuesAndText(t *testing.T) {
 	}
 	if got := Text("plain text", nil); got != "plain text" {
 		t.Errorf("Text with no secrets should pass through unchanged, got %q", got)
+	}
+}
+
+// TestNestedURLParam covers SABnzbd's addurl, which carries the indexer
+// download URL — its own apikey included — as the "name" parameter. Both the
+// error URL and an echoed response body must have the nested key scrubbed.
+func TestNestedURLParam(t *testing.T) {
+	indexerURL := "https://indexer.example/dl?id=42&apikey=indexer-secret"
+	raw := "http://sab.local:8080/api?mode=addurl&apikey=sab-secret&name=" + url.QueryEscape(indexerURL)
+
+	err := doFailingRequest(t, raw)
+	out := URLError(err).Error()
+	for _, leak := range []string{"indexer-secret", "sab-secret"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("secret %q leaked through URLError: %q", leak, out)
+		}
+	}
+
+	secrets := Values(raw)
+	body := `{"status": false, "error": "could not fetch ` + indexerURL + `"}`
+	if scrubbed := Text(body, secrets); strings.Contains(scrubbed, "indexer-secret") {
+		t.Errorf("nested indexer key survived Values+Text: %q", scrubbed)
 	}
 }
 

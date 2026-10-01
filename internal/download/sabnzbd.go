@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -59,7 +60,9 @@ func (s *sabnzbd) api(ctx context.Context, params url.Values, out any) error {
 	}
 	if err := json.Unmarshal(body, &apiErr); err == nil &&
 		apiErr.Status != nil && !*apiErr.Status && apiErr.Error != "" {
-		return fmt.Errorf("sabnzbd: %s", apiErr.Error)
+		// SAB's own error text restates the request — including the indexer
+		// download URL (apikey and all) it was handed via addurl — so scrub it.
+		return fmt.Errorf("sabnzbd: %s", redact.Text(apiErr.Error, secrets))
 	}
 	if out != nil {
 		if err := json.Unmarshal(body, out); err != nil {
@@ -91,10 +94,19 @@ func (s *sabnzbd) Test(ctx context.Context) error {
 // that and names the job properly. If the fetch fails (unreachable, not an
 // NZB), it falls back to handing SABnzbd the URL (addurl).
 func (s *sabnzbd) Add(ctx context.Context, dlURL, title string) (string, error) {
-	if nzb, err := s.fetchNZB(ctx, dlURL); err == nil {
-		if id, err := s.addFile(ctx, nzb, title); err == nil {
-			return id, nil
-		}
+	// Log why the preferred addfile path gave out before falling back to
+	// addurl, so a grab that only works because of the fallback (SABnzbd
+	// fetching the URL that LibriNode couldn't) isn't silent — and a fallback
+	// that then also fails isn't a mystery. Both errors are already redacted.
+	nzb, err := s.fetchNZB(ctx, dlURL)
+	if err != nil {
+		slog.Warn("sabnzbd: NZB fetch failed; handing SABnzbd the URL instead",
+			"title", title, "err", err)
+	} else if id, aerr := s.addFile(ctx, nzb, title); aerr == nil {
+		return id, nil
+	} else {
+		slog.Warn("sabnzbd: NZB upload failed; handing SABnzbd the URL instead",
+			"title", title, "err", aerr)
 	}
 	return s.addURL(ctx, dlURL, title)
 }
@@ -180,6 +192,7 @@ func (s *sabnzbd) addFile(ctx context.Context, nzb []byte, title string) (string
 		"output":  {"json"},
 	}
 	endpoint := strings.TrimRight(s.cfg.Host, "/") + "/api?" + params.Encode()
+	secrets := redact.Values(endpoint) // the SAB apikey rides in the endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
 	if err != nil {
 		return "", err
@@ -188,12 +201,12 @@ func (s *sabnzbd) addFile(ctx context.Context, nzb []byte, title string) (string
 
 	resp, err := s.httpc.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("sabnzbd: %w", err)
+		return "", fmt.Errorf("sabnzbd: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("sabnzbd: HTTP %d: %.100s", resp.StatusCode, respBody)
+		return "", fmt.Errorf("sabnzbd: HTTP %d: %.100s", resp.StatusCode, redact.Text(string(respBody), secrets))
 	}
 	var out struct {
 		Status bool     `json:"status"`
@@ -204,7 +217,7 @@ func (s *sabnzbd) addFile(ctx context.Context, nzb []byte, title string) (string
 		return "", fmt.Errorf("sabnzbd: decoding response: %w", err)
 	}
 	if out.Error != "" {
-		return "", fmt.Errorf("sabnzbd: %s", out.Error)
+		return "", fmt.Errorf("sabnzbd: %s", redact.Text(out.Error, secrets))
 	}
 	if !out.Status || len(out.NzoIDs) == 0 {
 		return "", fmt.Errorf("sabnzbd did not accept the NZB")

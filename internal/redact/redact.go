@@ -40,6 +40,18 @@ func URLError(err error) error {
 		return fmt.Errorf("%s <url redacted, unparseable>: %w", uerr.Op, uerr.Err)
 	}
 	q := u.Query()
+	if !redactQuery(q, 0) {
+		return err
+	}
+	u.RawQuery = q.Encode()
+	return fmt.Errorf("%s %q: %w", uerr.Op, u.String(), uerr.Err)
+}
+
+// redactQuery replaces sensitive parameter values in q with "REDACTED", in
+// place, and recurses one level into any parameter value that is itself a URL
+// (SABnzbd's addurl passes the indexer download URL — apikey and all — as its
+// "name" parameter). Returns whether anything was redacted.
+func redactQuery(q url.Values, depth int) bool {
 	redacted := false
 	for _, key := range sensitiveParams {
 		if q.Get(key) != "" {
@@ -47,11 +59,26 @@ func URLError(err error) error {
 			redacted = true
 		}
 	}
-	if !redacted {
-		return err
+	if depth < 2 {
+		for key, vs := range q {
+			for i, v := range vs {
+				if !strings.Contains(v, "://") {
+					continue
+				}
+				nu, err := url.Parse(v)
+				if err != nil || nu.RawQuery == "" {
+					continue
+				}
+				nq := nu.Query()
+				if redactQuery(nq, depth+1) {
+					nu.RawQuery = nq.Encode()
+					q[key][i] = nu.String()
+					redacted = true
+				}
+			}
+		}
 	}
-	u.RawQuery = q.Encode()
-	return fmt.Errorf("%s %q: %w", uerr.Op, u.String(), uerr.Err)
+	return redacted
 }
 
 // Values returns the values of any sensitive query parameters present in a
@@ -64,11 +91,29 @@ func Values(rawURL string) []string {
 	if err != nil {
 		return nil
 	}
-	q := u.Query()
+	return queryValues(u.Query(), 0)
+}
+
+// queryValues collects sensitive parameter values from q, recursing one level
+// into any URL-valued parameter (see redactQuery) so a nested indexer apikey is
+// scrubbed from an echoed response body too.
+func queryValues(q url.Values, depth int) []string {
 	var out []string
 	for _, key := range sensitiveParams {
 		if v := q.Get(key); v != "" {
 			out = append(out, v)
+		}
+	}
+	if depth < 2 {
+		for _, vs := range q {
+			for _, v := range vs {
+				if !strings.Contains(v, "://") {
+					continue
+				}
+				if nu, err := url.Parse(v); err == nil && nu.RawQuery != "" {
+					out = append(out, queryValues(nu.Query(), depth+1)...)
+				}
+			}
 		}
 	}
 	return out
