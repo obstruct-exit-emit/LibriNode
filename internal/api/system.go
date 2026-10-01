@@ -92,7 +92,10 @@ func (s *server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
 			"no update command configured — set system.update_command in config.yaml")
 		return
 	}
-	c := exec.Command("systemd-run", "--collect", "--quiet", "/bin/sh", "-c", cmd)
+	// A login shell (bash -lc) sources the profile, so the command gets the same
+	// PATH an admin has in the console — not systemd-run's bare default — which
+	// is what update scripts that call out to node/npm/go expect.
+	c := exec.Command("systemd-run", "--collect", "--quiet", "/bin/bash", "-lc", cmd)
 	if err := c.Start(); err != nil {
 		slog.Error("starting update command", "err", err)
 		writeError(w, http.StatusInternalServerError, "failed to start update: "+err.Error())
