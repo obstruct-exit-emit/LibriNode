@@ -52,8 +52,11 @@ in progress. Highlights from the hardening period, newest first:
 - **Update and Restart buttons** on **Settings → System** (admin only). Restart
   shuts down gracefully for the service supervisor (e.g. systemd `Restart=always`)
   to respawn; Update runs a command you configure (`system.update_command`) in
-  its own transient `systemd-run` unit, so it survives the restart it triggers.
-  The Update button appears only once a command is set.
+  its own transient systemd **scope** (`systemd-run --scope`) — a unit managed
+  directly by PID 1, outside LibriNode's own cgroup — so an update script's own
+  `systemctl stop`/`restart` of the LibriNode service can't take the update
+  command down as collateral damage. The Update button appears only once a
+  command is set.
 - **The release browser collapses near-identical copies** — a dozen mirrors of
   the same file become one best-scored row tagged "+N more", with a "collapse
   copies" toggle to list every one. Auto grab is unchanged.
