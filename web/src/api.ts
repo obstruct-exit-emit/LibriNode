@@ -844,9 +844,10 @@ export const api = {
       json({ bookId }),
     ),
   dismissFile: (fileId: number, deleteFiles = false) =>
-    request<void>(`/api/v1/bookfile/${fileId}${deleteFiles ? "?deleteFiles=true" : ""}`, {
-      method: "DELETE",
-    }),
+    request<{ deletedFiles?: number; errors?: string[] } | undefined>(
+      `/api/v1/bookfile/${fileId}${deleteFiles ? "?deleteFiles=true" : ""}`,
+      { method: "DELETE" },
+    ),
 
   listDownloadClients: () =>
     request<DownloadClient[]>("/api/v1/downloadclient"),

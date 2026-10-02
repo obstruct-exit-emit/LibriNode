@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, proxiedImage, type Author, type Book, type Edition } from "../api";
+import { api, proxiedImage, type Author, type Book, type BookFile, type Edition } from "../api";
 import RemovePanel from "../components/RemovePanel";
 import ReleaseBrowser from "../components/ReleaseBrowser";
 import WriteTagsDialog from "../components/WriteTagsDialog";
@@ -293,6 +293,37 @@ export default function BookDetailView({
     }
   };
 
+  // Delete one file (or, for a multi-file audiobook, its whole folder) from
+  // disk — tucked behind the file's ⋯ menu rather than a plain button, since
+  // it's the one action here that can't be undone. The book itself isn't
+  // touched: losing its only copy just drops it back to wanted.
+  const deleteFile = async (f: BookFile) => {
+    const isFolder = (f.tracks?.length ?? 0) > 0;
+    const ok = await confirmDlg({
+      title: isFolder ? "Delete folder" : "Delete file",
+      message:
+        `Delete this ${isFolder ? "folder" : "file"} from disk?\n\n${f.path}\n\n` +
+        "The book loses this copy; without it the book counts as wanted again.",
+      confirmLabel: isFolder ? "Delete folder" : "Delete file",
+      danger: true,
+    });
+    if (!ok) return;
+    setFileBusy(true);
+    setGrabNotice("");
+    try {
+      const r = await api.dismissFile(f.id, true);
+      const errs = r?.errors ?? [];
+      setGrabNotice(
+        errs.length > 0 ? `✗ Deleted with ${errs.length} error(s): ${errs[0]}` : "✓ Deleted.",
+      );
+      reload();
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
   const year = book.releaseDate ? ` (${book.releaseDate.slice(0, 4)})` : "";
   const subtitle = [
     author?.name,
@@ -538,15 +569,24 @@ export default function BookDetailView({
                     <span className="muted">
                       {f.format} · {formatBytes(f.size)}
                     </span>
-                    {(f.mediaType === "audiobook" || f.mediaType === "ebook") && (
-                      <button
-                        className="toggle"
-                        title="View this file's own embedded tags, read live off disk"
-                        onClick={() => setTagsFile({ id: f.id, name: f.path })}
-                      >
-                        tags
-                      </button>
-                    )}
+                    <RowMenu
+                      items={[
+                        ...(f.mediaType === "audiobook" || f.mediaType === "ebook"
+                          ? [
+                              {
+                                label: "View tags",
+                                onClick: () => setTagsFile({ id: f.id, name: f.path }),
+                              },
+                            ]
+                          : []),
+                        {
+                          label: (f.tracks?.length ?? 0) > 0 ? "Delete folder" : "Delete file",
+                          danger: true,
+                          disabled: fileBusy,
+                          onClick: () => deleteFile(f),
+                        },
+                      ]}
+                    />
                   </span>
                 </div>
                 {(f.tracks?.length ?? 0) > 0 && (
