@@ -196,15 +196,29 @@ and applies them on the next restart, keeping the replaced ones as
     update_command: "update"   # e.g. a script that pulls, builds, and restarts
   ```
 
-  The command is launched in its own transient systemd unit (`systemd-run`), so
-  it survives the restart it triggers, and runs through a **login shell**
-  (`bash -lc`) so it gets the same `PATH` an admin has in the console — an update
-  script that calls out to `node`/`npm`/`go` works without hard-coding their
-  paths. It's set here by hand, **not** editable in the web UI, so a compromised
-  session can't choose what the server runs; it runs as LibriNode's own user, so
-  make sure that user can run it. An update script should also **build first and
-  restart last** (and the service should set `Restart=always`), so a failed
-  build can never leave the service down.
+  The command is launched in its own transient systemd **scope** (`systemd-run
+  --scope`) — a unit managed directly by PID 1, outside LibriNode's own cgroup —
+  rather than as a plain child process of the LibriNode service. That matters
+  because an update script typically contains its own `systemctl stop
+  librinode` (to free the binary before rebuilding it): with systemd's default
+  `KillMode=control-group`, that line kills every process in LibriNode's
+  cgroup the instant it runs — including a plain child of LibriNode, which
+  would die right there and never reach the rebuild or the `systemctl start`
+  that follows. Running the command in its own scope sidesteps that; it runs
+  as a sibling of the service, so stopping the service can't touch it. It also
+  runs through a **login shell** (`bash -lc`) so it gets the same `PATH` an
+  admin has in the console — an update script that calls out to
+  `node`/`npm`/`go` works without hard-coding their paths.
+
+  It's set here by hand, **not** editable in the web UI, so a compromised
+  session can't choose what the server runs; it runs as LibriNode's own user,
+  so make sure that user can run it. An update script should also **build
+  first and restart last** (and the service should set `Restart=always`), so a
+  failed build can never leave the service down. Creating a transient scope
+  needs either root (LibriNode's usual deploy) or, for a dedicated
+  lower-privilege service user, a polkit rule granting
+  `org.freedesktop.systemd1.manage-units` — without it, `systemd-run --scope`
+  fails with "Interactive authentication required."
 
 ## Image cache
 

@@ -81,10 +81,18 @@ func (s *server) handleSystemRestart(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-// handleSystemUpdate launches the configured update command detached from this
-// process, in its own transient systemd unit — so the command (which typically
-// ends by restarting LibriNode) survives the very restart it triggers instead
-// of being killed with this service's cgroup. No-op (400) when unconfigured.
+// handleSystemUpdate launches the configured update command in its own
+// transient systemd SCOPE — a unit managed directly by PID 1, outside this
+// service's cgroup — not as a plain child process. An update script typically
+// contains its own `systemctl stop librinode` (to free the binary before
+// rebuilding it): with KillMode=control-group (systemd's default), that line
+// kills every process in this service's cgroup THE INSTANT IT RUNS — including
+// the update script itself, mid-run, as collateral damage from stopping its
+// own parent. It would die right there, never reaching the rebuild or the
+// `systemctl start` that follows, leaving the service stopped (not failed, so
+// nothing auto-restarts it) until a human notices. --scope sidesteps this
+// entirely: the command runs as a sibling of the service, not inside its
+// cgroup, so stopping the service can't touch it.
 func (s *server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
 	cmd := strings.TrimSpace(s.cfg.UpdateCommand())
 	if cmd == "" {
@@ -95,7 +103,15 @@ func (s *server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
 	// A login shell (bash -lc) sources the profile, so the command gets the same
 	// PATH an admin has in the console — not systemd-run's bare default — which
 	// is what update scripts that call out to node/npm/go expect.
-	c := exec.Command("systemd-run", "--collect", "--quiet", "/bin/bash", "-lc", cmd)
+	//
+	// --scope: a transient scope unit (not a background service unit) — this
+	// call blocks until the scope's own process exits, which is what makes it
+	// survive the parent service's cgroup being killed; it does NOT get
+	// reparented into this service's cgroup the way a plain child process does.
+	// --collect: auto-remove the transient unit once it exits (otherwise it
+	// piles up in `systemctl list-units`).
+	// --quiet: suppress systemd-run's own "Running scope as unit: ..." chatter.
+	c := exec.Command("systemd-run", "--scope", "--collect", "--quiet", "--", "/bin/bash", "-lc", cmd)
 	if err := c.Start(); err != nil {
 		slog.Error("starting update command", "err", err)
 		writeError(w, http.StatusInternalServerError, "failed to start update: "+err.Error())
