@@ -324,6 +324,39 @@ export default function BookDetailView({
     }
   };
 
+  // Delete every one of this book's files in this library in one go — the
+  // header-level counterpart of deleteFile below, for the common case of one
+  // (or a few) files without opening each row's ⋯ menu. Same effect either
+  // way: the book itself stays monitored/in-library and just goes back to
+  // wanted.
+  const deleteAllFiles = async () => {
+    const ok = await confirmDlg({
+      title: files.length === 1 ? "Delete file" : `Delete ${files.length} files`,
+      message:
+        `Delete the following from disk?\n\n${files.map((f) => f.path).join("\n")}\n\n` +
+        "The book loses these copies; without them it counts as wanted again.",
+      confirmLabel: files.length === 1 ? "Delete file" : "Delete all",
+      danger: true,
+    });
+    if (!ok) return;
+    setFileBusy(true);
+    setGrabNotice("");
+    try {
+      const results = await Promise.all(files.map((f) => api.dismissFile(f.id, true)));
+      const errs = results.flatMap((r) => r?.errors ?? []);
+      setGrabNotice(
+        errs.length > 0
+          ? `✗ Deleted with ${errs.length} error(s): ${errs[0]}`
+          : `✓ Deleted ${files.length} file(s).`,
+      );
+      reload();
+    } catch (err) {
+      onError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
   const year = book.releaseDate ? ` (${book.releaseDate.slice(0, 4)})` : "";
   const subtitle = [
     author?.name,
@@ -466,6 +499,16 @@ export default function BookDetailView({
                 title="Move this book's file(s) to match the naming templates"
               >
                 Organize…
+              </button>
+            )}
+            {files.length > 0 && (
+              <button
+                className="danger"
+                disabled={fileBusy}
+                onClick={deleteAllFiles}
+                title="Delete this book's file(s) from disk — the book stays in the library, marked wanted"
+              >
+                Delete files…
               </button>
             )}
             {grabNotice && (
