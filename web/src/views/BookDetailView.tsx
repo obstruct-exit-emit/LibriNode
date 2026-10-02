@@ -501,16 +501,6 @@ export default function BookDetailView({
                 Organize…
               </button>
             )}
-            {files.length > 0 && (
-              <button
-                className="danger"
-                disabled={fileBusy}
-                onClick={deleteAllFiles}
-                title="Delete this book's file(s) from disk — the book stays in the library, marked wanted"
-              >
-                Delete files…
-              </button>
-            )}
             {grabNotice && (
               <span className={grabNotice.startsWith("✗") ? "notice bad" : "notice ok"}>{grabNotice}</span>
             )}
@@ -564,6 +554,16 @@ export default function BookDetailView({
             <summary>Advanced</summary>
             <div className="disclosure-body">
               <div className="settings-actions">
+                {files.length > 0 && (
+                  <button
+                    className="danger"
+                    disabled={fileBusy}
+                    onClick={deleteAllFiles}
+                    title="Delete this book's file(s) from disk — the book stays in the library, marked wanted"
+                  >
+                    Delete files…
+                  </button>
+                )}
                 <button
                   className="danger"
                   title={`Remove from the ${library} library (the other library is untouched)`}
