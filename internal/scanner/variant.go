@@ -13,7 +13,7 @@ import (
 // to match against: a plain, unlabeled release is the overwhelming majority
 // case and simply doesn't say anything about color at all, so its absence is
 // never treated as proof of monochrome (see DetectVariant).
-var colorizedKeywords = regexp.MustCompile(`(?i)\b(colou?rized|colou?r[\s._-]?edition|digital[\s._-]?colou?r)\b`)
+var colorizedKeywords = regexp.MustCompile(`(?i)\b(colou?r(?:ized|ed)|colou?r(?:ed)?[\s._-]?edition|digital(?:ly)?[\s._-]?colou?r(?:ed)?)\b`)
 
 // DetectVariant figures out whether a manga/comic archive is a colorized or
 // monochrome edition, trying the most reliable signal first:
