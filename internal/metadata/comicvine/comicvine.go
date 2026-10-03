@@ -190,10 +190,28 @@ func (c *Client) GetSeries(ctx context.Context, foreignID string) (*metadata.Ser
 		return nil, err
 	}
 	result := volume.toResult()
+
+	// Annuals, specials and odd variants ("1AU", "½", a blank number) don't
+	// parse as a plain float. These used to be dropped entirely — never even
+	// a trackable, unmonitored book — rather than just unmatched by number.
+	// Give each a synthetic number past the highest real issue, in the order
+	// ComicVine returned them: still tracked, still sorts after the main
+	// numbered run instead of colliding at 0. issue.Name (already carried
+	// through as Title either way) is what actually identifies it to the
+	// user — it becomes the book's description, since the title itself is
+	// built from the number.
+	var maxNumber float64
+	for _, issue := range volume.Issues {
+		if n, err := strconv.ParseFloat(issue.IssueNumber, 64); err == nil && n > maxNumber {
+			maxNumber = n
+		}
+	}
+	next := maxNumber
 	for _, issue := range volume.Issues {
 		number, err := strconv.ParseFloat(issue.IssueNumber, 64)
 		if err != nil {
-			continue // annuals and specials with odd numbering are skipped
+			next++
+			number = next
 		}
 		result.Issues = append(result.Issues, metadata.Issue{
 			ForeignID: strconv.Itoa(issue.ID),

@@ -74,9 +74,11 @@ func TestGetSeries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSeries: %v", err)
 	}
-	// Oddly-numbered specials are skipped; the rest are sorted by number even
-	// though ComicVine returned them out of order (3, 2, 1).
-	if len(s.Issues) != 3 {
+	// The oddly-numbered special ("1.AU") is still tracked — not dropped —
+	// with a synthetic number past the highest real issue (3), so it sorts
+	// last; the rest sort by number even though ComicVine returned them out
+	// of order (3, 2, 1).
+	if len(s.Issues) != 4 {
 		t.Fatalf("issues = %+v", s.Issues)
 	}
 	if s.Issues[0].Number != 1 || s.Issues[0].Title != "Days Gone Bye" {
@@ -84,6 +86,10 @@ func TestGetSeries(t *testing.T) {
 	}
 	if s.Issues[1].Number != 2 || s.Issues[2].Number != 3 {
 		t.Errorf("issues not sorted by number: %+v", s.Issues)
+	}
+	last := s.Issues[3]
+	if last.Number <= 3 || last.Title != "Weird Special" {
+		t.Errorf("special = %+v, want synthetic number > 3 and title preserved", last)
 	}
 
 	if _, err := c.GetSeries(context.Background(), "999"); !errors.Is(err, metadata.ErrNotFound) {

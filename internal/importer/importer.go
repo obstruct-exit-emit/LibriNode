@@ -1325,11 +1325,12 @@ func fileFormat(path string) string {
 }
 
 // writeComicInfo injects a ComicInfo.xml built from the volume's library
-// metadata into an imported CBZ. variant is the manga variant this file was
-// placed under ("" for comics, which have none) — written into the standard
-// BlackAndWhite field so Kavita/Komga (and LibriNode's own scanner, on a
-// later re-scan or for anyone else's tooling) see it too, closing the loop
-// with the variant detection that chose where this file landed.
+// metadata into an imported CBZ. variant is the manga/comic variant this
+// file was placed under ("" when detection found no signal) — written into
+// the standard BlackAndWhite field so Kavita/Komga (and LibriNode's own
+// scanner, on a later re-scan or for anyone else's tooling) see it too,
+// closing the loop with the variant detection that chose where this file
+// landed.
 func (s *Service) writeComicInfo(cbzPath string, book *library.Book, variant string) error {
 	info := comicinfo.Info{
 		Title:   book.Description, // issue title lives in the description

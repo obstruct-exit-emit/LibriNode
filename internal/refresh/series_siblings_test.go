@@ -109,3 +109,66 @@ func TestRefreshSeriesPreservesSiblingsOnSearchFailure(t *testing.T) {
 		t.Errorf("SiblingTitles after empty-search refresh = %v, want [Dragon Ball Super] preserved", got.SiblingTitles)
 	}
 }
+
+// fakeRelatedSeriesProvider adds metadata.RelatedSeriesProvider to
+// fakeSeriesProvider — a provider whose relations graph is authoritative,
+// not just inferred from title search (AniList; ComicVine has no
+// equivalent, so it only ever satisfies the base SeriesProvider).
+type fakeRelatedSeriesProvider struct {
+	fakeSeriesProvider
+	related map[string][]metadata.SeriesResult
+}
+
+func (f *fakeRelatedSeriesProvider) RelatedSeries(_ context.Context, foreignID string) ([]metadata.SeriesResult, error) {
+	return f.related[foreignID], nil
+}
+
+// TestSyncSeriesMergesRelatedSeriesWithSearch: a provider whose relations
+// graph names a sibling the title search doesn't surface at all (no textual
+// overlap) still gets it into SiblingTitles — and a sibling present in both
+// sources isn't duplicated.
+func TestSyncSeriesMergesRelatedSeriesWithSearch(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	p := &fakeRelatedSeriesProvider{
+		fakeSeriesProvider: fakeSeriesProvider{
+			name: "anifake",
+			search: []metadata.SeriesResult{
+				{ForeignID: "db", Title: "Dragon Ball"},        // itself — excluded
+				{ForeignID: "dbs", Title: "Dragon Ball Super"}, // found by both sources
+			},
+			series: map[string]*metadata.SeriesResult{
+				"db": {ForeignID: "db", Title: "Dragon Ball", IssueCount: 1,
+					Issues: []metadata.Issue{{ForeignID: "db-v1", Number: 1}}},
+			},
+		},
+		related: map[string][]metadata.SeriesResult{
+			"db": {
+				{ForeignID: "dbs", Title: "Dragon Ball Super"},           // duplicate of the search hit
+				{ForeignID: "cross", Title: "A Totally Unrelated Title"}, // search alone would never find this
+			},
+		},
+	}
+	mgr := metadata.NewManager()
+	mgr.SetSeries(p)
+	svc := New(store, mgr)
+
+	added, err := svc.SyncSeries(context.Background(), "manga", "db", true, true, true)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	want := map[string]bool{"Dragon Ball Super": true, "A Totally Unrelated Title": true}
+	if len(added.SiblingTitles) != len(want) {
+		t.Fatalf("SiblingTitles = %v, want %v (no duplicate for the overlapping sibling)", added.SiblingTitles, want)
+	}
+	for _, s := range added.SiblingTitles {
+		if !want[s] {
+			t.Errorf("unexpected sibling %q", s)
+		}
+	}
+}

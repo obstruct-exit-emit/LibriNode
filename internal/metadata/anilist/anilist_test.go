@@ -172,3 +172,36 @@ func TestGetSeries(t *testing.T) {
 		t.Errorf("missing series: err = %v, want ErrNotFound", err)
 	}
 }
+
+// TestRelatedSeries: only the relation types that name a genuinely
+// different, specifically-known work (SEQUEL here) come back — ADAPTATION,
+// an unrelated medium of the SAME work, is filtered out — and an
+// adult-flagged relation is hidden by the same default as search results.
+func TestRelatedSeries(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data": {"Media": {"relations": {"edges": [
+			{"relationType": "SEQUEL", "node": {"id": 2, "isAdult": false, "title": {"english": "Dragon Ball Super"}, "volumes": 0}},
+			{"relationType": "ADAPTATION", "node": {"id": 3, "isAdult": false, "title": {"english": "Dragon Ball (Anime)"}, "volumes": 0}},
+			{"relationType": "SIDE_STORY", "node": {"id": 4, "isAdult": true, "title": {"english": "Adult Side Story"}, "volumes": 0}}
+		]}}}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(WithEndpoint(srv.URL))
+	related, err := c.RelatedSeries(context.Background(), "1")
+	if err != nil {
+		t.Fatalf("RelatedSeries: %v", err)
+	}
+	if len(related) != 1 || related[0].ForeignID != "2" || related[0].Title != "Dragon Ball Super" {
+		t.Fatalf("related = %+v, want only the SEQUEL (ADAPTATION filtered, adult relation hidden)", related)
+	}
+
+	c.includeAdult = true
+	if related, err = c.RelatedSeries(context.Background(), "1"); err != nil {
+		t.Fatalf("RelatedSeries: %v", err)
+	}
+	if len(related) != 2 {
+		t.Fatalf("with includeAdult, related = %+v, want SEQUEL + SIDE_STORY", related)
+	}
+}

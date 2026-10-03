@@ -94,6 +94,21 @@ type SeriesProvider interface {
 	GetSeries(ctx context.Context, foreignID string) (*SeriesResult, error)
 }
 
+// RelatedSeriesProvider is an optional SeriesProvider capability: a
+// provider that can report explicitly-typed related works — sequel,
+// prequel, spin-off, side story — for a series. Authoritative, unlike
+// fetchSiblingTitles' title-search fallback (internal/refresh/series.go),
+// which only infers relation from what a search happens to surface.
+// Providers that carry no such concept (ComicVine has none) simply don't
+// implement it; callers use a type assertion to check.
+type RelatedSeriesProvider interface {
+	SeriesProvider
+	// RelatedSeries returns OTHER, distinct series explicitly related to
+	// foreignID — not foreignID's own record, and not a guess from title
+	// similarity.
+	RelatedSeries(ctx context.Context, foreignID string) ([]SeriesResult, error)
+}
+
 // SeriesResult is a manga/comic series at the provider.
 type SeriesResult struct {
 	ForeignID   string  `json:"foreignSeriesId"`

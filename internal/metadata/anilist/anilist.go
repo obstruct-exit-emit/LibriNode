@@ -260,3 +260,55 @@ func (c *Client) GetSeries(ctx context.Context, foreignID string) (*metadata.Ser
 	}
 	return &result, nil
 }
+
+// relevantRelations are the AniList relationTypes that name a genuinely
+// different, specifically-known work sharing the franchise — the ones a
+// release could plausibly be mistaken for this series ("Dragon Ball Super"
+// is a SEQUEL of "Dragon Ball"). ADAPTATION/SOURCE/SUMMARY/CHARACTER/OTHER
+// describe the same work in a different medium, a recap, or a loose
+// character link — not a distinct series a release's title could collide
+// with — so they're deliberately excluded.
+var relevantRelations = map[string]bool{
+	"SEQUEL": true, "PREQUEL": true, "SIDE_STORY": true,
+	"SPIN_OFF": true, "ALTERNATIVE": true, "PARENT": true,
+}
+
+// RelatedSeries implements metadata.RelatedSeriesProvider: AniList's own
+// relations graph, filtered to relevantRelations — an authoritative
+// alternative to inferring siblings from title search alone.
+func (c *Client) RelatedSeries(ctx context.Context, foreignID string) ([]metadata.SeriesResult, error) {
+	id, err := strconv.Atoi(foreignID)
+	if err != nil {
+		return nil, fmt.Errorf("anilist: invalid id %q: %w", foreignID, metadata.ErrNotFound)
+	}
+	var out struct {
+		Media *struct {
+			Relations struct {
+				Edges []struct {
+					RelationType string   `json:"relationType"`
+					Node         gqlMedia `json:"node"`
+				} `json:"edges"`
+			} `json:"relations"`
+		} `json:"Media"`
+	}
+	q := `query ($id: Int) { Media(id: $id, type: MANGA) {
+		relations { edges { relationType node {` + mediaFields + `} } }
+	} }`
+	if err := c.do(ctx, q, map[string]any{"id": id}, &out); err != nil {
+		return nil, err
+	}
+	if out.Media == nil {
+		return nil, metadata.ErrNotFound
+	}
+	var results []metadata.SeriesResult
+	for _, edge := range out.Media.Relations.Edges {
+		if !relevantRelations[edge.RelationType] {
+			continue
+		}
+		if edge.Node.IsAdult && !c.includeAdult {
+			continue
+		}
+		results = append(results, edge.Node.toResult(c.preferRomaji))
+	}
+	return results, nil
+}

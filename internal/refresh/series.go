@@ -126,35 +126,52 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 	return series, nil
 }
 
-// fetchSiblingTitles searches the provider for self's own title and returns
-// the titles of the OTHER, distinct series that search surfaces — e.g.
-// searching "Dragon Ball" also surfaces "Dragon Ball Super" as its own
-// series with a different foreign ID. These feed release.seriesTitleMatches
-// (via Series.SiblingTitles), so a release that actually names one of them
-// isn't mistaken for a tag-decorated release of self.
+// fetchSiblingTitles collects the titles of OTHER, distinct series related
+// to self — e.g. "Dragon Ball Super" alongside "Dragon Ball" — from two
+// sources: a title search for self's own name (the only signal available
+// from any SeriesProvider — e.g. searching "Dragon Ball" surfaces "Dragon
+// Ball Super" as its own series with a different foreign ID), and, when the
+// provider implements metadata.RelatedSeriesProvider (AniList does;
+// ComicVine doesn't), its own explicitly-typed relations graph — an
+// authoritative source the search can miss entirely (a sibling whose title
+// doesn't textually overlap) or that a crowded search result page can push
+// out (ComicVine's hardcoded 20-result cap, saturated by same-titled
+// different print runs for a prolific franchise). These feed
+// release.seriesTitleMatches (via Series.SiblingTitles), so a release that
+// actually names one of them isn't mistaken for a tag-decorated release of
+// self.
 //
-// Best-effort: a search failure (or a provider with no useful search for
-// this query) just means no siblings this time, not a failed sync — and
-// UpsertSeries only overwrites the stored list when this returns something,
-// so a transient failure here never erases a previously found list.
+// Best-effort throughout: either source failing just means fewer siblings
+// this time, not a failed sync — and UpsertSeries only overwrites the
+// stored list when this returns something non-empty, so a transient
+// failure here never erases a previously found list.
 func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *metadata.SeriesResult) []string {
-	results, err := p.SearchSeries(ctx, self.Title)
-	if err != nil {
-		return nil
-	}
 	selfTitle := strings.ToLower(strings.TrimSpace(self.Title))
-	var siblings []string
 	seen := map[string]bool{}
-	for _, r := range results {
-		if r.ForeignID == self.ForeignID {
-			continue
+	var siblings []string
+	add := func(foreignID, title string) {
+		if foreignID == self.ForeignID {
+			return
 		}
-		norm := strings.ToLower(strings.TrimSpace(r.Title))
+		norm := strings.ToLower(strings.TrimSpace(title))
 		if norm == "" || norm == selfTitle || seen[norm] {
-			continue
+			return
 		}
 		seen[norm] = true
-		siblings = append(siblings, r.Title)
+		siblings = append(siblings, title)
+	}
+
+	if results, err := p.SearchSeries(ctx, self.Title); err == nil {
+		for _, r := range results {
+			add(r.ForeignID, r.Title)
+		}
+	}
+	if rp, ok := p.(metadata.RelatedSeriesProvider); ok {
+		if related, err := rp.RelatedSeries(ctx, self.ForeignID); err == nil {
+			for _, r := range related {
+				add(r.ForeignID, r.Title)
+			}
+		}
 	}
 	return siblings
 }
