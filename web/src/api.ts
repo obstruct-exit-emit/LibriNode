@@ -292,6 +292,11 @@ export interface ReleaseCandidate extends Release {
     // The release declares itself a complete run ("Complete", "Collection")
     // even without a volume range — e.g. an ebook/audiobook series bundle.
     pack?: boolean;
+    // "color" when the release title carries a colorized-edition keyword
+    // (manga/comic only); absent otherwise — NOT a claim the release is
+    // monochrome, just that nothing announced a color edition (the normal
+    // case for most releases either way).
+    variant?: "color";
   };
   score: number;
   approved: boolean;

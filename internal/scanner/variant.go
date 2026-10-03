@@ -45,3 +45,15 @@ func DetectVariant(path string) string {
 	}
 	return ""
 }
+
+// LooksColorized reports whether s (a release title, a filename, a folder
+// name — anything) carries a colorized-edition keyword. Exported so a
+// release's own title can be checked the same way a scanned/downloaded
+// file's path already is — release.ScoreVolume uses this at search time,
+// before there's a file to open. Same asymmetry as DetectVariant: a true
+// result is a confident, deliberate signal; false proves nothing about
+// monochrome, since a plain release simply doesn't say anything about color
+// either way.
+func LooksColorized(s string) bool {
+	return colorizedKeywords.MatchString(s)
+}

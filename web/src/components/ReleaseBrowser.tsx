@@ -359,6 +359,14 @@ export default function ReleaseBrowser({
                     </span>
                   ))}
                   {c.parsed.retail && <span className="pill rb-retail">retail</span>}
+                  {c.parsed.variant === "color" && (
+                    <span
+                      className="pill rb-variant-color"
+                      title="The release title carries a colorized-edition keyword — this isn't a claim about any other release here; one with no tag simply doesn't say either way"
+                    >
+                      🎨 color
+                    </span>
+                  )}
                   {isPack(c) && (
                     <span
                       className="pill rb-pack"

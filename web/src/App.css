@@ -828,6 +828,11 @@ button.toggle.on:hover:not(:disabled) {
   color: var(--accent);
 }
 
+.pill.rb-variant-color {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
 .pill.match-confidence {
   background: var(--ok-soft);
   color: var(--ok);

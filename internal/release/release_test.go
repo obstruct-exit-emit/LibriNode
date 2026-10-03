@@ -546,6 +546,64 @@ func TestScoreVolume(t *testing.T) {
 	}
 }
 
+// TestScoreVolumeDetectsColorVariant: ScoreVolume's Parsed.Variant picks up a
+// colorized-edition keyword in the release title; a plain, unmarked release
+// (the overwhelming normal case) carries no variant claim either way.
+func TestScoreVolumeDetectsColorVariant(t *testing.T) {
+	prefs := DefaultMangaPreferences()
+
+	colored := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if colored.Parsed.Variant != "color" {
+		t.Errorf("Parsed.Variant = %q, want color", colored.Parsed.Variant)
+	}
+	if !colored.Approved {
+		t.Errorf("colorized release wrongly rejected: %v", colored.Rejections)
+	}
+
+	plain := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	if plain.Parsed.Variant != "" {
+		t.Errorf("Parsed.Variant = %q, want \"\" (an unmarked release claims nothing)", plain.Parsed.Variant)
+	}
+}
+
+// TestAdjustForOwnedVariant: a confirmed-colorized candidate for a volume
+// whose color edition is already owned ranks below an unmarked candidate on
+// the same volume — but is never rejected outright, and an unmarked
+// candidate is never penalized just because only the mono copy is missing
+// (there's no reliable "this is mono" signal to act on).
+func TestAdjustForOwnedVariant(t *testing.T) {
+	prefs := DefaultMangaPreferences()
+
+	colored := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	plain := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	beforeColored, beforePlain := colored.Score, plain.Score
+
+	AdjustForOwnedVariant(&colored, true /* ownedColor */)
+	AdjustForOwnedVariant(&plain, true /* ownedColor */)
+
+	if !colored.Approved {
+		t.Error("a probable duplicate must be ranked down, not rejected — a genuine format upgrade must still be able to win")
+	}
+	if colored.Score != beforeColored-variantDuplicatePenalty {
+		t.Errorf("colored.Score = %d, want %d (penalized)", colored.Score, beforeColored-variantDuplicatePenalty)
+	}
+	if plain.Score != beforePlain {
+		t.Errorf("plain.Score = %d, want %d (unmarked release untouched — no mono signal to act on)", plain.Score, beforePlain)
+	}
+	if colored.Score >= plain.Score {
+		t.Errorf("confirmed duplicate (score %d) should rank below the unmarked candidate (score %d)", colored.Score, plain.Score)
+	}
+
+	// Not owned: no penalty, even for a confirmed-colorized release — there's
+	// nothing to duplicate yet.
+	fresh := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	freshScore := fresh.Score
+	AdjustForOwnedVariant(&fresh, false /* ownedColor */)
+	if fresh.Score != freshScore {
+		t.Errorf("fresh.Score changed with ownedColor=false: %d -> %d", freshScore, fresh.Score)
+	}
+}
+
 // TestScoreNoSeedersOptIn: a zero-seeder torrent is rejected by default (dead),
 // but a debrid/cached-torrent client (AllowNoSeeders) makes it grabbable — the
 // cache serves it regardless of the swarm. A seeded torrent and usenet are

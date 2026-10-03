@@ -489,6 +489,37 @@ func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, num
 	return c
 }
 
+// variantDuplicatePenalty softly ranks a probable-duplicate release below
+// genuinely new candidates without excluding it outright — large enough to
+// usually lose to an unmarked (unknown-variant) candidate on the same
+// volume, small enough that a real quality upgrade of the same owned
+// variant (a better format of the color edition you already have) can still
+// win if nothing else comes close.
+const variantDuplicatePenalty = 20
+
+// AdjustForOwnedVariant softly penalizes a manga/comic candidate already
+// scored by ScoreVolume when it's confidently a colorized edition
+// (c.Parsed.Variant == "color", set by Parse from a colorized-edition
+// keyword in the release title — see scanner.LooksColorized) and the book
+// already owns a color file: grabbing it again would almost certainly
+// duplicate what's already on disk, not close a real gap.
+//
+// Deliberately one-sided and deliberately a soft score adjustment, not a
+// rejection: there is no reliable keyword for "this is the monochrome
+// edition" (an unmarked release — the overwhelming majority — says nothing
+// about color either way, which is not evidence it's mono), so the
+// symmetric check for an already-owned mono file can't be made with any
+// confidence and isn't attempted. A hard reject here would also wrongly
+// block a legitimate upgrade search for a better format of the color
+// edition already owned; a penalty lets a genuinely better format still
+// win while a routine missing-volume search ranks any unmarked candidate
+// above a confirmed duplicate.
+func AdjustForOwnedVariant(c *Candidate, ownedColor bool) {
+	if c.Parsed.Variant == "color" && ownedColor {
+		c.Score -= variantDuplicatePenalty
+	}
+}
+
 // ScoreSeriesPack evaluates a release as a whole-series (or multi-volume)
 // pack: generic checks, the series title, and pack-ness — a volume range
 // ("v01-v12"), a completeness word ("Complete", "Collection"), or a bare

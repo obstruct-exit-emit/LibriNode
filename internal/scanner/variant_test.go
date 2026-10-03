@@ -7,6 +7,24 @@ import (
 	"testing"
 )
 
+func TestLooksColorized(t *testing.T) {
+	cases := []struct {
+		s    string
+		want bool
+	}{
+		{"Berserk v05 (Colorized) [Group].cbz", true},
+		{"Death Note - [Digital Color Edition] Vol. 1", true},
+		{"Dragon Ball Full Color Edition v01", true},
+		{"Berserk v05.cbz", false},
+		{"Colorful Adventures v01.cbz", false}, // whole word only, not a substring
+	}
+	for _, c := range cases {
+		if got := LooksColorized(c.s); got != c.want {
+			t.Errorf("LooksColorized(%q) = %v, want %v", c.s, got, c.want)
+		}
+	}
+}
+
 func makeCbz(t *testing.T, path string, files map[string]string) {
 	t.Helper()
 	f, err := os.Create(path)

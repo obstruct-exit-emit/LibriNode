@@ -313,7 +313,11 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	candidates := make([]release.Candidate, 0, len(found))
 	for _, rel := range found {
 		if seriesTitle != "" {
-			candidates = append(candidates, release.ScoreVolume(rel, prefs, seriesTitle, volumeNumber))
+			c := release.ScoreVolume(rel, prefs, seriesTitle, volumeNumber)
+			if book != nil && book.MediaType == "manga" {
+				release.AdjustForOwnedVariant(&c, book.HasColorFile)
+			}
+			candidates = append(candidates, c)
 		} else {
 			candidates = append(candidates, release.Score(rel, prefs, book, author, otherTitles))
 		}

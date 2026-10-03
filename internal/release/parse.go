@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/librinode/librinode/internal/scanner"
 )
 
 // Parsed is what a release title tells us, best-effort. Zero values mean
@@ -32,6 +34,13 @@ type Parsed struct {
 	// Pack marks releases that declare themselves complete runs
 	// ("Complete", "Collection") — series packs even without a range.
 	Pack bool `json:"pack,omitempty"`
+	// Variant is "color" when the release title carries a colorized-edition
+	// keyword (scanner.LooksColorized — the same signal a scanned/downloaded
+	// file's own name is checked for), "" otherwise. Manga/comic only;
+	// asymmetric like the file-based check it mirrors: "" is not a claim the
+	// release is monochrome, just that nothing announced a color edition —
+	// most releases don't say anything about color either way.
+	Variant string `json:"variant,omitempty"`
 }
 
 var mediaFormats = map[string]bool{
@@ -149,6 +158,9 @@ func Parse(title string) Parsed {
 		p.Author = strings.TrimSpace(m[2])
 	} else {
 		p.Title = working
+	}
+	if scanner.LooksColorized(title) {
+		p.Variant = "color"
 	}
 	return p
 }
