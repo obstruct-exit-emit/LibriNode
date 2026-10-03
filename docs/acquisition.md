@@ -124,6 +124,17 @@ against the **default quality profile** for the media type (**Settings →
 Quality Profiles**): ordered format preferences, language, size bounds, retail
 bonus. Candidates that can't be the book you asked for are rejected outright.
 
+For manga/comic series, "can't be the one you asked for" includes a release
+that actually names a different, specifically-known related work sharing
+the series' title — a sequel, spin-off, or an unrelated same-titled series
+("Dragon Ball Super" for a search on "Dragon Ball," "Invincible Iron Man"
+for "Invincible"). These **sibling titles** are fetched from the provider
+(a search for the series' own name, plus — for AniList — its explicitly
+typed relations graph) at add and refresh time, kept on the series record,
+and checked before a release with a trailing word that isn't an ordinary
+publisher/scanlator tag is accepted. A series with no known siblings on
+hand just keeps today's tag-tolerant behavior.
+
 Manga, comic, magazine, and audiobook release names often omit the file
 format — a scan is just `Vol. 01 (Digital)`, an audiobook carries the bitrate
 or narrator instead of `m4b`/`mp3`. Those are accepted (a named format still

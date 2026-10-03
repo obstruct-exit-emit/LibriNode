@@ -23,7 +23,8 @@ metadata:
                                  #   ONLY when the active one draws a blank on a
                                  #   search or lookup (Settings → Metadata →
                                  #   Fallbacks); omit for none
-  manga_provider: anilist        # anilist | hardcover | none (Settings → Metadata)
+  manga_provider: hardcover      # anilist | hardcover | none (Settings → Metadata);
+                                 #   omitted/unset defaults to hardcover
   comic_provider: hardcover      # hardcover | comicvine | none
   manga_cover_source: provider   # provider | file — manga volume covers
   comic_cover_source: provider   # provider | file — comic issue covers

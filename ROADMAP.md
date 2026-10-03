@@ -85,12 +85,20 @@ with in-place re-sourcing; per-series Missing sections with selective or bulk
 monitoring ("monitor future volumes" included); whole-series **pack search**
 that ranks complete ranges above partial ones; `ComicInfo.xml` read and
 written (CBZ and CBR) with Kavita/Komga-ready layouts; covers from the
-provider or extracted from the owned archive's first page; manga
-**colorized/monochrome variants** owned side by side in one library, with the
-variant **detected from the file itself** — the standard `BlackAndWhite`
-ComicInfo.xml field first, a colorized-filename hint as fallback — so a grab
-lands under the matching root instead of blindly taking whichever was
-configured first.
+provider or extracted from the owned archive's first page; **colorized/
+monochrome variants** — manga and comics both — owned side by side in one
+library, with the variant **detected from the file itself** (the standard
+`BlackAndWhite` ComicInfo.xml field first, a colorized-filename hint as
+fallback) so a grab lands under the matching root instead of blindly taking
+whichever was configured first; **per-series target-variant tracking**
+("want both color and mono," not just whichever one is found first) with
+soft search-scoring steered toward the missing variant and a flagged
+best-effort inference at import when detection can't confirm it; **sibling
+titles** fetched from the provider (search results, and AniList's own
+relations graph) stop a release for a genuinely different, similarly-named
+work — a sequel, spin-off, or unrelated same-titled series — from being
+mistaken for a tag-decorated release of the one you're actually searching
+for.
 
 **Magazines** — provider-less periodicals added by name; issues recognized by
 date or number in filenames; scanning materializes owned issues; per-year
@@ -155,6 +163,8 @@ Turning "works on the dev box" into "trustable release". Done so far:
 - ✅ Live end-to-end verification: Prowlarr and direct indexers, torrents and
   NZBs through a TorBox/Real-Debrid bridge — search → grab → download → import
   → organized file
+- ✅ Live ComicVine verification: real search, series lookup, and annuals/
+  specials handling against the real API with a real key — not simulated
 - ✅ Automated **migration testing** (old-schema fixtures driven through the
   full chain — migration bugs are data-loss bugs) and an automated
   **clean-machine restore drill**
@@ -177,8 +187,6 @@ Remaining — externally gated:
 
 - [ ] ⏳ **Real-world burn-in**: weeks of daily use with real libraries, messy
   release names, and provider rate limits
-- [ ] ⏳ **Live ComicVine verification** (needs an API key; comics run on
-  Hardcover today)
 - [ ] ⏳ **Docs stranger-test**: a fresh person follows the quickstart from
   scratch (the code-audit pass is done; the human walkthrough remains)
 
@@ -207,14 +215,14 @@ Under consideration, in no particular order:
 - [ ] **Localization** — and with it, language/date preferences
 - [ ] `ComicInfo.xml` *writing* for CBR archives (needs a RAR writer — reading
   one is already in, including its `BlackAndWhite` field)
-- [ ] **Per-variant wanted tracking**: "wanted"/"missing" (the Wanted list,
-  series Missing, pack search) all treat owning *either* manga variant as the
-  volume being satisfied — there's no way today to track "I want both the
-  color and mono copies" as two independent needs. Needs a per-series
-  target-variant concept feeding search/scoring, not just a filter — a bigger
-  feature, kept separate from the variant-detection work above. Full design
-  research, prior-art survey, and an open question worth the user's input
-  before building: [docs/research/manga-variant-tracking.md](docs/research/manga-variant-tracking.md)
+- [ ] **Comic-specific monochrome keyword detection** ("Noir," "B&W Edition,"
+  "Artist's Edition"): the shipped variant detection can only ever assert
+  "color" from a keyword (reusing manga's `colorizedKeywords`), which is
+  the right asymmetry for manga (mono is its standard form) but backwards
+  for comics (color is). A real but narrower need than manga's — Western
+  comics' deliberate-B&W reprints are a smaller real-world pattern than
+  manga's colorized-edition one — and would need its own validated keyword
+  set, not a reuse
 
 ---
 

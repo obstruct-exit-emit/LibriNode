@@ -17,7 +17,7 @@ per-type libraries — automatically.
 |---|---|---|
 | Ebooks | Hardcover (+ Open Library / Google Books fallbacks) | epub, mobi, azw3, pdf |
 | Audiobooks | Hardcover (+ Open Library / Google Books fallbacks) | m4b, m4a, mp3, flac, opus |
-| Manga | AniList (no key) or Hardcover | cbz, cbr, epub |
+| Manga | Hardcover or AniList (no key) | cbz, cbr, epub |
 | Comics | Hardcover or ComicVine (free key) | cbz, cbr, pdf |
 | Magazines | none — added by name (organize-only for now) | pdf, epub, cbz |
 
@@ -43,8 +43,11 @@ added it to (or own).
 - Optional login with **admin/member roles**: members get everyday use,
   admins get the server's configuration and accounts.
 - Manga/comic extras: per-series Missing view with selective monitoring
-  (adds pull metadata only), colorized/monochrome manga variants in one
-  library, and covers from the provider or extracted from the owned CBZ/CBR.
+  (adds pull metadata only), colorized/monochrome variants (manga and
+  comics both) in one library with optional per-series "want both"
+  tracking, sibling-title matching that keeps a sequel/spin-off from being
+  mistaken for the series you're searching for, and covers from the
+  provider or extracted from the owned CBZ/CBR.
 - Local image cache: provider art is downloaded on add/refresh and served
   from LibriNode, surviving provider link rot.
 

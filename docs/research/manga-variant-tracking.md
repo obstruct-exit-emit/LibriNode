@@ -1,11 +1,34 @@
 # Research: per-variant wanted tracking for manga
 
-Status: **design research, not yet built.** This is the "Future 💡 → Per-variant
-wanted tracking" item from [ROADMAP.md](../../ROADMAP.md), split out here because
-it's a genuinely multi-part design (schema + search + scoring + import) rather
-than a roadmap one-liner. Companion to the variant-*detection* work that's
-already shipped (`internal/scanner/variant.go`, `internal/comicinfo`,
-`organize.PlaceFile`'s `pickRoot`) — this is what to build on top of it.
+Status: **shipped.** Everything this doc designed is built, including the
+open question below (resolved: "infer + flag," confirmed with the user
+before writing the import-time code). Kept as-is rather than rewritten
+past-tense — the reasoning, prior-art survey, and rejected alternatives
+remain accurate explanations of *why* it works the way it does, only the
+"not yet built" framing is stale. Where each piece landed:
+
+- Schema/model/store/API: `series.target_variant` (migration
+  `024_series_target_variant.sql`), `library.Series.TargetVariant`,
+  `Store.SetSeriesTargetVariant`, `PUT /api/v1/series/{id}/variant`.
+- Wanted/missing: `library.VariantMissing` (pure function) and
+  `wantedWhere`'s SQL equivalent (`internal/library/home.go`), applied to
+  the dashboard count, `SearchSeriesPacks`' missing-count, the automated
+  per-book search sweep's `wants()` gate, and `importPackExtras`' owned-check.
+- Scoring: `release.ResolveWantedVariant` + `release.AdjustForWantedVariant`
+  (`internal/release/score.go`), wired into both the autosearch sweep and
+  the manual release browser.
+- Import inference: the flagged "presumed color/mono" notice lives in
+  `internal/importer/importer.go`, right where variant detection already
+  re-settles from the real downloaded file.
+- UI: the "Want: any one / mono only / color only / both" selector on the
+  series page (`SeriesDetailView.tsx`), shown only once more than one
+  variant root is configured for that media type.
+- Extended to comics too, not just manga, in the same pass — see
+  `CHANGELOG.md`.
+
+Companion to the variant-*detection* work that shipped earlier
+(`internal/scanner/variant.go`, `internal/comicinfo`, `organize.PlaceFile`'s
+`pickRoot`) — this is what got built on top of it.
 
 ## The gap, precisely
 
@@ -71,20 +94,19 @@ identically to `wantedWhere`.
 
 ## Search & scoring: steer toward the missing variant, never hard-reject
 
-**Status: the detection half is shipped** (`release.Parsed.Variant`,
-`scanner.LooksColorized`, `release.AdjustForOwnedVariant` — see the
-CHANGELOG). What's built today is narrower than the full design below: a
-confirmed-colorized candidate is softly penalized when the book already owns
-a color file (both existing search paths — autosearch and the manual browser
-— already had that ownership fact in scope, no new schema needed), and the
-detected variant is shown as a pill in the release browser. What's **not**
-built yet is the `wantedVariant`-driven steering this section describes,
-which needs the `target_variant` series preference from the schema below —
-without it there's no way to know whether a search is specifically hunting
-for color or for mono, only whether the book already has one.
+**Status: fully shipped**, both halves. The detection half
+(`release.Parsed.Variant`, `scanner.LooksColorized`,
+`release.AdjustForOwnedVariant`) landed first; the `wantedVariant`-driven
+steering this section describes landed with `target_variant`:
+`release.ResolveWantedVariant` narrows the series' `target_variant` plus
+current ownership into the one specific variant a search should steer
+toward, and `release.AdjustForWantedVariant` applies the soft +/- below —
+a separate, additive adjustment from `AdjustForOwnedVariant` (a candidate
+can trigger both independently; see that function's doc comment for why
+they're kept apart rather than merged).
 
 Once a volume search knows it specifically needs (say) color because mono is
-already owned, `release.ScoreVolume` would need a `wantedVariant string`
+already owned, `release.ScoreVolume` takes a `wantedVariant string`
 parameter. The signal available here is **asymmetric** — exactly like
 `scanner.DetectVariant`, a release title can confidently say "colorized," but
 nothing reliably says "monochrome" (it's the unmarked default; scanlation/
@@ -200,16 +222,15 @@ Point 3 matters most in practice: everything above is scoped to
 `target_variant != ''` specifically. For every series that doesn't opt in —
 nearly all of them — behavior is **completely unchanged**.
 
-### Open question for the user, not decided here
+### Open question — resolved
 
 Step 2's "infer + flag" versus a stricter "never auto-assign when ambiguous,
 leave it in Unmatched for manual resolution" (closer to `bestNarrator`'s
-*literal* behavior) is a real risk-tolerance trade-off: more automation with a
-correctable flag, vs. more certainty with more manual work. Leaning toward
-the flagged inference, since "Unmatched forever" seems unlikely to actually
-get resolved in practice — but it's the user's collection's correctness on
-the line, so this should be confirmed with them before building, not decided
-unilaterally.
+*literal* behavior) was a real risk-tolerance trade-off, confirmed with the
+user before building rather than decided unilaterally: **infer + flag**,
+the recommendation above. Implemented exactly as designed — the switch in
+`internal/importer/importer.go` right after `scanner.DetectVariant`, with
+the flagged notice surfacing in the import result's messages (Activity).
 
 ## Alternative considered: let the metadata provider solve it
 
@@ -245,18 +266,24 @@ mechanism; the provider only occasionally helps for the *different* axis of
 omnibus/repackaging editions, which is a separate, smaller feature if ever
 worth doing (see `Format` in the ComicInfo.xml section above).
 
-## Touch list
+## Touch list — all done
 
 | Area | File | Change |
 |---|---|---|
-| Schema | new migration | `series.target_variant` |
+| Schema | `024_series_target_variant.sql` | `series.target_variant` |
 | Model | `internal/library/library.go` | `Series.TargetVariant` |
-| Store | `internal/library/*.go` | read/write, mirrors `ProviderOverride` |
-| API | `internal/api/library.go` + router | `PUT /series/{id}/variant`-style endpoint |
-| Wanted | `internal/library/home.go` `wantedWhere` | manga branch, series JOIN |
-| Pack search | `internal/autosearch/autosearch.go` `SearchSeriesPacks` | `HasFile` → per-variant check |
-| Shared keyword | `internal/scanner/variant.go` | export `colorizedKeywords` (or a small shared matcher) so `release` reuses it without drift |
-| Scoring | `internal/release/score.go` `ScoreVolume` | `wantedVariant` param, soft +/- |
-| Search query | `internal/autosearch/autosearch.go` | resolve `wantedVariant` before scoring |
-| Import inference | `internal/importer/importer.go` (the block added for variant detection) | "infer from what's already owned" step + flagged notice |
-| UI | series page | the target-variant control, root-count-gated |
+| Store | `internal/library/store.go` | `SetSeriesTargetVariant`, read/write mirroring `ProviderOverride` |
+| API | `internal/api/series.go` + router | `PUT /api/v1/series/{id}/variant` |
+| Wanted | `internal/library/home.go` | `VariantMissing` (pure fn) + `variantMissingSQL`, manga/comic branch of `wantedWhere` |
+| Search sweep gate | `internal/autosearch/autosearch.go` `wants()` | the function deciding whether a book is even considered — missed in the original design, caught while building: without this, `target_variant` would have been inert for the automated sweep |
+| Pack search | `internal/autosearch/autosearch.go` `SearchSeriesPacks` | `HasFile` → `VariantMissing` |
+| Pack import | `internal/importer/importer.go` `importPackExtras` | same per-volume `VariantMissing` gate, ahead of the existing per-variant upgrade-check |
+| Scoring | `internal/release/score.go` | `ResolveWantedVariant` + `AdjustForWantedVariant`, soft +/- |
+| Search query | `internal/autosearch/autosearch.go` + `internal/api/indexers.go` | resolve `wantedVariant` before scoring, both the sweep and the manual browser |
+| Import inference | `internal/importer/importer.go` | "infer from what's already owned" step + flagged notice, gated on `target_variant == "both"` |
+| UI | `web/src/views/SeriesDetailView.tsx` | the target-variant control, root-count-gated |
+
+Extended to comics in the same pass, beyond this doc's original manga-only
+scope — see `CHANGELOG.md` for the comic-specific fixes that needed (the
+`HasColorFile`/`HasMonoFile` query and `handleAddRootFolder` were both
+hardcoded to manga).

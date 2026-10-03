@@ -29,7 +29,7 @@ LibriNode is an **alternative** to tools like Readarr (books; development has en
 |---|---|---|
 | Ebooks | Hardcover, + Open Library / Google Books fallbacks | epub, mobi, azw3, pdf |
 | Audiobooks | Hardcover, + fallbacks | m4b, m4a, mp3, flac, opus |
-| Manga | AniList (no key) or Hardcover | cbz, cbr, epub |
+| Manga | Hardcover or AniList (no key) | cbz, cbr, epub |
 | Comics | Hardcover or ComicVine | cbz, cbr, pdf |
 | Magazines | Provider-less, added by name *(organize-only today)* | pdf, epub, cbz |
 
@@ -48,7 +48,7 @@ LibriNode is an **alternative** to tools like Readarr (books; development has en
 - Audiobookshelf folder layouts with `metadata.opf`; Kavita/Komga layouts with `ComicInfo.xml`; OPF sidecars for Calibre
 - **Write tags into the files themselves** — title, author, series, narrator, genre, description, and identifiers embedded into audiobook tags (via TagLib) and EPUB metadata (via its OPF), so Audiobookshelf, Plex, or Calibre-Web read it straight from disk — plus a viewer for any file's own embedded tags
 - Smart scanning: ISBN/ASIN identifier matching (filename + embedded epub metadata), exact title matching, and fuzzy suggestions for everything else
-- Multi-book pack imports, colorized/monochrome manga variants, multi-file audiobooks as single units
+- Multi-book pack imports, colorized/monochrome manga **and comic** variants (with per-series "want both" tracking), multi-file audiobooks as single units
 
 **🖥️ A modern web UI**
 - Poster-grid libraries with detail pages, per-author/series **Missing** sections, per-library **Wanted** cards, a release **Calendar**, and live **Activity**

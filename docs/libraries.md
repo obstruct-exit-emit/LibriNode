@@ -126,19 +126,59 @@ next scan re-finds any files left on disk.
 
 ### Colorized & monochrome variants
 
-Manga can be owned in both a colorized and a monochrome edition without
-splitting the library. Add a **separate root folder per variant** — a
-monochrome/colorized selector appears when the media type is manga
-(monochrome is the default, and pre-existing manga roots are treated as
-monochrome). Files scanned or imported under a root inherit its variant.
+A manga or comic volume/issue can be owned in both a colorized and a
+monochrome edition without splitting the library. Add a **separate root
+folder per variant** — a monochrome/colorized selector appears when the
+media type is manga or comics. Manga defaults to **monochrome** (its
+standard form; pre-existing manga roots are treated as monochrome); comic
+defaults to **color** (its standard form — the inverse of manga, since
+Western comics are color by default and a B&W/Noir edition is the
+deliberate exception). Files scanned or imported under a root inherit its
+variant.
 
-A volume is one metadata row that tracks each variant independently. The
-volume list stays compact for long series — each row is the title and a
+A volume/issue is one metadata row that tracks each variant independently.
+The volume list stays compact for long series — each row is the title and a
 single owned/wanted badge — and an owned volume expands to show which
 variants it owns (`🎨 colorized` / `◻️ monochrome`) and where each file
-lives on disk. Grabbing is variant-agnostic (a release doesn't reveal
-whether it's color or mono); per-variant ownership is recorded by the
-scanner as files land under their variant root.
+lives on disk.
+
+Grabbing isn't blind to variant: a release whose title carries a
+colorized-edition keyword (**Colorized**, **Colored**/**Coloured**, **Color
+Edition**, **Full Color**, **Digital Color**) is recognized as such before
+it's even downloaded, shown as a `🎨 color` pill in the release browser. An
+unmarked release (the overwhelming majority — there's no reliable keyword
+for "this is the monochrome edition," since that's the unremarked default)
+claims nothing either way. Once downloaded, `ComicInfo.xml`'s standard
+`BlackAndWhite` field is checked first — the authoritative signal when a
+release carries it — with the filename keyword as fallback; the file is
+routed to the matching root and its own ComicInfo.xml gets `BlackAndWhite`
+written to match, so Kavita/Komga see it too.
+
+**Which variant(s) a series actually wants** is a separate, per-series
+setting — see **Target variant**, below — since most manga/comics have no
+colorized edition at all, and defaulting to "want both everywhere" would
+have LibriNode endlessly searching for editions that were never produced.
+
+#### Target variant
+
+By default, owning *either* variant satisfies a volume — today's behavior,
+unchanged for every series that doesn't opt in. A series collecting a
+colorized reprint alongside the original (Death Note, Solo Leveling, One
+Piece Digital Colored, or a comic's Noir reprint) can opt into **mono
+only**, **color only**, or **both** from a control on the series page —
+shown only once more than one variant root is configured for that media
+type, since it's meaningless with just one.
+
+- **Mono only** / **color only**: that variant is the only one that counts
+  as owned — a volume with just the other one is still wanted.
+- **Both**: a volume isn't done until it owns every variant — search
+  scoring steers toward the specific missing one once the other is owned
+  (never a hard filter: an unmarked release is still fully eligible, since
+  its silence proves nothing). If a download's own variant can't be
+  confirmed from the file and the series already owns exactly one side,
+  it's inferred as the missing one and **flagged** in Activity ("imported
+  as presumed color — verify or correct from the book page") rather than
+  asserted as fact or left stuck unresolved.
 
 ## Magazines (provider-less, organize-only)
 
@@ -180,8 +220,9 @@ never auto-imported):
 - **Duplicates** (the file matches a book/volume/issue already owned) show
   both files side by side with **Replace** (this file takes the library
   copy's place — the old file is deleted from disk) or **Delete** (this file
-  is deleted, the library copy kept). Manga is variant-aware: a colorized
-  file only duplicates — and Replace only touches — the colorized copy.
+  is deleted, the library copy kept). Manga and comics are variant-aware: a
+  colorized file only duplicates — and Replace only touches — the colorized
+  copy.
 - **Unknown owners get a one-click add**: an unrecognized author folder
   offers "+ Add ‹author›" (provider search inline), an unknown manga/comic
   series offers "+ Add ‹series›", and an unknown magazine is created by

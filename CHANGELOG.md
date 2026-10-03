@@ -40,6 +40,45 @@ in progress. Highlights from the hardening period, newest first:
   visits (per browser) instead of resetting to grid every time.
 
 ### Added
+- **Per-series target-variant tracking for manga and comics.** "Wanted" used
+  to be fully variant-blind — owning *either* a colorized or monochrome copy
+  satisfied a volume, with no way to track "I want both" as two independent
+  needs. A series can now opt into **mono only / color only / both** (a
+  control on the series page, shown only once more than one variant root is
+  configured); "both" keeps a volume wanted until it owns every variant
+  picked, steers search scoring toward the specific missing one once the
+  other is owned, and — when a downloaded file's variant can't be confirmed
+  from the archive itself — infers it's the missing one and flags the guess
+  in Activity ("imported as presumed color — verify or correct from the book
+  page") rather than asserting it silently or leaving it stuck unresolved.
+  Defaults to today's behavior for every series that doesn't opt in. Full
+  design background, prior-art survey, and the risk-tolerance question
+  that was confirmed with the user before building the import-time
+  inference: `docs/research/manga-variant-tracking.md`.
+- **Comics get the same colorized/monochrome variant handling manga
+  already had** — color/mono root folders, per-variant ownership, and the
+  search-time duplicate-avoidance scoring all now apply to comics too, not
+  just manga. Comic roots default to **color** (comics' standard form —
+  the inverse of manga's mono default), so a deliberate B&W/Noir edition
+  is the explicit exception, same shape as manga's colorized exception.
+- **Sibling titles stop a different, similarly-named work from being
+  mistaken for a release of the series you're searching for** — "Dragon
+  Ball Super" no longer matches a search for "Dragon Ball," "Invincible
+  Iron Man" no longer matches "Invincible." A series now fetches the
+  *other*, distinct results its own title search surfaces at the provider
+  (plus, for AniList, its own explicitly-typed relations graph — sequel,
+  prequel, spin-off, side story), and a release that actually names one of
+  them is rejected instead of accepted as a tag-decorated release of the
+  one you want. Refreshed on the existing periodic series-refresh schedule,
+  so it stays current without a new background job; every other
+  tag-tolerant match (a publisher/scanlator credit before the title) is
+  untouched.
+- **Comic annuals and specials are tracked, not silently dropped.** An
+  issue whose number doesn't parse as a plain integer ("1AU," "½," a blank
+  field) used to vanish entirely from a comic series sync — never even a
+  trackable, unmonitored book. It now gets a stable position past the
+  highest real issue number, so it's visible and ownable; its own issue
+  name still carries through as the title/description.
 - **Manga provider defaults to Hardcover, not AniList.** Real per-volume
   records (dates, covers, descriptions) instead of synthesized `Vol. 1..N`
   placeholders from a bare count — see
@@ -365,6 +404,35 @@ in progress. Highlights from the hardening period, newest first:
   and scan as one book unit; other nesting is flattened collision-safely.
 
 ### Fixed
+- **Manga/comic series search showed the wrong add buttons.** The shared
+  add-results grid's rewrite for the ebook/audiobook "Ebooks / Audiobooks /
+  Both" chooser unconditionally rendered all three for every result,
+  including series search — which has no format split at all, so all three
+  buttons silently did the same add-series call. Restored the single
+  "Add series" button for that flow without touching the ebook/audiobook one.
+- **Deleting a book/author/series with its files could leave a phantom
+  "already owned" record behind.** The owning record's deletion only cleared
+  the file row's book link (by design, so a scan's genuinely-unmatched finds
+  can resurface for manual import) — it never deleted the row itself. Left
+  behind, a stale row pointing at a now-deleted path could later be silently
+  reattached to an unrelated future book of the same title, falsely
+  reporting a file that no longer existed and silently skipping it in the
+  next wanted search. The delete-files option now forgets the row for every
+  path it clears (or finds already gone).
+- **A real colorized release could go undetected.** The colorized-edition
+  keyword only matched "colorized," "color edition," and "digital color" —
+  missing the far more common bare "-ed" suffix (**colored**/**coloured**,
+  alone or after digital/digitally) and bare **"Full Color"** with no
+  "Edition"/"Digital" qualifier, which is VIZ's own official line name for
+  these releases. Found live-testing against real indexers, not guessed.
+- **A comic's owned color/mono file never registered as owned.** The shared
+  book-ownership query hardcoded manga into both of its variant-existence
+  checks, so a comic's `book_files` row was invisible to them regardless of
+  what it actually held. Compounding it, the root-folder API forced every
+  non-manga root's variant to empty outright — so no comic root could ever
+  carry a real variant tag through the normal UI in the first place. Fixed
+  both; existing comic roots/files get the same one-time backfill migration
+  manga's own variant rollout already used, defaulting to color.
 - **A downloading file no longer flickers out of Activity** when its client
   misses a single queue poll (a transient blip, a slow response). Each client's
   last successful queue result is kept as a fallback for one failed sweep
