@@ -212,7 +212,9 @@ Under consideration, in no particular order:
   volume being satisfied — there's no way today to track "I want both the
   color and mono copies" as two independent needs. Needs a per-series
   target-variant concept feeding search/scoring, not just a filter — a bigger
-  feature, kept separate from the variant-detection work above
+  feature, kept separate from the variant-detection work above. Full design
+  research, prior-art survey, and an open question worth the user's input
+  before building: [docs/research/manga-variant-tracking.md](docs/research/manga-variant-tracking.md)
 
 ---
 
