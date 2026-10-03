@@ -19,6 +19,8 @@ func TestLooksColorized(t *testing.T) {
 		{"[OPDC] One Piece Digitally Colored vol.01 to 60", true},
 		{"Naruto 700 - Uzumaki Naruto!! [MangaStream][Colored Edition]", true},
 		{"Berserk v05 (Coloured) [Group].cbz", true},
+		{"Dragon Ball Full Color - Saiyan Arc v01 (2014) (Digital) (Lovag-Empire)", true},
+		{"Dragon Ball Full-Color Saiyan Arc v02", true},
 		{"Berserk v05.cbz", false},
 		{"Colorful Adventures v01.cbz", false}, // whole word only, not a substring
 	}
