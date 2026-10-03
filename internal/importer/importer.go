@@ -284,6 +284,11 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	// Which variant will this land in? Manga ships mono/color editions that
 	// coexist, so ownership and upgrades are per-variant; every other media
 	// type reports "" here and the checks collapse to a plain media-type test.
+	// This first guess is the configured root's default (TargetVariant) —
+	// good enough for the owned-check right below, which only needs a fast
+	// answer before the download's actual file is even extracted. Once it is
+	// (below), manga re-settles this from the real file — see the
+	// scanner.DetectVariant call after sources are resolved.
 	variant := s.organize.TargetVariant(mediaType)
 	var owned bool
 	switch mediaType {
@@ -394,6 +399,31 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		return
 	}
 
+	// Now that the actual file is in hand, re-settle the manga variant from
+	// what was really downloaded — ComicInfo.xml's BlackAndWhite field, then a
+	// colorized-filename hint; see scanner.DetectVariant — instead of the
+	// TargetVariant guess above, which only knows the configured root order.
+	// Re-check ownership against it too: a colorized grab must be treated as
+	// new, not skipped as "already have it," against a mono-only copy (and
+	// vice versa) just because the guess picked the wrong variant.
+	if mediaType == "manga" {
+		if detected := scanner.DetectVariant(sources[0]); detected != "" {
+			variant = detected
+		}
+		owned = book.HasMonoFile
+		if variant == "color" {
+			owned = book.HasColorFile
+		}
+		// Re-apply the untracked-download guard above now that owned reflects
+		// the real variant: it may have flipped from "not owned" (the guess)
+		// to "owned" (the detected truth) — an untracked download must still
+		// never replace an existing file.
+		if owned && grab == nil {
+			result.Skipped++
+			return
+		}
+	}
+
 	// Owned + tracked grab: only proceed when the new format genuinely
 	// upgrades the owned one; the old files are replaced after import. Even
 	// when the grabbed book itself isn't an upgrade, a pack's OTHER books
@@ -413,7 +443,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	}
 
 	if !skipPrimary {
-		target, ok := s.placeAndRecord(book, mediaType, format, sources, replacing, item.Title, result)
+		target, ok := s.placeAndRecord(book, mediaType, format, sources, replacing, item.Title, result, variant)
 		if !ok {
 			return
 		}
@@ -509,9 +539,12 @@ func deleteDownloadData(path string, result *Result) {
 // placeAndRecord copies the source files into the library at the naming
 // template's path, writes the format's sidecars, records the book file, and
 // removes any replaced (upgraded) files. Returns the target path; false means
-// the import was skipped and noted in result.
-func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, sources []string, replacing []library.BookFile, itemTitle string, result *Result) (string, bool) {
-	place, err := s.organize.PlaceFile(book, format, mediaType)
+// the import was skipped and noted in result. detectedVariant is the manga
+// variant detected from the actual downloaded file ("" for every other media
+// type, or when detection found no signal) — it steers which root folder the
+// file lands under when more than one is configured for the format.
+func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, sources []string, replacing []library.BookFile, itemTitle string, result *Result, detectedVariant string) (string, bool) {
+	place, err := s.organize.PlaceFile(book, format, mediaType, detectedVariant)
 	if err != nil {
 		result.note("%s: %v", itemTitle, err)
 		result.Skipped++
@@ -605,7 +638,7 @@ func (s *Service) placeAndRecord(book *library.Book, mediaType, format string, s
 	// Comic archives get a ComicInfo.xml sidecar inside the CBZ so Kavita/
 	// Komga pick up series metadata; failures aren't fatal to the import.
 	if (mediaType == "manga" || mediaType == "comic") && format == "cbz" {
-		if err := s.writeComicInfo(target, book); err != nil {
+		if err := s.writeComicInfo(target, book, place.Variant); err != nil {
 			result.note("%s: writing ComicInfo.xml: %v", itemTitle, err)
 		}
 	}
@@ -711,7 +744,7 @@ func removeExcept(dir string, keep []string) error {
 // genuine quality upgrade.
 func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *library.Book, mediaType string, result *Result) {
 	importAll := s.opts().PackImportAll
-	variant := s.organize.TargetVariant(mediaType) // "" except manga (mono/color)
+	defaultVariant := s.organize.TargetVariant(mediaType) // "" except manga (mono/color)
 	done := map[int64]bool{grabbed.ID: true}
 	for _, f := range pack.files {
 		if f == primary {
@@ -726,6 +759,15 @@ func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *libr
 			continue
 		}
 		format := fileFormat(f)
+		// Each pack member gets its own variant check — a bundle can mix
+		// editions, and TargetVariant is only the fallback when a file's own
+		// ComicInfo.xml/filename says nothing about it (see DetectVariant).
+		variant := defaultVariant
+		if mediaType == "manga" {
+			if detected := scanner.DetectVariant(f); detected != "" {
+				variant = detected
+			}
+		}
 		var replacing []library.BookFile
 		if len(s.ownedFiles(b.ID, mediaType, variant)) > 0 {
 			old, better := s.upgradeCheck(b, mediaType, format, variant)
@@ -734,7 +776,7 @@ func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *libr
 			}
 			replacing = old
 		}
-		target, ok := s.placeAndRecord(b, mediaType, format, []string{f}, replacing, filepath.Base(f), result)
+		target, ok := s.placeAndRecord(b, mediaType, format, []string{f}, replacing, filepath.Base(f), result, variant)
 		if !ok {
 			continue
 		}
@@ -1283,12 +1325,22 @@ func fileFormat(path string) string {
 }
 
 // writeComicInfo injects a ComicInfo.xml built from the volume's library
-// metadata into an imported CBZ.
-func (s *Service) writeComicInfo(cbzPath string, book *library.Book) error {
+// metadata into an imported CBZ. variant is the manga variant this file was
+// placed under ("" for comics, which have none) — written into the standard
+// BlackAndWhite field so Kavita/Komga (and LibriNode's own scanner, on a
+// later re-scan or for anyone else's tooling) see it too, closing the loop
+// with the variant detection that chose where this file landed.
+func (s *Service) writeComicInfo(cbzPath string, book *library.Book, variant string) error {
 	info := comicinfo.Info{
 		Title:   book.Description, // issue title lives in the description
 		Summary: "",
 		Writer:  "",
+	}
+	switch variant {
+	case "mono":
+		info.BlackAndWhite = comicinfo.BlackAndWhiteYes
+	case "color":
+		info.BlackAndWhite = comicinfo.BlackAndWhiteNo
 	}
 	if author, err := s.store.GetAuthor(book.AuthorID); err == nil {
 		info.Writer = author.Name
@@ -1542,7 +1594,7 @@ func (s *Service) importAudioPackExtras(pack *audioPackPlan, grabbed *library.Bo
 			}
 			replacing = old
 		}
-		target, ok := s.placeAndRecord(b, "audiobook", format, g.files, replacing, g.name, result)
+		target, ok := s.placeAndRecord(b, "audiobook", format, g.files, replacing, g.name, result, "")
 		if !ok {
 			continue
 		}

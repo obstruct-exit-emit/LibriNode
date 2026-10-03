@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/librinode/librinode/internal/comicinfo"
 	"github.com/librinode/librinode/internal/config"
 	"github.com/librinode/librinode/internal/database"
 	"github.com/librinode/librinode/internal/download"
@@ -26,13 +27,13 @@ type fx struct {
 	store     *library.Store
 	downloads *download.Service
 	grabs     *download.Store
-	db      *sql.DB
-	rootDir string
-	book    *library.Book
-	history []map[string]any // mutable mock SAB history
-	removed []string         // nzo ids deleted from history
-	delData []string         // nzo ids deleted WITH their files (del_files=1)
-	packAll bool             // the pack-import-all setting
+	db        *sql.DB
+	rootDir   string
+	book      *library.Book
+	history   []map[string]any // mutable mock SAB history
+	removed   []string         // nzo ids deleted from history
+	delData   []string         // nzo ids deleted WITH their files (del_files=1)
+	packAll   bool             // the pack-import-all setting
 	// post-import cleanup settings
 	removeCompleted bool
 	deleteFiles     bool
@@ -1621,6 +1622,81 @@ func TestUpgradeKeepsOtherMangaVariant(t *testing.T) {
 	}
 	if _, err := os.Stat(monoOld); err == nil {
 		t.Errorf("old mono cbr should have been replaced")
+	}
+}
+
+// TestImportMangaRoutesByDetectedVariant: a colorized grab lands under the
+// color root even though the mono root is configured first (the old "first
+// root wins, variant-agnostic" behavior), and is treated as a genuinely new
+// file — not skipped as "already have it" — against a book that only owns a
+// mono copy.
+func TestImportMangaRoutesByDetectedVariant(t *testing.T) {
+	f := fixture(t)
+	v1, _, _ := f.mangaSeries(t) // creates the 'mono' manga root (lowest id)
+
+	var monoRoot int64
+	var monoPath string
+	if err := f.db.QueryRow(`SELECT id, path FROM root_folders WHERE media_type='manga'`).Scan(&monoRoot, &monoPath); err != nil {
+		t.Fatal(err)
+	}
+	colorPath := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path, variant) VALUES ('manga', ?, 'color')`, colorPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// v1 already owns a mono copy — the detected-color import must still be
+	// treated as new, not skipped as an already-owned, not-an-upgrade mono file.
+	monoFile := filepath.Join(monoPath, "Death Note Vol. 1.cbz")
+	writeTestZip(t, monoFile, map[string][]byte{"page01.jpg": []byte("img")})
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: monoRoot, BookID: v1.ID, MediaType: "manga", Variant: "mono", Path: monoFile, Format: "cbz",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The grabbed release is a real archive whose own ComicInfo.xml says it's
+	// colorized — the deliberate signal, not a filename guess.
+	dir := f.completedArchiveDownload(t, "nzo_color", "Death Note v01 (Digital Color)")
+	writeTestZip(t, filepath.Join(dir, "Death Note v01.cbz"), map[string][]byte{
+		"page01.jpg":    []byte("img"),
+		"ComicInfo.xml": []byte("<ComicInfo><BlackAndWhite>No</BlackAndWhite></ComicInfo>"),
+	})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v1.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_color",
+		Title: "Death Note v01 (Digital Color)", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("Imported = %d, want 1 (a new color file, not skipped as already-owned mono)", result.Imported)
+	}
+
+	files := mustFiles(t, f, v1.ID)
+	if len(files) != 2 {
+		t.Fatalf("files = %+v, want 2 (mono kept, color added)", files)
+	}
+	var color *library.BookFile
+	for i := range files {
+		if files[i].Variant == "color" {
+			color = &files[i]
+		}
+	}
+	if color == nil {
+		t.Fatalf("no color file recorded: %+v", files)
+	}
+	if !strings.HasPrefix(color.Path, colorPath) {
+		t.Errorf("color file placed at %q, want under the color root %q (not the mono root configured first)",
+			color.Path, colorPath)
+	}
+	// The file LibriNode wrote its own ComicInfo.xml into should carry
+	// BlackAndWhite=No too — closing the loop for Kavita/Komga/a later re-scan.
+	info, err := comicinfo.Read(color.Path)
+	if err != nil || info == nil || info.BlackAndWhite != comicinfo.BlackAndWhiteNo {
+		t.Errorf("written ComicInfo.xml = %+v, %v; want BlackAndWhite=No", info, err)
 	}
 }
 

@@ -291,46 +291,71 @@ type Placement struct {
 	FileName     string // includes extension
 }
 
-// PlaceFile computes where a newly imported item for book belongs: the
-// first root folder of the media type plus that type's naming templates.
-// For manga with both a colorized and a monochrome root, this picks
-// whichever was added first — a grabbed file's variant isn't known from the
-// release, so imports are variant-agnostic; the scanner is what records
-// per-variant ownership once the file lands under a variant root.
-func (s *Service) PlaceFile(book *library.Book, format, mediaType string) (*Placement, error) {
+// PlaceFile computes where a newly imported item for book belongs: a root
+// folder of the media type plus that type's naming templates. detectedVariant
+// (manga only; "" for every other media type, or when nothing was detected in
+// the downloaded file — see scanner.DetectVariant) steers which root is
+// chosen when more than one is configured, so a colorized grab doesn't land
+// under a mono root (or vice versa) just because that root happened to be
+// added first; it falls back to the first matching root exactly as before
+// when detectedVariant is "".
+func (s *Service) PlaceFile(book *library.Book, format, mediaType, detectedVariant string) (*Placement, error) {
 	roots, err := s.store.ListRootFolders()
 	if err != nil {
 		return nil, err
 	}
-	for _, root := range roots {
-		if root.MediaType != mediaType {
+	root, err := pickRoot(roots, mediaType, detectedVariant)
+	if err != nil {
+		return nil, err
+	}
+	data, err := s.tokenData(book)
+	if err != nil {
+		return nil, err
+	}
+	ns := s.cfg.NamingSettings()
+	p := &Placement{RootFolderID: root.ID, Variant: root.Variant}
+	switch mediaType {
+	case "audiobook":
+		bookDir := naming.Format(ns.AudiobookFile, data)
+		p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.AudiobookFolder, data), bookDir)
+		p.FileName = bookDir + "." + format
+	case "manga":
+		p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.MangaFolder, data))
+		p.FileName = naming.Format(ns.MangaFile, data) + "." + format
+	case "comic":
+		p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.ComicFolder, data))
+		p.FileName = naming.Format(ns.ComicFile, data) + "." + format
+	case "magazine":
+		p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.MagazineFolder, data))
+		p.FileName = naming.Format(ns.MagazineFile, data) + "." + format
+	default:
+		p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.EbookFolder, data))
+		p.FileName = naming.Format(ns.EbookFile, data) + "." + format
+	}
+	return p, nil
+}
+
+// pickRoot chooses the root folder an import of mediaType lands in: the first
+// one configured, UNLESS detectedVariant names a manga variant that a later
+// root matches. Earlier behavior — variant-agnostic, first root wins — is
+// preserved whenever detectedVariant is "" (the common case: detection found
+// no signal, or this isn't manga).
+func pickRoot(roots []library.RootFolder, mediaType, detectedVariant string) (*library.RootFolder, error) {
+	var fallback *library.RootFolder
+	for i := range roots {
+		r := &roots[i]
+		if r.MediaType != mediaType {
 			continue
 		}
-		data, err := s.tokenData(book)
-		if err != nil {
-			return nil, err
+		if fallback == nil {
+			fallback = r
 		}
-		ns := s.cfg.NamingSettings()
-		p := &Placement{RootFolderID: root.ID, Variant: root.Variant}
-		switch mediaType {
-		case "audiobook":
-			bookDir := naming.Format(ns.AudiobookFile, data)
-			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.AudiobookFolder, data), bookDir)
-			p.FileName = bookDir + "." + format
-		case "manga":
-			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.MangaFolder, data))
-			p.FileName = naming.Format(ns.MangaFile, data) + "." + format
-		case "comic":
-			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.ComicFolder, data))
-			p.FileName = naming.Format(ns.ComicFile, data) + "." + format
-		case "magazine":
-			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.MagazineFolder, data))
-			p.FileName = naming.Format(ns.MagazineFile, data) + "." + format
-		default:
-			p.Dir = filepath.Join(root.Path, naming.FormatPath(ns.EbookFolder, data))
-			p.FileName = naming.Format(ns.EbookFile, data) + "." + format
+		if detectedVariant != "" && r.Variant == detectedVariant {
+			return r, nil
 		}
-		return p, nil
+	}
+	if fallback != nil {
+		return fallback, nil
 	}
 	return nil, fmt.Errorf("no %s root folder configured", mediaType)
 }

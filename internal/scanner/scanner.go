@@ -388,6 +388,18 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 	if err != nil {
 		return err
 	}
+	// Manga variant detection (DetectVariant) opens the archive — real I/O,
+	// unlike the plain string parsing the rest of a scan does. Reusing a
+	// file's already-recorded variant on re-scan (rather than re-detecting it
+	// every pass) keeps a steady-state scan of an already-cataloged library
+	// just as cheap as before; only a file new to this root pays the cost.
+	var priorVariant map[string]string
+	if root.MediaType == "manga" {
+		priorVariant, err = s.store.BookFileVariantsUnderRoot(root.ID)
+		if err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	walkIncomplete := false
 
@@ -423,11 +435,24 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 		seriesGuess, number := ComicGuess(rel)
 		bookID := index.matchVolume(root.MediaType, seriesGuess, number)
 
+		variant := root.Variant // colorized/monochrome for manga; '' otherwise
+		if root.MediaType == "manga" {
+			if v, ok := priorVariant[path]; ok {
+				variant = v // already detected and recorded — skip re-opening the archive
+			} else if detected := DetectVariant(path); detected != "" {
+				if detected != root.Variant {
+					result.Errors = append(result.Errors, fmt.Sprintf(
+						"%s: looks like a %s edition but is filed under the %s root", path, detected, root.Variant))
+				}
+				variant = detected
+			}
+		}
+
 		file := &library.BookFile{
 			RootFolderID: root.ID,
 			BookID:       bookID,
 			MediaType:    root.MediaType,
-			Variant:      root.Variant, // colorized/monochrome for manga; '' otherwise
+			Variant:      variant,
 			Path:         path,
 			Format:       strings.TrimPrefix(ext, "."),
 		}

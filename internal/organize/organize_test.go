@@ -364,3 +364,100 @@ func TestPlanSkipsFileWithMissingBook(t *testing.T) {
 		t.Fatalf("moves = %+v", moves)
 	}
 }
+
+func TestPickRoot(t *testing.T) {
+	roots := []library.RootFolder{
+		{ID: 1, MediaType: "manga", Variant: "mono", Path: "/mono"},
+		{ID: 2, MediaType: "manga", Variant: "color", Path: "/color"},
+		{ID: 3, MediaType: "comic", Path: "/comic"},
+	}
+	cases := []struct {
+		name            string
+		mediaType       string
+		detectedVariant string
+		wantID          int64
+	}{
+		{"no detection falls back to first root", "manga", "", 1},
+		{"detected color routes to the color root even though mono is first", "manga", "color", 2},
+		{"detected mono routes to the mono root", "manga", "mono", 1},
+		{"non-manga ignores detectedVariant entirely", "comic", "", 3},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := pickRoot(roots, c.mediaType, c.detectedVariant)
+			if err != nil {
+				t.Fatalf("pickRoot: %v", err)
+			}
+			if got.ID != c.wantID {
+				t.Errorf("pickRoot(%q, %q) = root %d, want %d", c.mediaType, c.detectedVariant, got.ID, c.wantID)
+			}
+		})
+	}
+
+	// A single-root manga setup (no second variant configured) must still
+	// fall back cleanly even when a variant WAS detected but nothing matches
+	// it — exactly today's pre-detection behavior for the common case.
+	oneRoot := []library.RootFolder{{ID: 9, MediaType: "manga", Variant: "mono", Path: "/mono"}}
+	got, err := pickRoot(oneRoot, "manga", "color")
+	if err != nil || got.ID != 9 {
+		t.Errorf("pickRoot with only a mono root and a color detection = %+v, %v; want root 9, nil", got, err)
+	}
+
+	if _, err := pickRoot(roots, "audiobook", ""); err == nil {
+		t.Error("pickRoot should error when no root matches the media type")
+	}
+}
+
+// TestPlaceFileMangaVariant: PlaceFile itself (not just pickRoot) routes a
+// manga import to the root matching the detected variant end to end.
+func TestPlaceFileMangaVariant(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := database.Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	author := &library.Author{Source: "anilist", ForeignID: "creator:x", Name: "X", Monitored: true}
+	if err := store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	vol := &library.Book{AuthorID: author.ID, Source: "anilist", MediaType: "manga",
+		ForeignID: "v1", Title: "Dune Vol. 1", Monitored: true}
+	if err := store.UpsertBook(vol); err != nil {
+		t.Fatal(err)
+	}
+
+	monoRoot, colorRoot := filepath.Join(dir, "mono"), filepath.Join(dir, "color")
+	// mono configured FIRST — today's old "first root wins" behavior would
+	// place everything here regardless of what was actually downloaded.
+	if _, err := db.Exec(`INSERT INTO root_folders (media_type, variant, path) VALUES ('manga', 'mono', ?)`, monoRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO root_folders (media_type, variant, path) VALUES ('manga', 'color', ?)`, colorRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := New(store, cfg)
+
+	place, err := svc.PlaceFile(vol, "cbz", "manga", "color")
+	if err != nil {
+		t.Fatalf("PlaceFile: %v", err)
+	}
+	if place.Variant != "color" || !strings.HasPrefix(place.Dir, colorRoot) {
+		t.Errorf("PlaceFile(detected=color) = %+v, want the color root despite mono being configured first", place)
+	}
+
+	place, err = svc.PlaceFile(vol, "cbz", "manga", "")
+	if err != nil {
+		t.Fatalf("PlaceFile: %v", err)
+	}
+	if place.Variant != "mono" || !strings.HasPrefix(place.Dir, monoRoot) {
+		t.Errorf("PlaceFile(detected=\"\") = %+v, want the first-configured (mono) root, unchanged fallback behavior", place)
+	}
+}

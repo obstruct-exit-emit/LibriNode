@@ -338,6 +338,28 @@ func (s *Store) BookFilePathsUnderRoot(rootFolderID int64) (map[string]int64, er
 	return paths, rows.Err()
 }
 
+// BookFileVariantsUnderRoot returns path → recorded variant for every file in
+// a root folder — used by the manga scanner to reuse a previously detected
+// variant on re-scan instead of re-opening the archive every time (see
+// scanner.DetectVariant, which opens the file).
+func (s *Store) BookFileVariantsUnderRoot(rootFolderID int64) (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT path, variant FROM book_files WHERE root_folder_id = ?`, rootFolderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	variants := map[string]string{}
+	for rows.Next() {
+		var path, variant string
+		if err := rows.Scan(&path, &variant); err != nil {
+			return nil, err
+		}
+		variants[path] = variant
+	}
+	return variants, rows.Err()
+}
+
 // VolumeRef locates one manga volume / comic issue for scan matching.
 type VolumeRef struct {
 	BookID      int64

@@ -77,11 +77,11 @@ func TestTitleKeys(t *testing.T) {
 
 func TestSearchTitle(t *testing.T) {
 	cases := map[string]string{
-		"The Hobbit, or There and Back Again":       "The Hobbit",
-		"Frankenstein, or the Modern Prometheus":    "Frankenstein",
-		"Sapiens: A Brief History of Humankind":     "Sapiens",
-		"Dune Messiah":                              "Dune Messiah", // no subtitle, unchanged
-		"The Hobbit (Illustrated Edition)":          "The Hobbit",
+		"The Hobbit, or There and Back Again":          "The Hobbit",
+		"Frankenstein, or the Modern Prometheus":       "Frankenstein",
+		"Sapiens: A Brief History of Humankind":        "Sapiens",
+		"Dune Messiah":                                 "Dune Messiah", // no subtitle, unchanged
+		"The Hobbit (Illustrated Edition)":             "The Hobbit",
 		"Good Omens: The Nice and Accurate Prophecies": "Good Omens",
 	}
 	for in, want := range cases {
@@ -801,6 +801,75 @@ func TestScanMangaVariants(t *testing.T) {
 	}
 }
 
+// TestScanComicRootDetectsVariantFromFile: a colorized file misfiled under a
+// mono root is recorded as "color" (trusting the detected fact over the
+// folder it happens to sit in) and the mismatch is flagged once — a re-scan
+// of the unchanged file reuses the recorded variant rather than re-opening
+// the archive and re-flagging it every pass.
+func TestScanComicRootDetectsVariantFromFile(t *testing.T) {
+	f := fixture(t)
+
+	series := &library.Series{Source: "anilist", ForeignID: "700", Title: "Dune",
+		MediaType: "manga", Monitored: true}
+	if err := f.store.UpsertSeries(series); err != nil {
+		t.Fatal(err)
+	}
+	author := &library.Author{Source: "anilist", ForeignID: "creator:dune", Name: "Author"}
+	if err := f.store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	vol := &library.Book{AuthorID: author.ID, Source: "anilist", MediaType: "manga",
+		ForeignID: "700-v1", Title: "Dune Vol. 1", Monitored: true}
+	if err := f.store.UpsertBook(vol); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.LinkBookSeries(vol.ID, series.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	monoRoot := t.TempDir()
+	cbz := filepath.Join(monoRoot, "Dune", "Dune v01.cbz")
+	if err := os.MkdirAll(filepath.Dir(cbz), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A real archive whose own ComicInfo.xml says it's colorized — misfiled
+	// under the mono root.
+	makeCbz(t, cbz, map[string]string{
+		"page01.jpg":    "img",
+		"ComicInfo.xml": "<ComicInfo><BlackAndWhite>No</BlackAndWhite></ComicInfo>",
+	})
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, variant, path) VALUES ('manga', 'mono', ?)`, monoRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	files, _ := f.store.ListBookFiles(vol.ID)
+	if len(files) != 1 || files[0].Variant != "color" {
+		t.Fatalf("files = %+v, want one file with variant=color", files)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("Errors = %v, want exactly one mismatch note on first scan", result.Errors)
+	}
+
+	// Re-scan the unchanged file: still "color" (not reverted to the mono
+	// root's default), and no additional mismatch note — the recorded variant
+	// is reused instead of re-opening the archive.
+	result2, err := f.svc.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("Scan (2nd): %v", err)
+	}
+	files2, _ := f.store.ListBookFiles(vol.ID)
+	if len(files2) != 1 || files2[0].Variant != "color" {
+		t.Fatalf("files after re-scan = %+v, want variant still color", files2)
+	}
+	if len(result2.Errors) != 0 {
+		t.Errorf("Errors on re-scan = %v, want none (variant reused, not re-detected)", result2.Errors)
+	}
+}
+
 func TestScanMatchesOwnTemplateOutput(t *testing.T) {
 	// Files organized by the default naming template
 	// ("{Series Title} {Series Position} - {Book Title}") must re-match
@@ -974,11 +1043,11 @@ func TestVolumeRangeFromName(t *testing.T) {
 		"Berserk Vol. 1-12.cbz":                  {1, 12, true},
 		"One Piece c001-c180.cbz":                {1, 180, true},
 		// No range: a single volume, a plain number, or a bare year span.
-		"Saga v01.cbz":                {0, 0, false},
-		"The Walking Dead #112.cbr":   {0, 0, false},
-		"Berserk Deluxe Edition.cbz":  {0, 0, false},
-		"Yearbook 2020-2021.cbz":      {0, 0, false},
-		"Berserk v05-v05.cbz":         {0, 0, false}, // end must exceed start
+		"Saga v01.cbz":               {0, 0, false},
+		"The Walking Dead #112.cbr":  {0, 0, false},
+		"Berserk Deluxe Edition.cbz": {0, 0, false},
+		"Yearbook 2020-2021.cbz":     {0, 0, false},
+		"Berserk v05-v05.cbz":        {0, 0, false}, // end must exceed start
 	}
 	for in, want := range cases {
 		start, end, ok := VolumeRangeFromName(in)
