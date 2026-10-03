@@ -40,6 +40,19 @@ in progress. Highlights from the hardening period, newest first:
   visits (per browser) instead of resetting to grid every time.
 
 ### Added
+- **Manga provider defaults to Hardcover, not AniList.** Real per-volume
+  records (dates, covers, descriptions) instead of synthesized `Vol. 1..N`
+  placeholders from a bare count — see
+  `docs/research/manga-metadata-providers.md` for the comparison. Only
+  changes the fallback used when no manga provider is set; an install that
+  already has one configured is untouched.
+- **The release browser flags a colorized manga/comic release** with a
+  "🎨 color" pill when its title carries the keyword — the same signal
+  already used for scanned files, now checked at search time too. When the
+  book already owns a color file, a confirmed-colorized candidate ranks
+  below unmarked ones (never rejected outright — a real format upgrade of
+  the already-owned edition can still win) instead of risking a redundant
+  re-grab.
 - **Manga color/monochrome is now detected from the file, not just its
   folder.** A variant used to be purely the label of whichever root folder a
   file sat in — nothing inspected the file itself, and a grab with both a

@@ -71,8 +71,20 @@ identically to `wantedWhere`.
 
 ## Search & scoring: steer toward the missing variant, never hard-reject
 
+**Status: the detection half is shipped** (`release.Parsed.Variant`,
+`scanner.LooksColorized`, `release.AdjustForOwnedVariant` — see the
+CHANGELOG). What's built today is narrower than the full design below: a
+confirmed-colorized candidate is softly penalized when the book already owns
+a color file (both existing search paths — autosearch and the manual browser
+— already had that ownership fact in scope, no new schema needed), and the
+detected variant is shown as a pill in the release browser. What's **not**
+built yet is the `wantedVariant`-driven steering this section describes,
+which needs the `target_variant` series preference from the schema below —
+without it there's no way to know whether a search is specifically hunting
+for color or for mono, only whether the book already has one.
+
 Once a volume search knows it specifically needs (say) color because mono is
-already owned, `release.ScoreVolume` needs a `wantedVariant string`
+already owned, `release.ScoreVolume` would need a `wantedVariant string`
 parameter. The signal available here is **asymmetric** — exactly like
 `scanner.DetectVariant`, a release title can confidently say "colorized," but
 nothing reliably says "monochrome" (it's the unmarked default; scanlation/
