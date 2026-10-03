@@ -412,6 +412,19 @@ func (s *Store) DeleteBookFilesForFormat(bookID int64, mediaType string) error {
 	return err
 }
 
+// DeleteBookFileByPath forgets the file row at path. Used by the
+// delete-files option on author/book/series removal, right after the disk
+// file at that path is gone: the owning book is deleted in the same request,
+// which only SETs NULL the row's book_id (book_files keeps rows for files a
+// scan couldn't match, so they can resurface for manual import), leaving the
+// row to reference a path that no longer exists. Left alone, that stale row
+// can later be silently reattached to an unrelated future book of the same
+// title by RematchUnmatched, which falsely reports a file that was deleted.
+func (s *Store) DeleteBookFileByPath(path string) error {
+	_, err := s.db.Exec(`DELETE FROM book_files WHERE path = ?`, path)
+	return err
+}
+
 // FilePathsForAuthor returns the on-disk paths of every file attached to an
 // author's books.
 func (s *Store) FilePathsForAuthor(authorID int64) ([]string, error) {

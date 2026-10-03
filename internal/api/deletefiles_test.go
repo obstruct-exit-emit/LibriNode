@@ -58,6 +58,42 @@ func TestDeleteWithFiles(t *testing.T) {
 	}
 }
 
+// TestDeleteWithFilesForgetsFileRow guards against a stale book_files row
+// surviving a delete-files call. The owning book's deletion only SETs NULL
+// the row's book_id (book_files keeps unmatched rows so a scan's stray finds
+// can surface for manual import), so without an explicit cleanup the row
+// would keep pointing at a path that's just been removed from disk — and
+// later get silently reattached by RematchUnmatched to an unrelated future
+// book of the same title, falsely reporting a file that no longer exists.
+func TestDeleteWithFilesForgetsFileRow(t *testing.T) {
+	a := newTestAPI(t, fakeProvider{})
+
+	rootDir := t.TempDir()
+	bookPath := filepath.Join(rootDir, "Terry Pratchett", "The Colour of Magic.epub")
+	if err := os.MkdirAll(filepath.Dir(bookPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bookPath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "ebook", "path": rootDir}, nil), http.StatusCreated)
+
+	var author library.Author
+	a.want(a.call("POST", "/api/v1/author", map[string]string{"foreignAuthorId": "100"}, &author), http.StatusCreated)
+	a.want(a.call("POST", "/api/v1/library/scan", nil, nil), http.StatusOK)
+
+	a.want(a.call("DELETE", fmt.Sprintf("/api/v1/author/%d?deleteFiles=true", author.ID), nil, nil), http.StatusOK)
+
+	var count int
+	if err := a.db.QueryRow(`SELECT count(*) FROM book_files WHERE path = ?`, bookPath).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("book_files row for the deleted file survived: count=%d", count)
+	}
+}
+
 func TestRemoveFromLibraryWithFiles(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 

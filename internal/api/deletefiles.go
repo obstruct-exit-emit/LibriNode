@@ -40,7 +40,12 @@ func (s *server) removeFilesFromDisk(paths []string) (deleted int, errs []string
 		}
 		info, err := os.Stat(p)
 		if os.IsNotExist(err) {
-			continue // already gone; nothing to count or complain about
+			// Already gone on disk — still forget the row so it can't
+			// resurface later via RematchUnmatched (see DeleteBookFileByPath).
+			if derr := s.store.DeleteBookFileByPath(p); derr != nil {
+				errs = append(errs, p+": removing stale file record: "+derr.Error())
+			}
+			continue
 		}
 		if err == nil {
 			if info.IsDir() {
@@ -54,6 +59,9 @@ func (s *server) removeFilesFromDisk(paths []string) (deleted int, errs []string
 			continue
 		}
 		deleted++
+		if derr := s.store.DeleteBookFileByPath(p); derr != nil {
+			errs = append(errs, p+": removing file record: "+derr.Error())
+		}
 		// Prune now-empty parents; os.Remove refuses non-empty dirs, which
 		// is exactly the stop condition.
 		for dir := filepath.Dir(p); dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)); dir = filepath.Dir(dir) {
