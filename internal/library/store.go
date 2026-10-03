@@ -535,8 +535,8 @@ const bookCols = `id, author_id, metadata_source, media_type, foreign_id, title,
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id),
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'ebook'),
 	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'audiobook'),
-	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'manga' AND book_files.variant = 'color'),
-	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type = 'manga' AND book_files.variant = 'mono'),
+	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type IN ('manga', 'comic') AND book_files.variant = 'color'),
+	EXISTS(SELECT 1 FROM book_files WHERE book_files.book_id = books.id AND book_files.media_type IN ('manga', 'comic') AND book_files.variant = 'mono'),
 	added_at, updated_at`
 
 func scanBook(row interface{ Scan(...any) error }) (*Book, error) {

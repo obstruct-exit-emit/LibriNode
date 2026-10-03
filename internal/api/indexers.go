@@ -318,7 +318,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	for _, rel := range found {
 		if seriesTitle != "" {
 			c := release.ScoreVolume(rel, prefs, seriesTitle, volumeNumber, seriesSiblings)
-			if book != nil && book.MediaType == "manga" {
+			if book != nil {
 				release.AdjustForOwnedVariant(&c, book.HasColorFile)
 			}
 			candidates = append(candidates, c)

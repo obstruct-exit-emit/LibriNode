@@ -199,9 +199,7 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 		nativeQuery = seriesTitle
 		score = func(rel indexer.Release) release.Candidate {
 			c := release.ScoreVolume(rel, prefs, seriesTitle, number, series.SiblingTitles)
-			if mediaType == "manga" {
-				release.AdjustForOwnedVariant(&c, book.HasColorFile)
-			}
+			release.AdjustForOwnedVariant(&c, book.HasColorFile)
 			return c
 		}
 	} else {

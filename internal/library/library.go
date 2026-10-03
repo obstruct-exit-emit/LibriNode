@@ -72,8 +72,8 @@ type Book struct {
 	HasFile          bool `json:"hasFile"` // any media type
 	HasEbookFile     bool `json:"hasEbookFile"`
 	HasAudiobookFile bool `json:"hasAudiobookFile"`
-	// Per-variant ownership for manga volumes (colorized/monochrome share one
-	// volume row); both false for non-manga.
+	// Per-variant ownership for manga/comic volumes (colorized/monochrome
+	// share one volume row); both false for ebook/audiobook/magazine.
 	HasColorFile bool   `json:"hasColorFile"`
 	HasMonoFile  bool   `json:"hasMonoFile"`
 	AddedAt      string `json:"addedAt"`

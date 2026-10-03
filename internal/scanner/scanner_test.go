@@ -801,6 +801,62 @@ func TestScanMangaVariants(t *testing.T) {
 	}
 }
 
+// TestComicVariantOwnershipFlags: HasColorFile/HasMonoFile must reflect a
+// real media_type="comic" book's files too, not just manga — the shared
+// bookCols query used to hardcode media_type = 'manga' in both EXISTS
+// subqueries, so a comic's variant files never registered as owned.
+func TestComicVariantOwnershipFlags(t *testing.T) {
+	f := fixture(t)
+
+	series := &library.Series{Source: "comicvine", ForeignID: "800", Title: "Walking Dead",
+		MediaType: "comic", Monitored: true}
+	if err := f.store.UpsertSeries(series); err != nil {
+		t.Fatal(err)
+	}
+	author := &library.Author{Source: "comicvine", ForeignID: "creator:wd", Name: "Kirkman"}
+	if err := f.store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	issue := &library.Book{AuthorID: author.ID, Source: "comicvine", MediaType: "comic",
+		ForeignID: "800-i1", Title: "Walking Dead #1", Monitored: true}
+	if err := f.store.UpsertBook(issue); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.LinkBookSeries(issue.ID, series.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	writeInto := func(dir, rel string) {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("pages"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	colorRoot, monoRoot := t.TempDir(), t.TempDir()
+	writeInto(colorRoot, "Walking Dead/Walking Dead #001.cbz")
+	writeInto(monoRoot, "Walking Dead/Walking Dead #001.cbz")
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, variant, path) VALUES ('comic', 'color', ?)`, colorRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, variant, path) VALUES ('comic', 'mono', ?)`, monoRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.svc.Scan(context.Background()); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	volumes, _ := f.store.ListVolumes(series.ID)
+	if len(volumes) != 1 {
+		t.Fatalf("volumes = %d, want 1", len(volumes))
+	}
+	if !volumes[0].HasColorFile || !volumes[0].HasMonoFile {
+		t.Errorf("comic issue variants: color=%v mono=%v, want both owned", volumes[0].HasColorFile, volumes[0].HasMonoFile)
+	}
+}
+
 // TestScanComicRootDetectsVariantFromFile: a colorized file misfiled under a
 // mono root is recorded as "color" (trusting the detected fact over the
 // folder it happens to sit in) and the mismatch is flagged once — a re-scan
