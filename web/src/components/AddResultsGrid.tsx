@@ -3,14 +3,18 @@ import { proxiedImage, addTargetLabel, type AddTarget } from "../api";
 import { useUi } from "../ui";
 
 // AddResultsGrid renders provider search results as a poster grid — cover art,
-// title, subtitle, optional blurb — each with a one-click format choice:
-// Ebooks, Audiobooks, or Both (mirrored). Shared by every add flow.
+// title, subtitle, optional blurb — with either a one-click format choice
+// (Ebooks, Audiobooks, or Both, mirrored) or, when addLabel is set, a single
+// plain "add" button for results with no format split (e.g. series). Shared
+// by every add flow.
 export interface AddResult {
   key: string;
   title: string;
   subtitle?: string;
   blurb?: string;
   imageUrl?: string;
+  /** When set, render one button with this label instead of the format-target picker. */
+  addLabel?: string;
   add: (target: AddTarget) => Promise<unknown>;
 }
 
@@ -38,7 +42,10 @@ export default function AddResultsGrid({
     r.add(target)
       .then(() => {
         setState((s) => ({ ...s, [r.key]: { added: target } }));
-        toast(`Added "${r.title}" to ${addTargetLabel[target]}`, "ok");
+        toast(
+          r.addLabel ? `Added "${r.title}"` : `Added "${r.title}" to ${addTargetLabel[target]}`,
+          "ok",
+        );
         onAdded();
       })
       .catch((err: unknown) => {
@@ -74,7 +81,19 @@ export default function AddResultsGrid({
               {r.blurb && <p className="add-blurb">{r.blurb}</p>}
             </div>
             {st?.added ? (
-              <span className="add-done">✓ Added to {addTargetLabel[st.added]}</span>
+              <span className="add-done">
+                {r.addLabel ? "✓ Added" : `✓ Added to ${addTargetLabel[st.added]}`}
+              </span>
+            ) : r.addLabel ? (
+              <div className="add-targets">
+                <button
+                  className="toggle"
+                  disabled={!!st?.busy}
+                  onClick={() => add(r, "both")}
+                >
+                  {st?.busy ? "Adding…" : r.addLabel}
+                </button>
+              </div>
             ) : (
               <div className="add-targets">
                 {targets.map((t) => (
