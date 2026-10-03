@@ -39,7 +39,12 @@ type MetadataSettings struct {
 	// metadata.FallbackProvider.
 	Fallbacks []string `yaml:"fallbacks,omitempty"`
 	// MangaProvider chooses the manga series provider ("anilist",
-	// "hardcover", or "none" to disable); empty defaults to anilist.
+	// "hardcover", or "none" to disable); empty defaults to hardcover —
+	// real per-volume records (dates, covers, descriptions) instead of
+	// AniList's synthesized Vol. 1..N placeholders (see
+	// docs/research/manga-metadata-providers.md). AniList stays available
+	// for the narrow case of a title with no official release Hardcover
+	// would ever catalog.
 	// ComicProvider chooses the comic series provider ("hardcover",
 	// "comicvine", or "none"); empty defaults to hardcover. "none" turns off
 	// search/adds for that library — existing series still refresh through
@@ -71,12 +76,12 @@ type MetadataSettings struct {
 }
 
 // MangaSeriesProvider returns the configured manga provider name, defaulting
-// to anilist.
+// to hardcover.
 func (c *Config) MangaSeriesProvider() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.Metadata.MangaProvider == "" {
-		return "anilist"
+		return "hardcover"
 	}
 	return c.Metadata.MangaProvider
 }
