@@ -202,6 +202,24 @@ Under consideration, in no particular order:
   paths, a screen-reader walk of the main flows
 - [ ] **Localization** — and with it, language/date preferences
 - [ ] `ComicInfo.xml` for CBR archives (needs a RAR writer)
+- [ ] **Manga/comic variant detection** (color vs. monochrome): today a file's
+  variant is only ever the label of the root folder it sits in — nothing
+  inspects the file or its name, and an import with both a `color` and `mono`
+  root configured picks whichever root was added first, blind to what was
+  actually downloaded. Plan: read the standard `ComicInfo.xml`
+  `<BlackAndWhite>` field (CBZ via `archive/zip`, CBR via the existing
+  `rardecode` dependency — no new one needed) as the primary signal, with
+  filename/path keyword detection as a fallback when it's absent or
+  `Unknown`; use the detected variant to pick the matching root on import
+  instead of blindly taking the first one; write `BlackAndWhite` into
+  LibriNode's own ComicInfo.xml output so Kavita/Komga see it too; and flag a
+  scanned file whose detected variant disagrees with its root's configured one
+- [ ] **Per-variant wanted tracking**: "wanted"/"missing" (the Wanted list,
+  series Missing, pack search) all treat owning *either* manga variant as the
+  volume being satisfied — there's no way today to track "I want both the
+  color and mono copies" as two independent needs. Needs a per-series
+  target-variant concept feeding search/scoring, not just a filter — a bigger
+  feature, kept separate from the variant-detection work above
 
 ---
 
