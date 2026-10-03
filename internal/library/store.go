@@ -370,7 +370,7 @@ func (s *Store) UpsertBook(b *Book) error {
 				updated_at = datetime('now')
 			WHERE id = ?`,
 			b.AuthorID, b.Source, b.MediaType, b.ForeignID, b.Title, b.SortTitle,
-			b.Description, b.ReleaseDate, b.Rating, b.CoverURL, joinGenres(b.Genres), b.ID,
+			b.Description, b.ReleaseDate, b.Rating, b.CoverURL, joinLines(b.Genres), b.ID,
 		)
 		return err
 	}
@@ -391,7 +391,7 @@ func (s *Store) UpsertBook(b *Book) error {
 			updated_at = datetime('now')
 		RETURNING id`,
 		b.AuthorID, b.Source, b.MediaType, b.ForeignID, b.Title, b.SortTitle,
-		b.Description, b.ReleaseDate, b.Rating, b.CoverURL, joinGenres(b.Genres), b.Monitored,
+		b.Description, b.ReleaseDate, b.Rating, b.CoverURL, joinLines(b.Genres), b.Monitored,
 		b.InEbookLibrary, b.EbookMonitored, b.InAudiobookLibrary, b.AudiobookMonitored,
 	).Scan(&b.ID)
 }
@@ -553,7 +553,7 @@ func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	if err != nil {
 		return nil, err
 	}
-	b.Genres = splitGenres(genres)
+	b.Genres = splitLines(genres)
 	return &b, nil
 }
 
@@ -562,15 +562,16 @@ func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 // category genres, without disturbing its other fields.
 func (s *Store) SetBookGenres(id int64, genres []string) error {
 	_, err := s.db.Exec(`UPDATE books SET genres = ?, updated_at = datetime('now') WHERE id = ?`,
-		joinGenres(genres), id)
+		joinLines(genres), id)
 	return err
 }
 
-// Genres are stored newline-joined in the books.genres column — a separator
-// that never appears inside a genre name, so a round-trip is exact.
-func joinGenres(g []string) string { return strings.Join(g, "\n") }
+// joinLines/splitLines store a string list newline-joined in a single TEXT
+// column (books.genres, series.sibling_titles) — a separator that never
+// appears inside a title or genre name, so a round-trip is exact.
+func joinLines(g []string) string { return strings.Join(g, "\n") }
 
-func splitGenres(s string) []string {
+func splitLines(s string) []string {
 	if s == "" {
 		return nil
 	}
@@ -785,22 +786,27 @@ func (s *Store) EditionIdentifiers() ([]EditionIdent, error) {
 // --- Series ---
 
 // UpsertSeries inserts or refreshes a series by (source, foreign_id),
-// preserving the user-owned monitoring flags on update. The series' ID is
-// set on return.
+// preserving the user-owned monitoring flags on update. sibling_titles is
+// only overwritten when the caller supplies a fresh non-empty list — a
+// sync that couldn't reach the provider (or whose sibling search failed)
+// passes an empty SiblingTitles and the previously cached list survives,
+// rather than a transient hiccup silently erasing good disambiguation data.
+// The series' ID is set on return.
 func (s *Store) UpsertSeries(sr *Series) error {
 	if sr.MediaType == "" {
 		sr.MediaType = "book"
 	}
 	return s.db.QueryRow(`
-		INSERT INTO series (metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO series (metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url, sibling_titles)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (metadata_source, foreign_id) DO UPDATE SET
 			title = excluded.title,
 			description = excluded.description,
-			cover_url = excluded.cover_url
+			cover_url = excluded.cover_url,
+			sibling_titles = CASE WHEN excluded.sibling_titles != '' THEN excluded.sibling_titles ELSE series.sibling_titles END
 		RETURNING id`,
 		sr.Source, sr.ForeignID, sr.Title, sr.Description,
-		sr.MediaType, sr.Monitored, sr.MonitorNew, sr.CoverURL,
+		sr.MediaType, sr.Monitored, sr.MonitorNew, sr.CoverURL, joinLines(sr.SiblingTitles),
 	).Scan(&sr.ID)
 }
 
@@ -868,18 +874,20 @@ func (s *Store) SeriesBookPositions(seriesID int64) (map[int64]float64, error) {
 	return positions, rows.Err()
 }
 
-const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, provider_override, cover_url`
+const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, provider_override, cover_url, sibling_titles`
 
 func scanSeries(row interface{ Scan(...any) error }) (*Series, error) {
 	var sr Series
+	var siblings string
 	err := row.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
-		&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL)
+		&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL, &siblings)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	sr.SiblingTitles = splitLines(siblings)
 	return &sr, nil
 }
 
@@ -909,11 +917,13 @@ func (s *Store) ListSeries(mediaType string) ([]Series, error) {
 	out := []Series{}
 	for rows.Next() {
 		var sr Series
+		var siblings string
 		if err := rows.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
-			&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL,
+			&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL, &siblings,
 			&sr.ItemCount, &sr.OwnedCount); err != nil {
 			return nil, err
 		}
+		sr.SiblingTitles = splitLines(siblings)
 		out = append(out, sr)
 	}
 	return out, rows.Err()

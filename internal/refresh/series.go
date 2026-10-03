@@ -54,14 +54,15 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 	}
 
 	series := &library.Series{
-		Source:      source,
-		ForeignID:   remote.ForeignID,
-		Title:       remote.Title,
-		Description: remote.Description,
-		MediaType:   mediaType,
-		Monitored:   monitored,
-		MonitorNew:  monitorNew,
-		CoverURL:    remote.CoverURL,
+		Source:        source,
+		ForeignID:     remote.ForeignID,
+		Title:         remote.Title,
+		Description:   remote.Description,
+		MediaType:     mediaType,
+		Monitored:     monitored,
+		MonitorNew:    monitorNew,
+		CoverURL:      remote.CoverURL,
+		SiblingTitles: fetchSiblingTitles(ctx, p, remote),
 	}
 	if err := s.store.UpsertSeries(series); err != nil {
 		return nil, err
@@ -123,6 +124,39 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 		return nil, err
 	}
 	return series, nil
+}
+
+// fetchSiblingTitles searches the provider for self's own title and returns
+// the titles of the OTHER, distinct series that search surfaces — e.g.
+// searching "Dragon Ball" also surfaces "Dragon Ball Super" as its own
+// series with a different foreign ID. These feed release.seriesTitleMatches
+// (via Series.SiblingTitles), so a release that actually names one of them
+// isn't mistaken for a tag-decorated release of self.
+//
+// Best-effort: a search failure (or a provider with no useful search for
+// this query) just means no siblings this time, not a failed sync — and
+// UpsertSeries only overwrites the stored list when this returns something,
+// so a transient failure here never erases a previously found list.
+func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *metadata.SeriesResult) []string {
+	results, err := p.SearchSeries(ctx, self.Title)
+	if err != nil {
+		return nil
+	}
+	selfTitle := strings.ToLower(strings.TrimSpace(self.Title))
+	var siblings []string
+	seen := map[string]bool{}
+	for _, r := range results {
+		if r.ForeignID == self.ForeignID {
+			continue
+		}
+		norm := strings.ToLower(strings.TrimSpace(r.Title))
+		if norm == "" || norm == selfTitle || seen[norm] {
+			continue
+		}
+		seen[norm] = true
+		siblings = append(siblings, r.Title)
+	}
+	return siblings
 }
 
 // retireStaleVolumes removes a series' volume books that the provider no

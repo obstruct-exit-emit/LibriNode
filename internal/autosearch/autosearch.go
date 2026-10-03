@@ -191,10 +191,14 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 			return outcome, nil
 		}
 		seriesTitle, number := links[0].Title, links[0].Position
+		series, err := s.store.GetSeries(links[0].SeriesID)
+		if err != nil {
+			return nil, err
+		}
 		query = seriesTitle
 		nativeQuery = seriesTitle
 		score = func(rel indexer.Release) release.Candidate {
-			c := release.ScoreVolume(rel, prefs, seriesTitle, number)
+			c := release.ScoreVolume(rel, prefs, seriesTitle, number, series.SiblingTitles)
 			if mediaType == "manga" {
 				release.AdjustForOwnedVariant(&c, book.HasColorFile)
 			}
@@ -330,7 +334,7 @@ func (s *Service) SearchSeriesPacks(ctx context.Context, seriesID int64) (*PackS
 	result.Errors = indexerErrs
 
 	for _, rel := range found {
-		result.Candidates = append(result.Candidates, release.ScoreSeriesPack(rel, prefs, series.Title, maxWanted))
+		result.Candidates = append(result.Candidates, release.ScoreSeriesPack(rel, prefs, series.Title, maxWanted, series.SiblingTitles))
 	}
 	s.markBlocked(result.Candidates)
 	release.Rank(result.Candidates)

@@ -128,7 +128,16 @@ var leadingTags = regexp.MustCompile(`^\s*(?:[\(\[][^\)\]]*[\)\]]\s*)+`)
 // itself the prefix of a longer one ("Saga" vs "Saga of the Swamp Thing").
 // Prose books keep titleMatches: their releases are "Author - Title", so the
 // title genuinely sits mid-name and must not be anchored to the front.
-func seriesTitleMatches(rawTitle string, keys []string) bool {
+//
+// siblings catches what the stopword guard can't: a continuation word that
+// isn't a connector ("Super", not "of") still isn't proof it's a harmless
+// tag — it might be a different, specifically-known related work sharing
+// the prefix ("Dragon Ball Super" is not a release of "Dragon Ball"). These
+// are fetched from the provider's own search at add/refresh time (see
+// SyncSeries.fetchSiblingTitles) — titles distinct from this series that a
+// search for its own name surfaced — so the exclusion is precise rather
+// than a guess, and callers with no sibling data (magazines) just pass nil.
+func seriesTitleMatches(rawTitle string, keys []string, siblings []string) bool {
 	relWords := strings.Fields(scanner.Normalize(leadingTags.ReplaceAllString(rawTitle, "")))
 	for _, key := range keys {
 		kw := strings.Fields(key)
@@ -136,9 +145,28 @@ func seriesTitleMatches(rawTitle string, keys []string) bool {
 			continue
 		}
 		if slices.Equal(relWords[:len(kw)], kw) {
-			if next := len(kw); next >= len(relWords) || !titleStopwords[relWords[next]] {
+			next := len(kw)
+			if next >= len(relWords) {
 				return true
 			}
+			if !titleStopwords[relWords[next]] && !matchesKnownSibling(relWords, siblings) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// matchesKnownSibling reports whether relWords begins with one of siblings'
+// own normalized words — see seriesTitleMatches.
+func matchesKnownSibling(relWords []string, siblings []string) bool {
+	for _, sib := range siblings {
+		sw := strings.Fields(scanner.Normalize(sib))
+		if len(sw) == 0 || len(sw) > len(relWords) {
+			continue
+		}
+		if slices.Equal(relWords[:len(sw)], sw) {
+			return true
 		}
 	}
 	return false
@@ -471,10 +499,12 @@ func Score(rel indexer.Release, prefs Preferences, book *library.Book, author *l
 
 // ScoreVolume evaluates a release against a wanted manga volume / comic
 // issue: generic checks plus the series title and the exact volume number.
-func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, number float64) Candidate {
+// siblings is the series' own known-related-but-distinct titles (see
+// seriesTitleMatches); nil is fine when none are on hand.
+func ScoreVolume(rel indexer.Release, prefs Preferences, seriesTitle string, number float64, siblings []string) Candidate {
 	c := Score(rel, prefs, nil, nil, nil)
 
-	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(seriesTitle)) {
+	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(seriesTitle), siblings) {
 		c.reject("does not contain the series title")
 	}
 
@@ -527,13 +557,15 @@ func AdjustForOwnedVariant(c *Candidate, ownedColor bool) {
 // manga packs). Single-volume releases are rejected — they belong to the
 // per-volume flow. maxWanted is the highest missing position; a range that
 // reaches it earns a bonus, one that falls short is kept but penalized.
-func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string, maxWanted float64) Candidate {
+// siblings is the series' own known-related-but-distinct titles (see
+// seriesTitleMatches); nil is fine when none are on hand.
+func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string, maxWanted float64, siblings []string) Candidate {
 	// A pack is dozens of volumes in one release — the per-item size cap
 	// doesn't apply. 100 GiB still guards against nonsense.
 	prefs.MaxSize = 100 << 30
 	c := Score(rel, prefs, nil, nil, nil)
 
-	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(seriesTitle)) {
+	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(seriesTitle), siblings) {
 		c.reject("does not contain the series title")
 	}
 
@@ -566,7 +598,7 @@ func ScoreSeriesPack(rel indexer.Release, prefs Preferences, seriesTitle string,
 func ScoreMagazine(rel indexer.Release, prefs Preferences, title string, owned map[string]bool) (Candidate, string) {
 	c := Score(rel, prefs, nil, nil, nil)
 
-	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(title)) {
+	if !seriesTitleMatches(rel.Title, scanner.TitleKeys(title), nil) {
 		c.reject("does not contain the magazine title")
 	}
 

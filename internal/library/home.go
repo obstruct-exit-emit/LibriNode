@@ -278,7 +278,7 @@ func scanBookWithSeries(rows *sql.Rows) (*Book, error) {
 		&b.AddedAt, &b.UpdatedAt, &st, &sp); err != nil {
 		return nil, err
 	}
-	b.Genres = splitGenres(genres)
+	b.Genres = splitLines(genres)
 	if st != "" {
 		b.Series = []SeriesLink{{Title: st, Position: sp}}
 	}

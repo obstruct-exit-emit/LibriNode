@@ -68,10 +68,10 @@ type Book struct {
 	// Mirror keeps THIS title in lockstep across the two formats (the per-book
 	// counterpart of Author.Mirror); the book is effectively mirrored when this
 	// or the author's flag is set.
-	Mirror             bool `json:"mirror"`
-	HasFile            bool `json:"hasFile"` // any media type
-	HasEbookFile       bool `json:"hasEbookFile"`
-	HasAudiobookFile   bool `json:"hasAudiobookFile"`
+	Mirror           bool `json:"mirror"`
+	HasFile          bool `json:"hasFile"` // any media type
+	HasEbookFile     bool `json:"hasEbookFile"`
+	HasAudiobookFile bool `json:"hasAudiobookFile"`
 	// Per-variant ownership for manga volumes (colorized/monochrome share one
 	// volume row); both false for non-manga.
 	HasColorFile bool   `json:"hasColorFile"`
@@ -117,6 +117,12 @@ type Series struct {
 	// global Settings → Metadata selection ("" = follow settings).
 	ProviderOverride string `json:"providerOverride"`
 	CoverURL         string `json:"coverUrl"`
+	// SiblingTitles are other, distinct series a search for this one's own
+	// title surfaces at the provider (e.g. "Dragon Ball Super" alongside
+	// "Dragon Ball") — fetched at add/refresh time, never guessed. Used to
+	// stop a release that actually names one of them from being accepted as
+	// a tag-decorated release of this series (see release.seriesTitleMatches).
+	SiblingTitles []string `json:"siblingTitles,omitempty"`
 	// Grid stats, populated by listings.
 	ItemCount  int `json:"itemCount"`
 	OwnedCount int `json:"ownedCount"`

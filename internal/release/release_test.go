@@ -496,53 +496,70 @@ func TestScoreAudiobook(t *testing.T) {
 func TestScoreVolume(t *testing.T) {
 	prefs := DefaultMangaPreferences()
 
-	right := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	right := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if !right.Approved {
 		t.Fatalf("right volume rejected: %v", right.Rejections)
 	}
-	wrongVol := ScoreVolume(rel("Berserk v06 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	wrongVol := ScoreVolume(rel("Berserk v06 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if wrongVol.Approved {
 		t.Error("wrong volume approved")
 	}
-	noVol := ScoreVolume(rel("Berserk Complete CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	noVol := ScoreVolume(rel("Berserk Complete CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if noVol.Approved {
 		t.Error("volume-less release approved")
 	}
-	wrongSeries := ScoreVolume(rel("One Piece v05 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	wrongSeries := ScoreVolume(rel("One Piece v05 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if wrongSeries.Approved {
 		t.Error("wrong series approved")
 	}
 	// A short series title must not match a longer, different title that only
 	// starts with it ("Saga" vs "Saga of the Swamp Thing").
-	prefixSeries := ScoreVolume(rel("Saga of the Swamp Thing v01 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1)
+	prefixSeries := ScoreVolume(rel("Saga of the Swamp Thing v01 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1, nil)
 	if prefixSeries.Approved {
 		t.Errorf("longer prefix-title series wrongly approved: %+v", prefixSeries.Rejections)
 	}
 	// …but a leading publisher/scanlator tag before the title still matches.
-	tagged := ScoreVolume(rel("Berserk Dark Horse v05 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	tagged := ScoreVolume(rel("Berserk Dark Horse v05 CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if !tagged.Approved {
 		t.Errorf("tagged release wrongly rejected: %v", tagged.Rejections)
 	}
 	// A longer, DIFFERENT series that merely ENDS with the wanted series' name
 	// must be rejected — the name has to lead the release, not trail it
 	// ("Saga" is not "Fate The Winx Saga" or "Spider-Man - Clone Saga").
-	suffixSeries := ScoreVolume(rel("Fate The Winx Saga v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1)
+	suffixSeries := ScoreVolume(rel("Fate The Winx Saga v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1, nil)
 	if suffixSeries.Approved {
 		t.Errorf("suffix-title series wrongly approved: %+v", suffixSeries.Rejections)
 	}
-	cloneSaga := ScoreVolume(rel("Spider-Man - Clone Saga v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1)
+	cloneSaga := ScoreVolume(rel("Spider-Man - Clone Saga v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Saga", 1, nil)
 	if cloneSaga.Approved {
 		t.Errorf("mid-title series wrongly approved: %+v", cloneSaga.Rejections)
 	}
 	// A leading bracketed scanlation/publisher tag before the series still
 	// matches — the tag is stripped before anchoring on the series name.
-	bracketTagged := ScoreVolume(rel("[Some-Group] Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	bracketTagged := ScoreVolume(rel("[Some-Group] Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if !bracketTagged.Approved {
 		t.Errorf("bracket-tagged release wrongly rejected: %v", bracketTagged.Rejections)
 	}
-	epubUnderComic := ScoreVolume(rel("Berserk v05 EPUB", indexer.ProtocolUsenet, 50<<20, -1), DefaultComicPreferences(), "Berserk", 5)
+	epubUnderComic := ScoreVolume(rel("Berserk v05 EPUB", indexer.ProtocolUsenet, 50<<20, -1), DefaultComicPreferences(), "Berserk", 5, nil)
 	if epubUnderComic.Approved {
 		t.Error("epub approved under comic prefs")
+	}
+
+	// A continuation word that isn't a connector is normally just a tag
+	// ("Dark Horse" above) — UNLESS it completes a known sibling title, in
+	// which case it names a different, specifically-known work and must be
+	// rejected even though "Super" is not a stopword.
+	siblingSeries := ScoreVolume(rel("Dragon Ball Super v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1),
+		prefs, "Dragon Ball", 1, []string{"Dragon Ball Super"})
+	if siblingSeries.Approved {
+		t.Errorf("known sibling series wrongly approved: %+v", siblingSeries.Rejections)
+	}
+	// The same release with no known siblings on hand falls back to the
+	// existing tag-tolerant behavior (can't tell it apart from a real tag).
+	noSiblingData := ScoreVolume(rel("Dragon Ball Super v01 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1),
+		prefs, "Dragon Ball", 1, nil)
+	if !noSiblingData.Approved {
+		t.Errorf("release wrongly rejected with no sibling data: %v", noSiblingData.Rejections)
 	}
 }
 
@@ -552,7 +569,7 @@ func TestScoreVolume(t *testing.T) {
 func TestScoreVolumeDetectsColorVariant(t *testing.T) {
 	prefs := DefaultMangaPreferences()
 
-	colored := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	colored := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if colored.Parsed.Variant != "color" {
 		t.Errorf("Parsed.Variant = %q, want color", colored.Parsed.Variant)
 	}
@@ -560,7 +577,7 @@ func TestScoreVolumeDetectsColorVariant(t *testing.T) {
 		t.Errorf("colorized release wrongly rejected: %v", colored.Rejections)
 	}
 
-	plain := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	plain := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	if plain.Parsed.Variant != "" {
 		t.Errorf("Parsed.Variant = %q, want \"\" (an unmarked release claims nothing)", plain.Parsed.Variant)
 	}
@@ -574,8 +591,8 @@ func TestScoreVolumeDetectsColorVariant(t *testing.T) {
 func TestAdjustForOwnedVariant(t *testing.T) {
 	prefs := DefaultMangaPreferences()
 
-	colored := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
-	plain := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	colored := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
+	plain := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	beforeColored, beforePlain := colored.Score, plain.Score
 
 	AdjustForOwnedVariant(&colored, true /* ownedColor */)
@@ -596,7 +613,7 @@ func TestAdjustForOwnedVariant(t *testing.T) {
 
 	// Not owned: no penalty, even for a confirmed-colorized release — there's
 	// nothing to duplicate yet.
-	fresh := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5)
+	fresh := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
 	freshScore := fresh.Score
 	AdjustForOwnedVariant(&fresh, false /* ownedColor */)
 	if fresh.Score != freshScore {
@@ -750,12 +767,12 @@ func TestParseVolumeRange(t *testing.T) {
 func TestScoreSeriesPack(t *testing.T) {
 	prefs := DefaultMangaPreferences()
 
-	full := ScoreSeriesPack(rel("Berserk v01-v41 (Digital) (CBZ)", indexer.ProtocolTorrent, 10<<30, 12), prefs, "Berserk", 41)
+	full := ScoreSeriesPack(rel("Berserk v01-v41 (Digital) (CBZ)", indexer.ProtocolTorrent, 10<<30, 12), prefs, "Berserk", 41, nil)
 	if !full.Approved {
 		t.Fatalf("full range pack rejected: %v", full.Rejections)
 	}
 
-	partial := ScoreSeriesPack(rel("Berserk v01-v20 CBZ", indexer.ProtocolTorrent, 5<<30, 8), prefs, "Berserk", 41)
+	partial := ScoreSeriesPack(rel("Berserk v01-v20 CBZ", indexer.ProtocolTorrent, 5<<30, 8), prefs, "Berserk", 41, nil)
 	if !partial.Approved {
 		t.Fatalf("partial pack rejected: %v", partial.Rejections)
 	}
@@ -763,7 +780,7 @@ func TestScoreSeriesPack(t *testing.T) {
 		t.Errorf("partial (%d) should rank below full (%d)", partial.Score, full.Score)
 	}
 
-	bare := ScoreSeriesPack(rel("Berserk (Digital) (CBZ)", indexer.ProtocolTorrent, 12<<30, 20), prefs, "Berserk", 41)
+	bare := ScoreSeriesPack(rel("Berserk (Digital) (CBZ)", indexer.ProtocolTorrent, 12<<30, 20), prefs, "Berserk", 41, nil)
 	if !bare.Approved {
 		t.Fatalf("bare series release rejected: %v", bare.Rejections)
 	}
@@ -771,13 +788,19 @@ func TestScoreSeriesPack(t *testing.T) {
 		t.Errorf("bare (%d) should rank below explicit range (%d)", bare.Score, full.Score)
 	}
 
-	single := ScoreSeriesPack(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolTorrent, 300<<20, 30), prefs, "Berserk", 41)
+	single := ScoreSeriesPack(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolTorrent, 300<<20, 30), prefs, "Berserk", 41, nil)
 	if single.Approved {
 		t.Error("single-volume release should be rejected from pack search")
 	}
 
-	wrong := ScoreSeriesPack(rel("Vagabond v01-v37 CBZ", indexer.ProtocolTorrent, 9<<30, 15), prefs, "Berserk", 41)
+	wrong := ScoreSeriesPack(rel("Vagabond v01-v37 CBZ", indexer.ProtocolTorrent, 9<<30, 15), prefs, "Berserk", 41, nil)
 	if wrong.Approved {
 		t.Error("wrong series should be rejected")
+	}
+
+	sibling := ScoreSeriesPack(rel("Dragon Ball Super v01-v20 CBZ", indexer.ProtocolTorrent, 5<<30, 8),
+		prefs, "Dragon Ball", 41, []string{"Dragon Ball Super"})
+	if sibling.Approved {
+		t.Error("known sibling series pack should be rejected")
 	}
 }
