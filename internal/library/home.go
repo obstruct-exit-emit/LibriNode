@@ -44,8 +44,56 @@ func wantedWhere(mediaType string) string {
 		return itemsWhere("ebook") + ` AND books.ebook_monitored = 1 AND ` + fileClause("ebook")
 	case "audiobook":
 		return itemsWhere("audiobook") + ` AND books.audiobook_monitored = 1 AND ` + fileClause("audiobook")
+	case "manga", "comic":
+		return itemsWhere(mediaType) + ` AND books.monitored = 1 AND ` + variantMissingSQL(mediaType)
 	}
 	return itemsWhere(mediaType) + ` AND books.monitored = 1 AND ` + fileClause(mediaType)
+}
+
+// variantMissingSQL is wantedWhere's manga/comic branch, as a SQL fragment
+// correlated against the enclosing query's books.* columns: variant-blind
+// (today's default, any one file satisfies it) unless the book's primary
+// series opted into a target_variant, in which case "still wanted" is
+// scoped to that specific variant. The primary series is resolved the same
+// deterministic "first by title" way primarySeriesCols picks one for
+// display, for consistency across the codebase. VariantMissing (below) is
+// the same rule for callers that already have a *Book and its series'
+// TargetVariant in hand rather than running a fresh query.
+func variantMissingSQL(mediaType string) string {
+	target := `COALESCE((SELECT se.target_variant FROM series_books sb JOIN series se ON se.id = sb.series_id
+		WHERE sb.book_id = books.id ORDER BY se.title LIMIT 1), '')`
+	// books.has_mono_file/has_color_file aren't real columns — bookCols only
+	// computes them as EXISTS subqueries in its own SELECT list — so they're
+	// inlined here the same way, correlated against this query's books.id.
+	hasVariant := func(v string) string {
+		return `EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '` + mediaType + `' AND f.variant = '` + v + `')`
+	}
+	hasAny := `EXISTS (SELECT 1 FROM book_files f WHERE f.book_id = books.id AND f.media_type = '` + mediaType + `')`
+	return `CASE ` + target + `
+		WHEN 'mono' THEN NOT ` + hasVariant("mono") + `
+		WHEN 'color' THEN NOT ` + hasVariant("color") + `
+		WHEN 'both' THEN NOT (` + hasVariant("mono") + ` AND ` + hasVariant("color") + `)
+		ELSE NOT ` + hasAny + `
+		END`
+}
+
+// VariantMissing is variantMissingSQL's rule as a pure function, for
+// callers that already have the book's ownership flags and its series'
+// TargetVariant in hand (SearchSeriesPacks' missing-count, importPackExtras'
+// owned-check) rather than running a query. targetVariant is "" when the
+// book's series doesn't opt into one (or has no series at all) — the
+// variant-blind default.
+func VariantMissing(targetVariant string, hasMonoFile, hasColorFile, hasAnyFile bool) bool {
+	switch targetVariant {
+	case "mono":
+		return !hasMonoFile
+	case "color":
+		return !hasColorFile
+	case "both":
+		return !(hasMonoFile && hasColorFile)
+	default:
+		return !hasAnyFile
+	}
 }
 
 // LibraryStatuses reports every media type's activity and counts. A library

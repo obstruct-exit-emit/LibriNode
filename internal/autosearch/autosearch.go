@@ -195,11 +195,13 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 		if err != nil {
 			return nil, err
 		}
+		wantedVariant := release.ResolveWantedVariant(series.TargetVariant, book.HasMonoFile, book.HasColorFile)
 		query = seriesTitle
 		nativeQuery = seriesTitle
 		score = func(rel indexer.Release) release.Candidate {
 			c := release.ScoreVolume(rel, prefs, seriesTitle, number, series.SiblingTitles)
 			release.AdjustForOwnedVariant(&c, book.HasColorFile)
+			release.AdjustForWantedVariant(&c, wantedVariant)
 			return c
 		}
 	} else {
@@ -309,7 +311,7 @@ func (s *Service) SearchSeriesPacks(ctx context.Context, seriesID int64) (*PackS
 	var maxWanted float64
 	for i := range volumes {
 		v := &volumes[i]
-		if v.HasFile {
+		if !library.VariantMissing(series.TargetVariant, v.HasMonoFile, v.HasColorFile, v.HasFile) {
 			continue
 		}
 		result.Missing++
@@ -411,9 +413,17 @@ func (s *Service) wants(book *library.Book) []want {
 		return nil
 	}
 	// Manga volumes / comic issues want exactly their own type (no upgrade
-	// mode for volumes yet); the classic monitored flag governs them.
+	// mode for volumes yet); the classic monitored flag governs them, and
+	// VariantMissing decides "still missing" per the series' target_variant
+	// opt-in rather than book.HasFile blindly — the only way a series that
+	// wants both color and mono ever gets the automated sweep searching for
+	// the second one once the first is owned.
 	if book.MediaType == "manga" || book.MediaType == "comic" {
-		if !book.Monitored || book.HasFile {
+		if !book.Monitored {
+			return nil
+		}
+		target := s.seriesTargetVariantFor(book)
+		if !library.VariantMissing(target, book.HasMonoFile, book.HasColorFile, book.HasFile) {
 			return nil
 		}
 		return []want{{mediaType: book.MediaType}}
@@ -436,6 +446,21 @@ func (s *Service) wants(book *library.Book) []want {
 		}
 	}
 	return wants
+}
+
+// seriesTargetVariantFor resolves a manga/comic book's primary series'
+// TargetVariant — "" (today's variant-blind default) when it has no series
+// link or the lookup fails.
+func (s *Service) seriesTargetVariantFor(book *library.Book) string {
+	links, err := s.store.ListSeriesForBook(book.ID)
+	if err != nil || len(links) == 0 {
+		return ""
+	}
+	series, err := s.store.GetSeries(links[0].SeriesID)
+	if err != nil {
+		return ""
+	}
+	return series.TargetVariant
 }
 
 // SearchMagazineSeries searches one magazine for new issues and grabs them —

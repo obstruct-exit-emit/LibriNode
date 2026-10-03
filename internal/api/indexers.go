@@ -235,6 +235,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 	var seriesTitle string
 	var volumeNumber float64
 	var seriesSiblings []string
+	var wantedVariant string
 	var otherTitles []string // author's other prose titles — pack detection only
 	if v := r.URL.Query().Get("bookId"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
@@ -257,6 +258,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 			seriesTitle, volumeNumber = links[0].Title, links[0].Position
 			if series, err := s.store.GetSeries(links[0].SeriesID); err == nil {
 				seriesSiblings = series.SiblingTitles
+				wantedVariant = release.ResolveWantedVariant(series.TargetVariant, book.HasMonoFile, book.HasColorFile)
 			}
 			if term == "" {
 				term = seriesTitle
@@ -320,6 +322,7 @@ func (s *server) handleSearchReleases(w http.ResponseWriter, r *http.Request) {
 			c := release.ScoreVolume(rel, prefs, seriesTitle, volumeNumber, seriesSiblings)
 			if book != nil {
 				release.AdjustForOwnedVariant(&c, book.HasColorFile)
+				release.AdjustForWantedVariant(&c, wantedVariant)
 			}
 			candidates = append(candidates, c)
 		} else {

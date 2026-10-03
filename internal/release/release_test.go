@@ -621,6 +621,63 @@ func TestAdjustForOwnedVariant(t *testing.T) {
 	}
 }
 
+// TestResolveWantedVariant covers all four TargetVariant branches.
+func TestResolveWantedVariant(t *testing.T) {
+	cases := []struct {
+		name        string
+		target      string
+		mono, color bool
+		want        string
+	}{
+		{"blind default ignores ownership", "", true, false, ""},
+		{"explicit mono always wins, regardless of ownership", "mono", true, true, "mono"},
+		{"explicit color always wins, regardless of ownership", "color", false, false, "color"},
+		{"both, owns mono only -> hunting color", "both", true, false, "color"},
+		{"both, owns color only -> hunting mono", "both", false, true, "mono"},
+		{"both, owns neither -> no preference yet", "both", false, false, ""},
+		{"both, owns both -> no preference (shouldn't be searched at all)", "both", true, true, ""},
+	}
+	for _, c := range cases {
+		if got := ResolveWantedVariant(c.target, c.mono, c.color); got != c.want {
+			t.Errorf("%s: ResolveWantedVariant(%q, mono=%v, color=%v) = %q, want %q",
+				c.name, c.target, c.mono, c.color, got, c.want)
+		}
+	}
+}
+
+// TestAdjustForWantedVariant: the colorized keyword is the only real signal
+// either direction — a candidate that doesn't carry it is never adjusted,
+// since its silence proves nothing about being the mono edition.
+func TestAdjustForWantedVariant(t *testing.T) {
+	prefs := DefaultMangaPreferences()
+	colored := ScoreVolume(rel("Berserk v05 (Digital Color) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
+	plain := ScoreVolume(rel("Berserk v05 (Digital) CBZ", indexer.ProtocolUsenet, 50<<20, -1), prefs, "Berserk", 5, nil)
+
+	coloredWantColor, coloredScore := colored, colored.Score
+	AdjustForWantedVariant(&coloredWantColor, "color")
+	if coloredWantColor.Score != coloredScore+variantDuplicatePenalty {
+		t.Errorf("colored, wanting color: score = %d, want %d (bonus)", coloredWantColor.Score, coloredScore+variantDuplicatePenalty)
+	}
+
+	coloredWantMono, _ := colored, colored.Score
+	AdjustForWantedVariant(&coloredWantMono, "mono")
+	if coloredWantMono.Score != coloredScore-variantDuplicatePenalty {
+		t.Errorf("colored, wanting mono: score = %d, want %d (penalty)", coloredWantMono.Score, coloredScore-variantDuplicatePenalty)
+	}
+
+	plainWantMono, plainScore := plain, plain.Score
+	AdjustForWantedVariant(&plainWantMono, "mono")
+	if plainWantMono.Score != plainScore {
+		t.Errorf("unmarked release, wanting mono: score changed %d -> %d (silence isn't evidence of anything)", plainScore, plainWantMono.Score)
+	}
+
+	noSteer, noSteerScore := colored, colored.Score
+	AdjustForWantedVariant(&noSteer, "")
+	if noSteer.Score != noSteerScore {
+		t.Errorf("wantedVariant=\"\": score changed %d -> %d, want no adjustment at all", noSteerScore, noSteer.Score)
+	}
+}
+
 // TestScoreNoSeedersOptIn: a zero-seeder torrent is rejected by default (dead),
 // but a debrid/cached-torrent client (AllowNoSeeders) makes it grabbable — the
 // cache serves it regardless of the swarm. A seeded torrent and usenet are

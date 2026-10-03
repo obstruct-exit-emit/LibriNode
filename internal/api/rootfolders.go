@@ -11,9 +11,9 @@ import (
 
 var mediaTypes = []string{"ebook", "audiobook", "manga", "comic", "magazine"}
 
-// mangaVariants are the colorized/monochrome sub-libraries a manga root can
-// hold; other media types have no variant ("").
-var mangaVariants = []string{"color", "mono"}
+// variantValues are the colorized/monochrome sub-libraries a manga or comic
+// root can hold; other media types have no variant ("").
+var variantValues = []string{"color", "mono"}
 
 type rootFolder struct {
 	ID         int64  `json:"id"`
@@ -63,17 +63,29 @@ func (s *server) handleAddRootFolder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "mediaType must be one of: ebook, audiobook, manga, comic, magazine")
 		return
 	}
-	// Manga roots are per-variant (colorized/monochrome share one library);
-	// monochrome is the default. Every other media type has no variant.
-	if req.MediaType == "manga" {
+	// Manga and comic roots are per-variant (colorized/monochrome share one
+	// library) — manga defaults to monochrome (its standard form), comic to
+	// color (its standard form); either can be overridden for the deliberate
+	// exception (a colorized manga reprint, a B&W/Noir comic edition). Every
+	// other media type has no variant.
+	switch req.MediaType {
+	case "manga":
 		if req.Variant == "" {
 			req.Variant = "mono"
 		}
-		if !slices.Contains(mangaVariants, req.Variant) {
+		if !slices.Contains(variantValues, req.Variant) {
 			writeError(w, http.StatusBadRequest, "variant must be color or mono for manga roots")
 			return
 		}
-	} else {
+	case "comic":
+		if req.Variant == "" {
+			req.Variant = "color"
+		}
+		if !slices.Contains(variantValues, req.Variant) {
+			writeError(w, http.StatusBadRequest, "variant must be color or mono for comic roots")
+			return
+		}
+	default:
 		req.Variant = ""
 	}
 	if req.Path == "" {

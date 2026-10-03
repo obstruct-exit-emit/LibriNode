@@ -7,8 +7,9 @@ import (
 )
 
 // TestRootFolderVariants: manga roots carry a colorized/monochrome variant
-// (defaulting to monochrome); other media types never do, and an invalid
-// manga variant is rejected.
+// (defaulting to monochrome, manga's standard form); comic roots do too
+// (defaulting to color, comics' standard form); other media types never do,
+// and an invalid variant is rejected for either.
 func TestRootFolderVariants(t *testing.T) {
 	a := newTestAPI(t, fakeProvider{})
 
@@ -40,6 +41,28 @@ func TestRootFolderVariants(t *testing.T) {
 	bad := t.TempDir()
 	a.want(a.call("POST", "/api/v1/rootfolder",
 		map[string]string{"mediaType": "manga", "variant": "sepia", "path": bad}, nil), http.StatusBadRequest)
+
+	// Comic root without an explicit variant defaults to color — the inverse
+	// of manga's default, since color (not mono) is comics' standard form.
+	comicColor := t.TempDir()
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "comic", "path": comicColor}, &got), http.StatusCreated)
+	if got.Variant != "color" {
+		t.Fatalf("comic root default variant = %q, want color", got.Variant)
+	}
+
+	// A monochrome (Noir/B&W) comic root is accepted as its own root.
+	comicMono := t.TempDir()
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "comic", "variant": "mono", "path": comicMono}, &got), http.StatusCreated)
+	if got.Variant != "mono" {
+		t.Fatalf("comic root variant = %q, want mono", got.Variant)
+	}
+
+	// A bogus comic variant is rejected.
+	comicBad := t.TempDir()
+	a.want(a.call("POST", "/api/v1/rootfolder",
+		map[string]string{"mediaType": "comic", "variant": "sepia", "path": comicBad}, nil), http.StatusBadRequest)
 
 	// Non-manga roots never carry a variant, even if one is sent. (Fresh
 	// struct — an empty variant is omitted from the response JSON, so a

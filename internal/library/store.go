@@ -797,16 +797,19 @@ func (s *Store) UpsertSeries(sr *Series) error {
 		sr.MediaType = "book"
 	}
 	return s.db.QueryRow(`
-		INSERT INTO series (metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url, sibling_titles)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO series (metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, cover_url, sibling_titles, target_variant)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (metadata_source, foreign_id) DO UPDATE SET
 			title = excluded.title,
 			description = excluded.description,
 			cover_url = excluded.cover_url,
 			sibling_titles = CASE WHEN excluded.sibling_titles != '' THEN excluded.sibling_titles ELSE series.sibling_titles END
 		RETURNING id`,
+		// target_variant, like monitored/monitor_new, is a user-owned
+		// preference, not provider-sourced — never touched by the UPDATE
+		// branch above, only ever set here for a brand-new row.
 		sr.Source, sr.ForeignID, sr.Title, sr.Description,
-		sr.MediaType, sr.Monitored, sr.MonitorNew, sr.CoverURL, joinLines(sr.SiblingTitles),
+		sr.MediaType, sr.Monitored, sr.MonitorNew, sr.CoverURL, joinLines(sr.SiblingTitles), sr.TargetVariant,
 	).Scan(&sr.ID)
 }
 
@@ -874,13 +877,13 @@ func (s *Store) SeriesBookPositions(seriesID int64) (map[int64]float64, error) {
 	return positions, rows.Err()
 }
 
-const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, provider_override, cover_url, sibling_titles`
+const seriesCols = `id, metadata_source, foreign_id, title, description, media_type, monitored, monitor_new, provider_override, cover_url, sibling_titles, target_variant`
 
 func scanSeries(row interface{ Scan(...any) error }) (*Series, error) {
 	var sr Series
 	var siblings string
 	err := row.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
-		&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL, &siblings)
+		&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL, &siblings, &sr.TargetVariant)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -919,7 +922,7 @@ func (s *Store) ListSeries(mediaType string) ([]Series, error) {
 		var sr Series
 		var siblings string
 		if err := rows.Scan(&sr.ID, &sr.Source, &sr.ForeignID, &sr.Title, &sr.Description,
-			&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL, &siblings,
+			&sr.MediaType, &sr.Monitored, &sr.MonitorNew, &sr.ProviderOverride, &sr.CoverURL, &siblings, &sr.TargetVariant,
 			&sr.ItemCount, &sr.OwnedCount); err != nil {
 			return nil, err
 		}
@@ -933,6 +936,21 @@ func (s *Store) ListSeries(mediaType string) ([]Series, error) {
 // provider override.
 func (s *Store) SetSeriesProviderOverride(id int64, provider string) error {
 	res, err := s.db.Exec(`UPDATE series SET provider_override = ? WHERE id = ?`, provider, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetSeriesTargetVariant sets (or with "" clears) which manga/comic
+// variant(s) this series wants — "mono", "color", "both", or "" for
+// today's variant-blind default. Validation of the value belongs to the
+// caller (the API handler); the store just persists what it's given.
+func (s *Store) SetSeriesTargetVariant(id int64, variant string) error {
+	res, err := s.db.Exec(`UPDATE series SET target_variant = ? WHERE id = ?`, variant, id)
 	if err != nil {
 		return err
 	}

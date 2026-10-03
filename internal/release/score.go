@@ -550,6 +550,58 @@ func AdjustForOwnedVariant(c *Candidate, ownedColor bool) {
 	}
 }
 
+// ResolveWantedVariant narrows a series' TargetVariant ("", "mono",
+// "color", "both") into the one specific variant THIS search should steer
+// toward, for AdjustForWantedVariant. An explicit single-variant opt-in
+// ("mono" or "color") passes straight through — regardless of ownership,
+// the user said they never want the other one. "both" only narrows once
+// one side is already owned — wanting both and owning neither yet has no
+// single variant to prefer over the other, so it steers toward neither
+// ("") until one arrives. "" (today's blind default) always returns "".
+func ResolveWantedVariant(targetVariant string, hasMonoFile, hasColorFile bool) string {
+	switch targetVariant {
+	case "mono", "color":
+		return targetVariant
+	case "both":
+		switch {
+		case hasMonoFile && !hasColorFile:
+			return "color"
+		case hasColorFile && !hasMonoFile:
+			return "mono"
+		}
+	}
+	return ""
+}
+
+// AdjustForWantedVariant softly steers a manga/comic candidate toward the
+// SPECIFIC variant wantedVariant names (see ResolveWantedVariant) — "" (no
+// steering, today's default behavior) does nothing at all.
+//
+// Only the colorized keyword is a real signal (c.Parsed.Variant == "color"
+// — see scanner.LooksColorized): a release announcing itself as colorized
+// gets a bonus when color is specifically wanted, a penalty when mono is
+// specifically wanted (announcing color is real evidence it's not the mono
+// edition). An unflagged release — the overwhelming majority, since mono
+// essentially never self-announces — gets no adjustment either way in
+// EITHER direction: its silence is not evidence of anything, so hunting
+// for mono must not penalize the normal, common case into the ground.
+// Deliberately a separate, additive adjustment from AdjustForOwnedVariant
+// rather than folded into it — they answer different questions ("is this
+// probably a duplicate of what I already have" vs. "is this the specific
+// thing I'm now hunting for") and a candidate can independently trigger
+// both.
+func AdjustForWantedVariant(c *Candidate, wantedVariant string) {
+	if c.Parsed.Variant != "color" {
+		return
+	}
+	switch wantedVariant {
+	case "color":
+		c.Score += variantDuplicatePenalty
+	case "mono":
+		c.Score -= variantDuplicatePenalty
+	}
+}
+
 // ScoreSeriesPack evaluates a release as a whole-series (or multi-volume)
 // pack: generic checks, the series title, and pack-ness — a volume range
 // ("v01-v12"), a completeness word ("Complete", "Collection"), or a bare

@@ -258,6 +258,10 @@ export interface Series {
   monitorNew: boolean;
   providerOverride: string;
   coverUrl: string;
+  siblingTitles?: string[];
+  // targetVariant: "" (any one variant satisfies "owned" — today's default),
+  // "mono", "color", or "both". Manga/comic only.
+  targetVariant: string;
   itemCount: number;
   ownedCount: number;
   volumes?: Book[];
@@ -1018,6 +1022,11 @@ export const api = {
   setSeriesProvider: (id: number, provider: string) =>
     request<Series>(`/api/v1/series/${id}/provider`, {
       ...json({ provider }),
+      method: "PUT",
+    }),
+  setSeriesTargetVariant: (id: number, variant: string) =>
+    request<Series>(`/api/v1/series/${id}/variant`, {
+      ...json({ variant }),
       method: "PUT",
     }),
   monitorSeries: (id: number, monitored: boolean, monitorNew: boolean) =>

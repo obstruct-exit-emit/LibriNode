@@ -170,6 +170,43 @@ func (s *server) handleSeriesProvider(w http.ResponseWriter, r *http.Request) {
 	s.writeSeriesDetail(w, http.StatusOK, id)
 }
 
+// validTargetVariants are the only values SetSeriesTargetVariant accepts:
+// "" (today's variant-blind default), or an explicit opt-in.
+var validTargetVariants = map[string]bool{"": true, "mono": true, "color": true, "both": true}
+
+func (s *server) handleSeriesTargetVariant(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Variant string `json:"variant"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if !validTargetVariants[req.Variant] {
+		writeError(w, http.StatusBadRequest, `variant must be "", "mono", "color", or "both"`)
+		return
+	}
+	series, err := s.store.GetSeries(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if series.MediaType != "manga" && series.MediaType != "comic" {
+		writeError(w, http.StatusBadRequest, "target variant is for manga/comic series (this is "+series.MediaType+")")
+		return
+	}
+	if err := s.store.SetSeriesTargetVariant(id, req.Variant); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.writeSeriesDetail(w, http.StatusOK, id)
+}
+
 func writeSeriesSyncError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, metadata.ErrNotConfigured):

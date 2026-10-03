@@ -43,6 +43,7 @@ export default function SeriesDetailView({
   const [renamePlan, setRenamePlan] = useState<RenameMove[] | null>(null);
   const [notice, setNotice] = useState("");
   const [providerOptions, setProviderOptions] = useState<string[]>([]);
+  const [multiVariantRoots, setMultiVariantRoots] = useState(false);
   // One shared queue poll for the whole page: every volume row shows its live
   // download state from this single (server-cached) request.
   const queue = useQueue();
@@ -66,6 +67,23 @@ export default function SeriesDetailView({
         ),
       )
       .catch(() => setProviderOptions([]));
+  }, [mediaType]);
+
+  // The target-variant control only means something once there's an actual
+  // choice to make — both a color and a mono root configured for this media
+  // type. With just one root, every file lands there regardless, so the
+  // control would be clutter with no effect.
+  useEffect(() => {
+    if (mediaType !== "manga" && mediaType !== "comic") return;
+    api
+      .listRootFolders()
+      .then((roots) => {
+        const variants = new Set(
+          roots.filter((r) => r.mediaType === mediaType && r.variant).map((r) => r.variant),
+        );
+        setMultiVariantRoots(variants.size > 1);
+      })
+      .catch(() => setMultiVariantRoots(false));
   }, [mediaType]);
 
   if (!series) return <DetailSkeleton />;
@@ -251,6 +269,19 @@ export default function SeriesDetailView({
                     Provider: {name[0].toUpperCase() + name.slice(1)}
                   </option>
                 ))}
+              </select>
+            )}
+            {multiVariantRoots && (
+              <select
+                disabled={busy}
+                title="Which variant(s) to collect for this series — a volume isn't done until it owns every variant you pick here"
+                value={series.targetVariant}
+                onChange={(e) => run(() => api.setSeriesTargetVariant(series.id, e.target.value))}
+              >
+                <option value="">Want: any one variant</option>
+                <option value="mono">Want: monochrome only</option>
+                <option value="color">Want: color only</option>
+                <option value="both">Want: both color and mono</option>
               </select>
             )}
             <button

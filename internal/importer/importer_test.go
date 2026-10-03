@@ -1700,6 +1700,89 @@ func TestImportMangaRoutesByDetectedVariant(t *testing.T) {
 	}
 }
 
+// TestImportInfersMissingVariantWhenSeriesWantsBoth: a series opted into
+// target_variant="both" already owns a mono copy; a grab whose archive has
+// no ComicInfo.xml and no colorized-keyword hint (inconclusive detection)
+// must still be imported — inferred as the missing color variant, not
+// skipped as an unconfirmed duplicate — with a visible, correctable notice
+// recorded rather than asserted silently.
+func TestImportInfersMissingVariantWhenSeriesWantsBoth(t *testing.T) {
+	f := fixture(t)
+	v1, _, _ := f.mangaSeries(t) // creates the 'mono' manga root (lowest id)
+
+	links, err := f.store.ListSeriesForBook(v1.ID)
+	if err != nil || len(links) == 0 {
+		t.Fatalf("ListSeriesForBook: %v, %+v", err, links)
+	}
+	if err := f.store.SetSeriesTargetVariant(links[0].SeriesID, "both"); err != nil {
+		t.Fatal(err)
+	}
+
+	var monoRoot int64
+	var monoPath string
+	if err := f.db.QueryRow(`SELECT id, path FROM root_folders WHERE media_type='manga'`).Scan(&monoRoot, &monoPath); err != nil {
+		t.Fatal(err)
+	}
+	colorPath := t.TempDir()
+	if _, err := f.db.Exec(`INSERT INTO root_folders (media_type, path, variant) VALUES ('manga', ?, 'color')`, colorPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// v1 already owns a mono copy.
+	monoFile := filepath.Join(monoPath, "Death Note Vol. 1.cbz")
+	writeTestZip(t, monoFile, map[string][]byte{"page01.jpg": []byte("img")})
+	if err := f.store.UpsertBookFile(&library.BookFile{
+		RootFolderID: monoRoot, BookID: v1.ID, MediaType: "manga", Variant: "mono", Path: monoFile, Format: "cbz",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The grab's archive gives NO signal either way: no ComicInfo.xml, no
+	// colorized keyword in the title.
+	dir := f.completedArchiveDownload(t, "nzo_unconfirmed", "Death Note v01 (Digital)")
+	writeTestZip(t, filepath.Join(dir, "Death Note v01.cbz"), map[string][]byte{"page01.jpg": []byte("img")})
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v1.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_unconfirmed",
+		Title: "Death Note v01 (Digital)", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("Imported = %d, want 1 (inferred as the missing color variant, not skipped)", result.Imported)
+	}
+
+	files := mustFiles(t, f, v1.ID)
+	if len(files) != 2 {
+		t.Fatalf("files = %+v, want 2 (mono kept, inferred color added)", files)
+	}
+	var color *library.BookFile
+	for i := range files {
+		if files[i].Variant == "color" {
+			color = &files[i]
+		}
+	}
+	if color == nil {
+		t.Fatalf("no color file recorded: %+v", files)
+	}
+	if !strings.HasPrefix(color.Path, colorPath) {
+		t.Errorf("inferred-color file placed at %q, want under the color root %q", color.Path, colorPath)
+	}
+
+	flagged := false
+	for _, m := range result.Messages {
+		if strings.Contains(m, "presumed color") {
+			flagged = true
+		}
+	}
+	if !flagged {
+		t.Errorf("messages = %v, want a \"presumed color\" notice flagging the inference", result.Messages)
+	}
+}
+
 func mustFiles(t *testing.T, f *fx, bookID int64) []library.BookFile {
 	t.Helper()
 	files, err := f.store.ListBookFiles(bookID)

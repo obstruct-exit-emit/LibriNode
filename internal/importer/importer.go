@@ -294,14 +294,14 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 	switch mediaType {
 	case "audiobook":
 		owned = book.HasAudiobookFile
-	case "manga":
+	case "manga", "comic":
 		// Per-variant: a mono import into a book that only holds the color scan
 		// must import as new, not read as already-owned (and vice versa).
 		owned = book.HasMonoFile
 		if variant == "color" {
 			owned = book.HasColorFile
 		}
-	case "comic", "magazine":
+	case "magazine":
 		// A volume/issue has exactly one media type of its own, so any file it
 		// owns is that type's. HasEbookFile is always false for these (they're
 		// never ebook-library members) — reading it here used to make an
@@ -399,16 +399,36 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		return
 	}
 
-	// Now that the actual file is in hand, re-settle the manga variant from
-	// what was really downloaded — ComicInfo.xml's BlackAndWhite field, then a
+	// Now that the actual file is in hand, re-settle the variant from what
+	// was really downloaded — ComicInfo.xml's BlackAndWhite field, then a
 	// colorized-filename hint; see scanner.DetectVariant — instead of the
 	// TargetVariant guess above, which only knows the configured root order.
 	// Re-check ownership against it too: a colorized grab must be treated as
 	// new, not skipped as "already have it," against a mono-only copy (and
 	// vice versa) just because the guess picked the wrong variant.
-	if mediaType == "manga" {
+	if mediaType == "manga" || mediaType == "comic" {
 		if detected := scanner.DetectVariant(sources[0]); detected != "" {
 			variant = detected
+		} else if target := s.seriesTargetVariant(book, mediaType); target == "both" {
+			// Detection found nothing — but the series wants both variants,
+			// and if the book already owns exactly one, that's the one cheap
+			// inference available (docs/research/manga-variant-tracking.md):
+			// assume this download is the missing one. A genuine duplicate
+			// of the owned variant should mostly have already lost to the
+			// unmarked candidate during search (AdjustForOwnedVariant /
+			// AdjustForWantedVariant), so surviving to import at all is itself
+			// weak evidence it's the new one — not proof, which is why this
+			// is flagged, not asserted silently. Owning neither (or both)
+			// yet: no "other" to infer toward, so variant stays "" and falls
+			// back to the configured root exactly as before.
+			switch {
+			case book.HasMonoFile && !book.HasColorFile:
+				variant = "color"
+				result.note("%s: imported as presumed color (couldn't confirm from the file) — verify or correct from the book page", item.Title)
+			case book.HasColorFile && !book.HasMonoFile:
+				variant = "mono"
+				result.note("%s: imported as presumed mono (couldn't confirm from the file) — verify or correct from the book page", item.Title)
+			}
 		}
 		owned = book.HasMonoFile
 		if variant == "color" {
@@ -745,6 +765,7 @@ func removeExcept(dir string, keep []string) error {
 func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *library.Book, mediaType string, result *Result) {
 	importAll := s.opts().PackImportAll
 	defaultVariant := s.organize.TargetVariant(mediaType) // "" except manga (mono/color)
+	wantedVariant := s.seriesTargetVariant(grabbed, mediaType)
 	done := map[int64]bool{grabbed.ID: true}
 	for _, f := range pack.files {
 		if f == primary {
@@ -756,6 +777,17 @@ func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *libr
 		}
 		done[b.ID] = true
 		if !importAll && !monitoredFor(b, mediaType) {
+			continue
+		}
+		// A pack can carry more than one variant of the same volume. Under
+		// today's variant-blind default (wantedVariant == ""), a volume that
+		// already has any file at all isn't still wanted — importing the
+		// pack's other-variant copy too would be exactly the "want color and
+		// mono forever, with no setting ever saying so" case this guards
+		// against. A series that opted in (target_variant != "") still
+		// follows VariantMissing's per-variant rule below.
+		if (mediaType == "manga" || mediaType == "comic") &&
+			!library.VariantMissing(wantedVariant, b.HasMonoFile, b.HasColorFile, b.HasFile) {
 			continue
 		}
 		format := fileFormat(f)
@@ -789,6 +821,25 @@ func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *libr
 		result.note("pack: imported %s for %s", filepath.Base(f), b.Title)
 		slog.Info("imported pack extra", "book", b.Title, "path", target)
 	}
+}
+
+// seriesTargetVariant resolves a manga/comic book's primary series'
+// TargetVariant — "" (today's variant-blind default) for ebook/audiobook/
+// magazine, which have no variant concept at all, or when the book has no
+// series link or the lookup fails.
+func (s *Service) seriesTargetVariant(book *library.Book, mediaType string) string {
+	if mediaType != "manga" && mediaType != "comic" {
+		return ""
+	}
+	links, err := s.store.ListSeriesForBook(book.ID)
+	if err != nil || len(links) == 0 {
+		return ""
+	}
+	series, err := s.store.GetSeries(links[0].SeriesID)
+	if err != nil {
+		return ""
+	}
+	return series.TargetVariant
 }
 
 // packMatcher resolves a pack's files to library books from data fetched

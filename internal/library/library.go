@@ -123,6 +123,11 @@ type Series struct {
 	// stop a release that actually names one of them from being accepted as
 	// a tag-decorated release of this series (see release.seriesTitleMatches).
 	SiblingTitles []string `json:"siblingTitles,omitempty"`
+	// TargetVariant is the manga/comic variant(s) this series wants: ""
+	// (default — any one variant satisfies "owned," today's behavior),
+	// "mono", "color", or "both". Only meaningful with more than one
+	// variant root configured for the media type; see organize.TargetVariant.
+	TargetVariant string `json:"targetVariant"`
 	// Grid stats, populated by listings.
 	ItemCount  int `json:"itemCount"`
 	OwnedCount int `json:"ownedCount"`

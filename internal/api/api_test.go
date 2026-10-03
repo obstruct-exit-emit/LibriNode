@@ -432,6 +432,41 @@ func TestMetadataSettingsHotSwap(t *testing.T) {
 // search goes unavailable AND refreshes fetch nothing (libraries always
 // honor the settings). The per-series provider override is the explicit
 // escape hatch: once set, refresh uses that provider even under "none".
+// TestSeriesTargetVariant: a manga/comic series accepts "", "mono", "color",
+// "both" and rejects anything else; a magazine (no variant concept) is
+// rejected outright.
+func TestSeriesTargetVariant(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 2
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500"}, &series), http.StatusCreated)
+
+	var got library.Series
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/variant", series.ID),
+		map[string]string{"variant": "both"}, &got), http.StatusOK)
+	if got.TargetVariant != "both" {
+		t.Fatalf("targetVariant = %q, want both", got.TargetVariant)
+	}
+
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/variant", series.ID),
+		map[string]string{"variant": "sepia"}, nil), http.StatusBadRequest)
+
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/variant", series.ID),
+		map[string]string{"variant": ""}, &got), http.StatusOK)
+	if got.TargetVariant != "" {
+		t.Fatalf("clearing targetVariant = %q, want empty", got.TargetVariant)
+	}
+
+	var mag library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "magazine", "title": "The Economist"}, &mag), http.StatusCreated)
+	a.want(a.call("PUT", fmt.Sprintf("/api/v1/series/%d/variant", mag.ID),
+		map[string]string{"variant": "both"}, nil), http.StatusBadRequest)
+}
+
 func TestSeriesProviderNone(t *testing.T) {
 	a := newTestAPI(t, nil)
 	volumes := 2
