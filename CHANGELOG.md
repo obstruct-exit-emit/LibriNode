@@ -40,6 +40,19 @@ in progress. Highlights from the hardening period, newest first:
   visits (per browser) instead of resetting to grid every time.
 
 ### Added
+- **Manga color/monochrome is now detected from the file, not just its
+  folder.** A variant used to be purely the label of whichever root folder a
+  file sat in — nothing inspected the file itself, and a grab with both a
+  `color` and `mono` root configured landed under whichever root was added
+  first, blind to what was actually downloaded. Now: the standard
+  `ComicInfo.xml` `BlackAndWhite` field (read from both CBZ and CBR — this
+  package previously only wrote it, never read it) is checked first, a
+  colorized-filename hint as fallback; a grab is routed to the matching root
+  instead of the first one, and re-checked against what's already owned so a
+  colorized release against a mono-only copy is treated as new, not skipped;
+  LibriNode's own ComicInfo.xml output now sets `BlackAndWhite` to match, so
+  Kavita/Komga see it too; a scanned file whose detected variant disagrees
+  with its root is flagged once.
 - **Add from anywhere, in any format.** Search — global or on a library page —
   now searches the metadata provider for authors and books at once, and each
   result adds with a one-click choice of **Ebooks**, **Audiobooks**, or **Both**.
