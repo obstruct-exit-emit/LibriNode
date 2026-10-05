@@ -172,3 +172,49 @@ func TestSyncSeriesMergesRelatedSeriesWithSearch(t *testing.T) {
 		}
 	}
 }
+
+// TestSyncSeriesDropsNonOverlappingSearchResults: a provider's title search
+// can surface loosely-relevant noise alongside true siblings (Hardcover more
+// than AniList, in practice) — a result sharing no words with self's own
+// title can never actually match release.matchesKnownSibling (which only
+// checks a sibling's words against a release already confirmed to start with
+// self's own), so it's dropped as inert rather than stored.
+func TestSyncSeriesDropsNonOverlappingSearchResults(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	p := &fakeSeriesProvider{
+		name: "hardcoverfake",
+		search: []metadata.SeriesResult{
+			{ForeignID: "dn", Title: "Death Note"},                  // itself — excluded
+			{ForeignID: "dnbe", Title: "Death Note: Black Edition"}, // real sibling, shares "Death"
+			{ForeignID: "noise1", Title: "Detective Ruby Preston"},  // noise, no overlap — dropped
+			{ForeignID: "noise2", Title: "Pliny the Younger"},       // noise, no overlap — dropped
+		},
+		series: map[string]*metadata.SeriesResult{
+			"dn": {ForeignID: "dn", Title: "Death Note", IssueCount: 1,
+				Issues: []metadata.Issue{{ForeignID: "dn-v1", Number: 1}}},
+		},
+	}
+	mgr := metadata.NewManager()
+	mgr.SetSeries(p)
+	svc := New(store, mgr)
+
+	added, err := svc.SyncSeries(context.Background(), "manga", "dn", true, true, true)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	want := map[string]bool{"Death Note: Black Edition": true}
+	if len(added.SiblingTitles) != len(want) {
+		t.Fatalf("SiblingTitles = %v, want %v (noise dropped)", added.SiblingTitles, want)
+	}
+	for _, s := range added.SiblingTitles {
+		if !want[s] {
+			t.Errorf("unexpected sibling %q", s)
+		}
+	}
+}

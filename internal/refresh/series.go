@@ -147,9 +147,10 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 // failure here never erases a previously found list.
 func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *metadata.SeriesResult) []string {
 	selfTitle := strings.ToLower(strings.TrimSpace(self.Title))
+	selfWords := strings.Fields(scanner.Normalize(self.Title))
 	seen := map[string]bool{}
 	var siblings []string
-	add := func(foreignID, title string) {
+	add := func(foreignID, title string, requireOverlap bool) {
 		if foreignID == self.ForeignID {
 			return
 		}
@@ -157,19 +158,35 @@ func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *me
 		if norm == "" || norm == selfTitle || seen[norm] {
 			return
 		}
+		// release.matchesKnownSibling only ever checks a sibling's words
+		// against a release title already confirmed to start with self's
+		// own words, so a search-sourced sibling whose first normalized word
+		// differs from self's can never fire there — it's inert. Some
+		// providers' title search (Hardcover more than AniList, in practice)
+		// returns loosely-relevant results on top of true siblings, so this
+		// filter is a data-hygiene cleanup for that source, not a
+		// matching-behavior change. It does NOT apply to RelatedSeries below:
+		// that source is an authoritative relations graph, deliberately kept
+		// even with zero textual overlap (see doc comment above).
+		if requireOverlap {
+			words := strings.Fields(scanner.Normalize(title))
+			if len(selfWords) == 0 || len(words) == 0 || words[0] != selfWords[0] {
+				return
+			}
+		}
 		seen[norm] = true
 		siblings = append(siblings, title)
 	}
 
 	if results, err := p.SearchSeries(ctx, self.Title); err == nil {
 		for _, r := range results {
-			add(r.ForeignID, r.Title)
+			add(r.ForeignID, r.Title, true)
 		}
 	}
 	if rp, ok := p.(metadata.RelatedSeriesProvider); ok {
 		if related, err := rp.RelatedSeries(ctx, self.ForeignID); err == nil {
 			for _, r := range related {
-				add(r.ForeignID, r.Title)
+				add(r.ForeignID, r.Title, false)
 			}
 		}
 	}
