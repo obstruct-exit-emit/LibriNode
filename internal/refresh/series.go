@@ -194,7 +194,14 @@ func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *me
 		siblings = append(siblings, title)
 	}
 
-	if results, err := p.SearchSeries(ctx, self.Title); err == nil {
+	// A trailing parenthetical in the catalog title ("Parasyte (8-Volume
+	// Edition)") sent to the provider's own title search returns far fewer
+	// or zero results, same keyword-literalism problem as autosearch's
+	// indexer queries (see searchOne). Reproduced live: searching the raw
+	// title for "Parasyte (8-Volume Edition)" found no siblings at all,
+	// silently missing the real "Parasyte Reversi" spin-off — which would
+	// then pass seriesTitleMatches unchallenged as if it were the original.
+	if results, err := p.SearchSeries(ctx, scanner.SearchTitle(self.Title)); err == nil {
 		for _, r := range results {
 			add(r.ForeignID, r.Title, true)
 		}

@@ -15,12 +15,18 @@ type fakeSeriesProvider struct {
 	name   string
 	search []metadata.SeriesResult
 	series map[string]*metadata.SeriesResult
+	// gotQuery, when non-nil, records the query SearchSeries was called with —
+	// tests use this to assert what's actually sent to the provider.
+	gotQuery *string
 }
 
 func (f *fakeSeriesProvider) Name() string      { return f.name }
 func (f *fakeSeriesProvider) MediaType() string { return "manga" }
 
-func (f *fakeSeriesProvider) SearchSeries(context.Context, string) ([]metadata.SeriesResult, error) {
+func (f *fakeSeriesProvider) SearchSeries(_ context.Context, query string) ([]metadata.SeriesResult, error) {
+	if f.gotQuery != nil {
+		*f.gotQuery = query
+	}
 	return f.search, nil
 }
 

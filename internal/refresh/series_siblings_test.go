@@ -221,6 +221,57 @@ func TestSyncSeriesDropsSelfDuplicateUnderDifferentScript(t *testing.T) {
 	}
 }
 
+// TestSyncSeriesStripsParentheticalFromSiblingSearchQuery: a catalog title
+// with a trailing parenthetical ("Parasyte (8-Volume Edition)") must not go
+// to the provider's own title search verbatim either — reproduced live, that
+// exact query found zero siblings, silently missing the real "Parasyte
+// Reversi" spin-off, which would then have passed seriesTitleMatches
+// unchallenged as if it were the original on the next individual-volume
+// search. The query is widened; self-exclusion still compares against the
+// full, untouched self.Title.
+func TestSyncSeriesStripsParentheticalFromSiblingSearchQuery(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	var gotQuery string
+	p := &fakeSeriesProvider{
+		name:     "hardcoverfake",
+		gotQuery: &gotQuery,
+		search: []metadata.SeriesResult{
+			{ForeignID: "para", Title: "Parasyte (8-Volume Edition)"}, // itself — excluded
+			{ForeignID: "reversi", Title: "Parasyte Reversi"},         // real, distinct spin-off
+		},
+		series: map[string]*metadata.SeriesResult{
+			"para": {ForeignID: "para", Title: "Parasyte (8-Volume Edition)", IssueCount: 1,
+				Issues: []metadata.Issue{{ForeignID: "para-v1", Number: 1}}},
+		},
+	}
+	mgr := metadata.NewManager()
+	mgr.SetSeries(p)
+	svc := New(store, mgr)
+
+	added, err := svc.SyncSeries(context.Background(), "manga", "para", true, true, true)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	if gotQuery != "Parasyte" {
+		t.Errorf("sibling-search query = %q, want %q", gotQuery, "Parasyte")
+	}
+	want := map[string]bool{"Parasyte Reversi": true}
+	if len(added.SiblingTitles) != len(want) {
+		t.Fatalf("SiblingTitles = %v, want %v", added.SiblingTitles, want)
+	}
+	for _, s := range added.SiblingTitles {
+		if !want[s] {
+			t.Errorf("unexpected sibling %q", s)
+		}
+	}
+}
+
 // TestSyncSeriesDropsNonOverlappingSearchResults: a provider's title search
 // can surface loosely-relevant noise alongside true siblings (Hardcover more
 // than AniList, in practice) — a result sharing no words with self's own
