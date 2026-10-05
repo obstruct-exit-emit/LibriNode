@@ -62,7 +62,7 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 		Monitored:     monitored,
 		MonitorNew:    monitorNew,
 		CoverURL:      remote.CoverURL,
-		SiblingTitles: fetchSiblingTitles(ctx, p, remote),
+		SiblingTitles: s.fetchSiblingTitles(ctx, p, mediaType, remote),
 	}
 	if err := s.store.UpsertSeries(series); err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 // this time, not a failed sync — and UpsertSeries only overwrites the
 // stored list when this returns something non-empty, so a transient
 // failure here never erases a previously found list.
-func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *metadata.SeriesResult) []string {
+func (s *Service) fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, mediaType string, self *metadata.SeriesResult) []string {
 	selfTitle := strings.ToLower(strings.TrimSpace(self.Title))
 	// release.seriesTitleMatches accepts a release through ANY of self's own
 	// TitleKeys, not just the full title — "Pluto: Urasawa x Tezuka" also
@@ -223,6 +223,34 @@ func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *me
 		if related, err := rp.RelatedSeries(ctx, self.ForeignID); err == nil {
 			for _, r := range related {
 				add(r.ForeignID, r.Title, false)
+			}
+		}
+	}
+	// AniList tracks exactly the relation data Hardcover's own title search
+	// misses — SIDE_STORY, ALTERNATIVE (a film/adaptation tie-in one-shot),
+	// SPIN_OFF — regardless of which provider is actually configured for
+	// manga. Found live, the hard way: "Parasyte Reversi" (a real side story)
+	// and "BLAME! Movie Edition: The Electrofishers' Escape" (a real
+	// adaptation tie-in) each got auto-grabbed into the base series' Vol. 1
+	// slot, because Hardcover's title search for the base title surfaces
+	// neither — AniList's relations graph lists both explicitly. AniList is
+	// always registered (keyless, no settings needed; see
+	// metadata.Manager.ConfigureSeries), so this runs even when Hardcover is
+	// the active provider; skipped when the active provider already IS
+	// AniList to avoid querying it twice. Manga-only: AniList's catalog is
+	// anime/manga-specific and has nothing useful for a Western comic.
+	if mediaType == "manga" && p.Name() != "anilist" {
+		if anilist := s.providers.SeriesProviderByName("anilist"); anilist != nil {
+			if rp, ok := anilist.(metadata.RelatedSeriesProvider); ok {
+				if results, err := anilist.SearchSeries(ctx, scanner.SearchTitle(self.Title)); err == nil {
+					if match := pickSeriesMatch(results, self.Title); match != nil {
+						if related, err := rp.RelatedSeries(ctx, match.ForeignID); err == nil {
+							for _, r := range related {
+								add(r.ForeignID, r.Title, false)
+							}
+						}
+					}
+				}
 			}
 		}
 	}

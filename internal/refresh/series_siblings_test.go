@@ -173,6 +173,73 @@ func TestSyncSeriesMergesRelatedSeriesWithSearch(t *testing.T) {
 	}
 }
 
+// TestSyncSeriesEnrichesSiblingsFromAniList: when the active manga provider
+// (standing in for Hardcover, which has no relations graph at all) can't
+// surface a real companion work through its own title search, AniList's
+// relations graph still catches it — queried independently, by name,
+// regardless of which provider is actually active. Reproduced live, twice:
+// "Parasyte Reversi" and "BLAME! Movie Edition: The Electrofishers' Escape"
+// were each a real, separately-published side story/adaptation AniList
+// tracks explicitly (SIDE_STORY, ALTERNATIVE) that Hardcover's title search
+// for the base title never surfaced — so neither got excluded, and each was
+// auto-grabbed into the base series' Vol. 1 slot before this was found.
+func TestSyncSeriesEnrichesSiblingsFromAniList(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	// The active provider (standing in for Hardcover): its own title search
+	// for "Parasyte" finds nothing useful — no siblings from this source.
+	primary := &fakeSeriesProvider{
+		name:   "hardcoverfake",
+		search: []metadata.SeriesResult{{ForeignID: "para", Title: "Parasyte"}}, // itself only
+		series: map[string]*metadata.SeriesResult{
+			"para": {ForeignID: "para", Title: "Parasyte", IssueCount: 1,
+				Issues: []metadata.Issue{{ForeignID: "para-v1", Number: 1}}},
+		},
+	}
+	anilist := &fakeRelatedSeriesProvider{
+		fakeSeriesProvider: fakeSeriesProvider{
+			name: "anilist",
+			search: []metadata.SeriesResult{
+				{ForeignID: "al-para", Title: "Parasyte"},
+			},
+		},
+		related: map[string][]metadata.SeriesResult{
+			"al-para": {
+				{ForeignID: "al-reversi", Title: "Parasyte Reversi"},
+			},
+		},
+	}
+	mgr := metadata.NewManager()
+	// AniList registered first, primary second: Manager.SetSeries overwrites
+	// the active per-media-type provider on every call but accumulates
+	// seriesByName, so this ends with "hardcoverfake" active for manga and
+	// both reachable by name — exactly how metadata.Manager.ConfigureSeries
+	// leaves things in production (every provider built and name-indexed;
+	// only one "active" per media type).
+	mgr.SetSeries(anilist)
+	mgr.SetSeries(primary)
+	svc := New(store, mgr)
+
+	added, err := svc.SyncSeries(context.Background(), "manga", "para", true, true, true)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	want := map[string]bool{"Parasyte Reversi": true}
+	if len(added.SiblingTitles) != len(want) {
+		t.Fatalf("SiblingTitles = %v, want %v (AniList-sourced sibling)", added.SiblingTitles, want)
+	}
+	for _, s := range added.SiblingTitles {
+		if !want[s] {
+			t.Errorf("unexpected sibling %q", s)
+		}
+	}
+}
+
 // TestSyncSeriesDropsSelfDuplicateUnderDifferentScript: a search result that
 // is really the SAME work under a different surface form — here a
 // non-Latin-script catalog duplicate — must never be stored as a sibling,
