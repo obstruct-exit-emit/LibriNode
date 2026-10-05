@@ -83,6 +83,15 @@ func TestSearchTitle(t *testing.T) {
 		"Dune Messiah":                                 "Dune Messiah", // no subtitle, unchanged
 		"The Hobbit (Illustrated Edition)":             "The Hobbit",
 		"Good Omens: The Nice and Accurate Prophecies": "Good Omens",
+		// A catalog title leading with a native-script alternate before the
+		// English one — sent whole, no English release repeats that block —
+		// found live via Tokyo Ghoul's Hardcover entry, which silently
+		// missed its own "Tokyo Ghoul: re" sequel as a known sibling because
+		// the unstripped title returned nothing useful from the provider's
+		// own search.
+		"東京喰種 / Tokyo Ghoul":   "Tokyo Ghoul",
+		"聲の形 / A Silent Voice": "A Silent Voice",
+		"Love / Hate":          "Love / Hate", // all-ASCII sides — not a native/English split, unchanged
 	}
 	for in, want := range cases {
 		if got := SearchTitle(in); got != want {

@@ -312,6 +312,17 @@ func lastDashSegment(s string) string {
 
 var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
 
+// hasNonASCII reports whether s contains any rune outside printable ASCII —
+// used by SearchTitle to detect a native-script alternate title segment.
+func hasNonASCII(s string) bool {
+	for _, r := range s {
+		if r > 127 {
+			return true
+		}
+	}
+	return false
+}
+
 // Normalize reduces a name/title to a matching key: lowercase, punctuation
 // collapsed to single spaces, leading English article dropped.
 func Normalize(s string) string {
@@ -390,7 +401,18 @@ func TitleKeys(title string) []string {
 // title via TitleKeys, so the extra candidates are filtered, not trusted.
 // Returns the original (trimmed) when stripping would leave nothing usable.
 func SearchTitle(title string) string {
-	t := strings.TrimSpace(trailingParens.ReplaceAllString(title, ""))
+	t := strings.TrimSpace(title)
+	// A catalog title sometimes leads with a native-script alternate before
+	// the English one ("東京喰種 / Tokyo Ghoul") — sent whole, that leading
+	// block is a required keyword token no English-language release repeats,
+	// the same problem a trailing parenthetical causes below. Keep only the
+	// part after the last " / " when what comes before it isn't plain ASCII;
+	// an all-ASCII title that happens to contain " / " (rare, but possible)
+	// is left alone.
+	if parts := strings.Split(t, " / "); len(parts) > 1 && hasNonASCII(parts[0]) {
+		t = parts[len(parts)-1]
+	}
+	t = strings.TrimSpace(trailingParens.ReplaceAllString(t, ""))
 	if main, _, ok := strings.Cut(t, ":"); ok {
 		t = main
 	}
