@@ -3,6 +3,7 @@ package refresh
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/librinode/librinode/internal/library"
@@ -158,6 +159,22 @@ func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *me
 		if norm == "" || norm == selfTitle || seen[norm] {
 			return
 		}
+		// A candidate that normalizes to EXACTLY self's own words is the same
+		// work under a different surface form — a non-Latin-script catalog
+		// duplicate ("うずまき [Uzumaki]") collapses to just "uzumaki" once
+		// scanner.Normalize strips what it treats as non-alphanumeric, same
+		// as a bracket/punctuation-only variant would. The naive lowercase
+		// check above misses this (the raw text still differs), but storing
+		// it as a "sibling" is actively harmful, not just noise: in
+		// matchesKnownSibling a single-word sibling equal to self's own key
+		// matches the first word of every real release of THIS series,
+		// rejecting all of them as if they named a different work.
+		// Reproduced live: "Uzumaki" silently rejected every real candidate
+		// until this was found and fixed.
+		candidateWords := strings.Fields(scanner.Normalize(title))
+		if slices.Equal(candidateWords, selfWords) {
+			return
+		}
 		// release.matchesKnownSibling only ever checks a sibling's words
 		// against a release title already confirmed to start with self's
 		// own words, so a search-sourced sibling whose first normalized word
@@ -169,8 +186,7 @@ func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *me
 		// that source is an authoritative relations graph, deliberately kept
 		// even with zero textual overlap (see doc comment above).
 		if requireOverlap {
-			words := strings.Fields(scanner.Normalize(title))
-			if len(selfWords) == 0 || len(words) == 0 || words[0] != selfWords[0] {
+			if len(selfWords) == 0 || len(candidateWords) == 0 || candidateWords[0] != selfWords[0] {
 				return
 			}
 		}

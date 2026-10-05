@@ -173,6 +173,54 @@ func TestSyncSeriesMergesRelatedSeriesWithSearch(t *testing.T) {
 	}
 }
 
+// TestSyncSeriesDropsSelfDuplicateUnderDifferentScript: a search result that
+// is really the SAME work under a different surface form — here a
+// non-Latin-script catalog duplicate — must never be stored as a sibling,
+// even though its raw text differs from self's title. Reproduced live:
+// "うずまき [Uzumaki]" normalizes (scanner.Normalize strips what isn't
+// a-z0-9) down to just "uzumaki", identical to self. Before this fix, that
+// one-word "sibling" matched the first word of every real Uzumaki release in
+// release.matchesKnownSibling, silently rejecting all of them as if each one
+// named a different work.
+func TestSyncSeriesDropsSelfDuplicateUnderDifferentScript(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	p := &fakeSeriesProvider{
+		name: "hardcoverfake",
+		search: []metadata.SeriesResult{
+			{ForeignID: "uz", Title: "Uzumaki"},                         // itself — excluded
+			{ForeignID: "uz-jp", Title: "うずまき [Uzumaki]"},               // same work, different script — must be dropped
+			{ForeignID: "uz-alt", Title: "Uzumaki: Spiral into Horror"}, // real, longer sibling — kept
+		},
+		series: map[string]*metadata.SeriesResult{
+			"uz": {ForeignID: "uz", Title: "Uzumaki", IssueCount: 1,
+				Issues: []metadata.Issue{{ForeignID: "uz-v1", Number: 1}}},
+		},
+	}
+	mgr := metadata.NewManager()
+	mgr.SetSeries(p)
+	svc := New(store, mgr)
+
+	added, err := svc.SyncSeries(context.Background(), "manga", "uz", true, true, true)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	want := map[string]bool{"Uzumaki: Spiral into Horror": true}
+	if len(added.SiblingTitles) != len(want) {
+		t.Fatalf("SiblingTitles = %v, want %v (same-work duplicate dropped)", added.SiblingTitles, want)
+	}
+	for _, s := range added.SiblingTitles {
+		if !want[s] {
+			t.Errorf("unexpected sibling %q", s)
+		}
+	}
+}
+
 // TestSyncSeriesDropsNonOverlappingSearchResults: a provider's title search
 // can surface loosely-relevant noise alongside true siblings (Hardcover more
 // than AniList, in practice) — a result sharing no words with self's own
