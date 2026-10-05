@@ -345,7 +345,7 @@ func (s *Service) importItem(ctx context.Context, item *download.Item, grab *dow
 		var source string
 		source, pack, err = s.pickPackAware(item.Path, scanner.IsComicPath, "comic archive", grab, book, mediaType)
 		sources = []string{source}
-		format = fileFormat(source)
+		format = scanner.NormalizeComicFormat(fileFormat(source))
 	case "magazine":
 		var source string
 		source, err = pickLargestFile(item.Path, scanner.IsMagazinePath, "magazine file")
@@ -790,7 +790,7 @@ func (s *Service) importPackExtras(pack *packPlan, primary string, grabbed *libr
 			!library.VariantMissing(wantedVariant, b.HasMonoFile, b.HasColorFile, b.HasFile) {
 			continue
 		}
-		format := fileFormat(f)
+		format := scanner.NormalizeComicFormat(fileFormat(f))
 		// Each pack member gets its own variant check — a bundle can mix
 		// editions, and TargetVariant is only the fallback when a file's own
 		// ComicInfo.xml/filename says nothing about it (see DetectVariant).

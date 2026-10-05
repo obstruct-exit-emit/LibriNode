@@ -454,7 +454,7 @@ func (s *Service) scanComicRoot(ctx context.Context, root library.RootFolder, in
 			MediaType:    root.MediaType,
 			Variant:      variant,
 			Path:         path,
-			Format:       strings.TrimPrefix(ext, "."),
+			Format:       NormalizeComicFormat(strings.TrimPrefix(ext, ".")),
 		}
 		if info, err := d.Info(); err == nil {
 			file.Size = info.Size()

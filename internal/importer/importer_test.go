@@ -1468,6 +1468,56 @@ func TestPackImportsMonitoredVolumesOnly(t *testing.T) {
 	}
 }
 
+// TestPackImportsBareZipFilesAsComicArchives: a CBZ is just a zip file,
+// renamed by convention — release groups routinely ship it unrenamed.
+// Reproduced live against two real "Complete" manga torrents this session:
+// both were perfectly good per-volume .zip archives that the importer
+// rejected outright with "no comic archive found in download" for want of
+// this one extension. Same pack fixture as TestPackImportsMonitoredVolumesOnly,
+// bare .zip filenames instead of .cbz, confirming the import now succeeds
+// and each file lands renamed to .cbz (so FormatScores, quality profiles,
+// and the ComicInfo.xml injection gate — all keyed on the string "cbz" —
+// see it consistently regardless of the source extension).
+func TestPackImportsBareZipFilesAsComicArchives(t *testing.T) {
+	f := fixture(t)
+	v1, v2, v3 := f.mangaSeries(t)
+
+	f.completedDownload(t, "nzo_zip_pack", "Death Note Complete",
+		"Death Note v01.zip",
+		"Death Note v02.zip",
+		"Death Note v03 Extended Collectors Special Edition.zip")
+	if err := f.grabs.AddGrab(&download.GrabRecord{
+		BookID: v2.ID, MediaType: "manga", ClientConfigID: 1, ClientItemID: "nzo_zip_pack",
+		Title: "Death Note Complete", Protocol: download.ProtocolUsenet,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.svc.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Imported != 2 {
+		t.Fatalf("imported = %d, want 2 (grabbed v2 + monitored v1): %+v", result.Imported, result)
+	}
+
+	for _, v := range []*library.Book{v1, v2} {
+		files, _ := f.store.ListBookFiles(v.ID)
+		if len(files) != 1 {
+			t.Fatalf("book %d files = %+v", v.ID, files)
+		}
+		if files[0].Format != "cbz" {
+			t.Errorf("book %d format = %q, want cbz", v.ID, files[0].Format)
+		}
+		if filepath.Ext(files[0].Path) != ".cbz" {
+			t.Errorf("book %d path = %q, want a .cbz extension", v.ID, files[0].Path)
+		}
+	}
+	if files, _ := f.store.ListBookFiles(v3.ID); len(files) != 0 {
+		t.Fatalf("v3 files = %+v, want none (unmonitored)", files)
+	}
+}
+
 // TestPackRejectsSingleFileVolumeRangeBundle: a single archive whose own name
 // spans a volume range ("Death Note v01-v03.cbz") is an un-splittable bundle —
 // importing it would fill only the first volume's slot and silently drop the

@@ -38,17 +38,38 @@ func IsAudioPath(name string) bool {
 	return audioExtensions[strings.ToLower(filepath.Ext(name))]
 }
 
-// comicExtensions are the archive types manga/comic roots scan for.
+// comicExtensions are the archive types manga/comic roots scan for. .zip is
+// a .cbz by convention — CBZ is just "zip, renamed" — and release groups
+// routinely ship it unrenamed; found live when two different "Complete"
+// manga torrents turned out to be perfectly good per-volume .zip archives
+// that the importer was rejecting outright with "no comic archive found in
+// download" for want of this one extension. comicinfo.Read, comiccover's
+// cover extraction, and the direct-download client's own allowlist already
+// treated .zip as equivalent — this was the one gatekeeper that didn't.
 var comicExtensions = map[string]bool{
 	".cbz":  true,
 	".cbr":  true,
 	".pdf":  true,
 	".epub": true,
+	".zip":  true,
 }
 
 // IsComicPath reports whether a filename is a comic/manga archive.
 func IsComicPath(name string) bool {
 	return comicExtensions[strings.ToLower(filepath.Ext(name))]
+}
+
+// NormalizeComicFormat maps a scanned/imported manga-or-comic file's
+// extension to the format string the rest of the app actually keys on
+// (FormatScores, quality profiles, the ComicInfo.xml injection gate): a bare
+// "zip" becomes "cbz", since that's what it is by convention. Everything
+// else passes through unchanged; .zip is never a legitimate ebook or
+// audiobook format, so this is safe to call unconditionally.
+func NormalizeComicFormat(format string) string {
+	if format == "zip" {
+		return "cbz"
+	}
+	return format
 }
 
 var volumeMarker = regexp.MustCompile(`(?i)(?:\bv|\bvol\.?\s*|\bvolume\s+|#)(\d{1,4}(?:\.\d+)?)`)
