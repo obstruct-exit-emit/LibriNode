@@ -173,6 +173,135 @@ func TestSearchBookNoApprovedCandidates(t *testing.T) {
 	}
 }
 
+// TestSearchOneStripsParentheticalFromSeriesQuery: a catalog series title
+// with a trailing parenthetical ("Goodnight Punpun (Omnibus)") must not be
+// sent to the indexer verbatim — Newznab/Torznab treat every query word as
+// required, and no real release repeats "(Omnibus)" in its own title, so the
+// search would silently return nothing (reproduced against real production
+// data: every volume of such a series came back with zero candidates, not
+// just zero approved ones). Scoring still uses the full, unstripped title via
+// scanner.TitleKeys, so this only widens the query sent out, not what's
+// approved on the way back.
+func TestSearchOneStripsParentheticalFromSeriesQuery(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	var gotQuery string
+	idx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("t") == "caps" {
+			w.Write([]byte(`<caps><server title="mock"/></caps>`))
+			return
+		}
+		gotQuery = r.URL.Query().Get("q")
+		w.Write([]byte(`<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel></channel></rss>`))
+	}))
+	defer idx.Close()
+
+	indexers := indexer.NewService(indexer.NewStore(db))
+	if err := indexers.Store().Add(&indexer.Indexer{
+		Name: "mock", Type: indexer.TypeNewznab, BaseURL: idx.URL,
+		Categories: "7000,7020", Enabled: true, Priority: 25,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	downloads := download.NewService(download.NewStore(db))
+
+	author := &library.Author{Source: "hardcover", ForeignID: "p1", Name: "Inio Asano", Monitored: true}
+	if err := store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	series := &library.Series{Source: "hardcover", ForeignID: "s1",
+		Title: "Goodnight Punpun (Omnibus)", MediaType: "manga", Monitored: true}
+	if err := store.UpsertSeries(series); err != nil {
+		t.Fatal(err)
+	}
+	vol := &library.Book{AuthorID: author.ID, Source: "hardcover", ForeignID: "v1",
+		Title: "Goodnight Punpun (Omnibus) Vol. 1", MediaType: "manga", Monitored: true}
+	if err := store.UpsertBook(vol); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.LinkBookSeries(vol.ID, series.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := New(store, indexers, downloads, func() config.ImportSettings { return config.ImportSettings{} })
+	if _, err := svc.SearchBook(context.Background(), vol.ID, "manga"); err != nil {
+		t.Fatalf("SearchBook: %v", err)
+	}
+	if strings.Contains(strings.ToLower(gotQuery), "omnibus") {
+		t.Errorf("query sent to indexer = %q, still carries the parenthetical", gotQuery)
+	}
+	if gotQuery != "Goodnight Punpun" {
+		t.Errorf("query = %q, want %q", gotQuery, "Goodnight Punpun")
+	}
+}
+
+// TestSearchSeriesPacksStripsParentheticalFromQuery: same bug, pack-search
+// side — SearchSeriesPacks used to send series.Title verbatim too.
+func TestSearchSeriesPacksStripsParentheticalFromQuery(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	var gotQuery string
+	idx := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		if r.URL.Query().Get("t") == "caps" {
+			w.Write([]byte(`<caps><server title="mock"/></caps>`))
+			return
+		}
+		gotQuery = r.URL.Query().Get("q")
+		w.Write([]byte(`<rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/"><channel></channel></rss>`))
+	}))
+	defer idx.Close()
+
+	indexers := indexer.NewService(indexer.NewStore(db))
+	if err := indexers.Store().Add(&indexer.Indexer{
+		Name: "mock", Type: indexer.TypeNewznab, BaseURL: idx.URL,
+		Categories: "7000,7020", Enabled: true, Priority: 25,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	downloads := download.NewService(download.NewStore(db))
+
+	author := &library.Author{Source: "hardcover", ForeignID: "p1", Name: "Tsutomu Nihei", Monitored: true}
+	if err := store.UpsertAuthor(author); err != nil {
+		t.Fatal(err)
+	}
+	series := &library.Series{Source: "hardcover", ForeignID: "s2",
+		Title: "BLAME! (Master Edition)", MediaType: "manga", Monitored: true}
+	if err := store.UpsertSeries(series); err != nil {
+		t.Fatal(err)
+	}
+	vol := &library.Book{AuthorID: author.ID, Source: "hardcover", ForeignID: "v2",
+		Title: "BLAME! (Master Edition) Vol. 1", MediaType: "manga", Monitored: true}
+	if err := store.UpsertBook(vol); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.LinkBookSeries(vol.ID, series.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := New(store, indexers, downloads, func() config.ImportSettings { return config.ImportSettings{} })
+	if _, err := svc.SearchSeriesPacks(context.Background(), series.ID); err != nil {
+		t.Fatalf("SearchSeriesPacks: %v", err)
+	}
+	if strings.Contains(strings.ToLower(gotQuery), "master edition") {
+		t.Errorf("query sent to indexer = %q, still carries the parenthetical", gotQuery)
+	}
+	if gotQuery != "BLAME!" {
+		t.Errorf("query = %q, want %q", gotQuery, "BLAME!")
+	}
+}
+
 func TestSearchWantedAudiobook(t *testing.T) {
 	// Indexer serves an m4b for Mort; Mort has a monitored audiobook edition
 	// and already owns the ebook, so only the audiobook should be searched.

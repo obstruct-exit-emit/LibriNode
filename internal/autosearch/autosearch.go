@@ -196,8 +196,16 @@ func (s *Service) searchOne(ctx context.Context, book *library.Book, mediaType s
 			return nil, err
 		}
 		wantedVariant := release.ResolveWantedVariant(series.TargetVariant, book.HasMonoFile, book.HasColorFile)
-		query = seriesTitle
-		nativeQuery = seriesTitle
+		// A series title with a trailing parenthetical ("Goodnight Punpun
+		// (Omnibus)", "Trigun (2 volumes)") would otherwise go to the indexer
+		// as a required keyword token no real release repeats — the same
+		// problem scanner.SearchTitle already solves for prose books below.
+		// Scoring still checks the FULL seriesTitle via scanner.TitleKeys
+		// (which already includes the stripped form as an alternate key), so
+		// broadening the query here doesn't loosen what gets approved.
+		searchSeriesTitle := scanner.SearchTitle(seriesTitle)
+		query = searchSeriesTitle
+		nativeQuery = searchSeriesTitle
 		score = func(rel indexer.Release) release.Candidate {
 			c := release.ScoreVolume(rel, prefs, seriesTitle, number, series.SiblingTitles)
 			release.AdjustForOwnedVariant(&c, book.HasColorFile)
@@ -327,7 +335,13 @@ func (s *Service) SearchSeriesPacks(ctx context.Context, seriesID int64) (*PackS
 	}
 
 	prefs := s.prefsFor(series.MediaType)
-	found, indexerErrs, err := s.indexers.SearchAll(ctx, series.Title, series.Title, series.MediaType)
+	// See searchOne's identical comment: a trailing parenthetical in the
+	// catalog title ("BLAME! (Master Edition)") would otherwise go to the
+	// indexer as a required keyword token no real pack release repeats.
+	// ScoreSeriesPack below still scores against the full series.Title via
+	// scanner.TitleKeys, so this only widens the query, not what's approved.
+	searchTitle := scanner.SearchTitle(series.Title)
+	found, indexerErrs, err := s.indexers.SearchAll(ctx, searchTitle, searchTitle, series.MediaType)
 	if err != nil {
 		return nil, err
 	}
