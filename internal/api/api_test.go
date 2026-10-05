@@ -557,6 +557,41 @@ type fakeComicProvider struct{ fakeSeriesProvider }
 func (fakeComicProvider) Name() string      { return "fakecomic" }
 func (fakeComicProvider) MediaType() string { return "comic" }
 
+// TestSeriesDetailItemCountOwnedCount: GetSeries (the single-series detail
+// fetch) never computed ItemCount/OwnedCount itself — only ListSeries' own
+// query does, via subqueries the single-row fetch doesn't share — so a
+// series with real owned volumes still read back 0/0 on its own detail
+// page. Harmless for the shipped UI (SeriesDetailView derives "owned" from
+// the Volumes array itself, not these fields), but they're part of the
+// public Series JSON shape and were simply wrong. Found live, burn-testing
+// against real production data.
+func TestSeriesDetailItemCountOwnedCount(t *testing.T) {
+	a := newTestAPI(t, nil)
+	volumes := 2
+	a.mgr.SetSeries(fakeSeriesProvider{volumes: &volumes})
+
+	var series library.Series
+	a.want(a.call("POST", "/api/v1/series",
+		map[string]any{"mediaType": "manga", "foreignSeriesId": "500", "monitored": true}, &series), http.StatusCreated)
+
+	if _, err := a.db.Exec(`INSERT INTO root_folders (id, media_type, variant, path) VALUES (1, 'manga', 'mono', '/manga')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO book_files (root_folder_id, book_id, media_type, variant, path, format)
+		VALUES (1, ?, 'manga', 'mono', '/manga/v1.cbz', 'cbz')`, series.Volumes[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var detail library.Series
+	a.want(a.call("GET", fmt.Sprintf("/api/v1/series/%d", series.ID), nil, &detail), http.StatusOK)
+	if detail.ItemCount != 2 {
+		t.Errorf("ItemCount = %d, want 2", detail.ItemCount)
+	}
+	if detail.OwnedCount != 1 {
+		t.Errorf("OwnedCount = %d, want 1", detail.OwnedCount)
+	}
+}
+
 func TestSeriesFlow(t *testing.T) {
 	a := newTestAPI(t, nil)
 	volumes := 3

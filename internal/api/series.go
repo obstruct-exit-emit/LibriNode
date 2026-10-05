@@ -230,6 +230,16 @@ func (s *server) writeSeriesDetail(w http.ResponseWriter, status int, id int64) 
 		writeStoreError(w, err)
 		return
 	}
+	// GetSeries itself never computes these — only ListSeries' own query
+	// does, via subqueries the single-row fetch doesn't share — so they'd
+	// otherwise always read 0 here regardless of how many volumes exist or
+	// are owned. Derived from Volumes, already in hand.
+	series.ItemCount = len(series.Volumes)
+	for _, v := range series.Volumes {
+		if v.HasFile {
+			series.OwnedCount++
+		}
+	}
 	writeJSON(w, status, series)
 }
 
