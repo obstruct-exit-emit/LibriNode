@@ -221,6 +221,54 @@ func TestSyncSeriesDropsSelfDuplicateUnderDifferentScript(t *testing.T) {
 	}
 }
 
+// TestSyncSeriesDropsDuplicateMatchingSelfsShortKey: the same hazard as the
+// script-collapse case above, reached a different way — self's own title
+// carries a ":" subtitle ("Pluto: Urasawa x Tezuka"), so scanner.TitleKeys
+// already gives it a short alternate key ("pluto") that real releases match
+// through. A shorter duplicate catalog entry (plain "Pluto") normalizes to
+// exactly that short key, not to the full title — so checking candidates
+// against the full title alone (as the script-collapse fix originally did)
+// would miss this. Reproduced live: real "Pluto v03"/"v04" releases were
+// rejected with "does not contain the series title" until this was found.
+func TestSyncSeriesDropsDuplicateMatchingSelfsShortKey(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store := library.NewStore(db)
+
+	p := &fakeSeriesProvider{
+		name: "hardcoverfake",
+		search: []metadata.SeriesResult{
+			{ForeignID: "pluto", Title: "Pluto: Urasawa x Tezuka"}, // itself — excluded
+			{ForeignID: "pluto-dup", Title: "Pluto"},               // same work under self's own short key — must be dropped
+			{ForeignID: "pluto-rocket", Title: "Pluto Rocket"},     // real, distinct sibling — kept
+		},
+		series: map[string]*metadata.SeriesResult{
+			"pluto": {ForeignID: "pluto", Title: "Pluto: Urasawa x Tezuka", IssueCount: 1,
+				Issues: []metadata.Issue{{ForeignID: "pluto-v1", Number: 1}}},
+		},
+	}
+	mgr := metadata.NewManager()
+	mgr.SetSeries(p)
+	svc := New(store, mgr)
+
+	added, err := svc.SyncSeries(context.Background(), "manga", "pluto", true, true, true)
+	if err != nil {
+		t.Fatalf("SyncSeries: %v", err)
+	}
+	want := map[string]bool{"Pluto Rocket": true}
+	if len(added.SiblingTitles) != len(want) {
+		t.Fatalf("SiblingTitles = %v, want %v (short-key duplicate dropped)", added.SiblingTitles, want)
+	}
+	for _, s := range added.SiblingTitles {
+		if !want[s] {
+			t.Errorf("unexpected sibling %q", s)
+		}
+	}
+}
+
 // TestSyncSeriesStripsParentheticalFromSiblingSearchQuery: a catalog title
 // with a trailing parenthetical ("Parasyte (8-Volume Edition)") must not go
 // to the provider's own title search verbatim either — reproduced live, that

@@ -3,7 +3,6 @@ package refresh
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/librinode/librinode/internal/library"
@@ -148,7 +147,16 @@ func (s *Service) syncSeriesWith(ctx context.Context, p metadata.SeriesProvider,
 // failure here never erases a previously found list.
 func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *metadata.SeriesResult) []string {
 	selfTitle := strings.ToLower(strings.TrimSpace(self.Title))
-	selfWords := strings.Fields(scanner.Normalize(self.Title))
+	// release.seriesTitleMatches accepts a release through ANY of self's own
+	// TitleKeys, not just the full title — "Pluto: Urasawa x Tezuka" also
+	// matches via the short alternate key "pluto" its own colon-split adds.
+	// So a sibling only needs to collapse to ONE of these keys, not
+	// necessarily the full title, to become the same degenerate hazard (see
+	// below) — checking against selfWords alone (the full title only) missed
+	// this. selfWords (the first, full-title key) is kept separately for the
+	// first-word-overlap noise filter, which is a different, narrower check.
+	selfKeys := scanner.TitleKeys(self.Title)
+	selfWords := strings.Fields(selfKeys[0])
 	seen := map[string]bool{}
 	var siblings []string
 	add := func(foreignID, title string, requireOverlap bool) {
@@ -159,21 +167,25 @@ func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *me
 		if norm == "" || norm == selfTitle || seen[norm] {
 			return
 		}
-		// A candidate that normalizes to EXACTLY self's own words is the same
-		// work under a different surface form — a non-Latin-script catalog
-		// duplicate ("うずまき [Uzumaki]") collapses to just "uzumaki" once
-		// scanner.Normalize strips what it treats as non-alphanumeric, same
-		// as a bracket/punctuation-only variant would. The naive lowercase
-		// check above misses this (the raw text still differs), but storing
-		// it as a "sibling" is actively harmful, not just noise: in
-		// matchesKnownSibling a single-word sibling equal to self's own key
-		// matches the first word of every real release of THIS series,
-		// rejecting all of them as if they named a different work.
-		// Reproduced live: "Uzumaki" silently rejected every real candidate
-		// until this was found and fixed.
-		candidateWords := strings.Fields(scanner.Normalize(title))
-		if slices.Equal(candidateWords, selfWords) {
-			return
+		// A candidate that normalizes to exactly one of self's own TitleKeys
+		// is the same work under a different surface form — a non-Latin-
+		// script catalog duplicate ("うずまき [Uzumaki]") collapses to just
+		// "uzumaki" once scanner.Normalize strips what it treats as non-
+		// alphanumeric; a shorter duplicate catalog entry ("Pluto" alongside
+		// "Pluto: Urasawa x Tezuka") collapses to exactly self's own short
+		// key the same way. The naive lowercase check above misses both (the
+		// raw text still differs), but storing either as a "sibling" is
+		// actively harmful, not just noise: in matchesKnownSibling a sibling
+		// whose words exactly equal one of self's own keys matches the first
+		// word of every real release of THIS series — via whichever key that
+		// release happened to match — rejecting all of them as if they named
+		// a different work. Reproduced live for both shapes: "Uzumaki" and
+		// "Pluto" releases were silently rejected until this was found.
+		candidateNorm := scanner.Normalize(title)
+		for _, k := range selfKeys {
+			if candidateNorm == k {
+				return
+			}
 		}
 		// release.matchesKnownSibling only ever checks a sibling's words
 		// against a release title already confirmed to start with self's
@@ -186,6 +198,7 @@ func fetchSiblingTitles(ctx context.Context, p metadata.SeriesProvider, self *me
 		// that source is an authoritative relations graph, deliberately kept
 		// even with zero textual overlap (see doc comment above).
 		if requireOverlap {
+			candidateWords := strings.Fields(candidateNorm)
 			if len(selfWords) == 0 || len(candidateWords) == 0 || candidateWords[0] != selfWords[0] {
 				return
 			}
